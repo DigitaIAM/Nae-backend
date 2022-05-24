@@ -32,7 +32,7 @@ async fn main() -> std::io::Result<()> {
                     .service(api::memory_modify)
             )
             // .route("/ws/", web::get().to(websocket))
-            .default_service(web::route().to(api::not_found))
+            .default_service(web::route().to(api::not_implemented))
     })
         .bind(("127.0.0.1", 8080))?
         .run()
@@ -59,7 +59,7 @@ mod tests {
                 .wrap(middleware::Logger::default())
                 .service(api::memory_modify)
                 .service(api::memory_query)
-                .default_service(web::route().to(api::not_found))
+                .default_service(web::route().to(api::not_implemented))
         ).await;
 
         let changes = vec![
@@ -95,5 +95,15 @@ mod tests {
                 value: Value::String("language".into())
             }
         ]);
+
+        let req = test::TestRequest::post()
+            .uri("/memory")
+            .set_json("")
+            .to_request();
+
+        let response = test::call_service(&app, req).await;
+        assert_eq!(response.status().to_string(), "501 Not Implemented");
+
+        // TODO db.clear();
     }
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use rocksdb::{DB, Options};
-use crate::error::Error;
+use crate::error::DBError;
 use crate::Memory;
 use crate::memory::{Change, ID, IDS, Record, Value};
 
@@ -12,7 +12,7 @@ pub struct RocksDB {
 }
 
 impl Memory for RocksDB {
-    fn init(path: &str) -> Result<Self, Error> {
+    fn init(path: &str) -> Result<Self, DBError> {
         let mut options = Options::default();
         options.set_error_if_exists(false);
         options.create_if_missing(true);
@@ -34,7 +34,7 @@ impl Memory for RocksDB {
         Ok(RocksDB { db: Arc::new(db) })
     }
 
-    fn modify(&self, mutations: Vec<Change>) -> Result<(), Error> {
+    fn modify(&self, mutations: Vec<Change>) -> Result<(), DBError> {
         let cf = self.db.cf_handle(CF_CORE).unwrap();
 
         for change in mutations {
@@ -48,7 +48,7 @@ impl Memory for RocksDB {
         Ok(())
     }
 
-    fn query(&self, keys: Vec<IDS>) -> Result<Vec<Record>, Error> {
+    fn query(&self, keys: Vec<IDS>) -> Result<Vec<Record>, DBError> {
         let cf = self.db.cf_handle(CF_CORE).unwrap();
 
         let mut result = Vec::with_capacity(keys.len());

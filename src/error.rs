@@ -2,35 +2,41 @@ use std::error;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Error {
+pub struct DBError {
     message: String,
 }
 
-impl From<&str> for Error {
-    fn from(msg: &str) -> Error {
-        Error { message: msg.to_string() }
+impl From<&str> for DBError {
+    fn from(msg: &str) -> DBError {
+        DBError { message: msg.to_string() }
     }
 }
 
-impl From<rocksdb::Error> for Error {
-    fn from(e: rocksdb::Error) -> Error {
-        Error { message: e.to_string() }
+impl From<String> for DBError {
+    fn from(message: String) -> DBError {
+        DBError { message }
     }
 }
 
-impl From<Error> for String {
-    fn from(e: Error) -> String {
+impl From<rocksdb::Error> for DBError {
+    fn from(e: rocksdb::Error) -> DBError {
+        DBError { message: e.to_string() }
+    }
+}
+
+impl From<DBError> for String {
+    fn from(e: DBError) -> String {
         e.message
     }
 }
 
-impl error::Error for Error {
+impl error::Error for DBError {
     fn description(&self) -> &str {
         &self.message
     }
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for DBError {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.message.fmt(formatter)
     }

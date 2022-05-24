@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use blake2::{Digest, Blake2s256};
 use serde_json::Number;
-use crate::error::Error;
+use crate::error::DBError;
 
 type HASHER = Blake2s256;
 const ID_BYTES: usize = 32;
@@ -50,12 +50,12 @@ impl From<Vec<ID>> for IDS {
 }
 
 impl Value {
-    pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+    pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
         bincode::serialize(self)
             .map_err(|_| "fail to encode value".into())
     }
 
-    pub(crate) fn from_bytes(bs: Option<Vec<u8>>) -> Result<Self, Error> {
+    pub(crate) fn from_bytes(bs: Option<Vec<u8>>) -> Result<Self, DBError> {
         match bs {
             Some(bs) => bincode::deserialize(&bs)
                 .map_err(|_| "fail to decode value".into()),
@@ -90,9 +90,9 @@ impl IDS {
 
 
 pub(crate) trait Memory {
-    fn init(path: &str) -> Result<Self, Error> where Self: Sized;
+    fn init(path: &str) -> Result<Self, DBError> where Self: Sized;
 
-    fn modify(&self, mutations: Vec<Change>) -> Result<(), Error>;
+    fn modify(&self, mutations: Vec<Change>) -> Result<(), DBError>;
 
-    fn query(&self, keys: Vec<IDS>) -> Result<Vec<Record>, Error>;
+    fn query(&self, keys: Vec<IDS>) -> Result<Vec<Record>, DBError>;
 }
