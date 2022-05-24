@@ -1,0 +1,21 @@
+[package]
+name = "nae-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4"
+actix-web-actors = "4.1.0"
+
+serde = { version = "1.0.137", features = ["derive"] }
+serde_bytes = "0.11"
+serde_json = "1.0.81"
+bincode = "1.3.3"
+
+rocksdb = {version = "0.18.0", default-features = false, features = ["lz4"]}
+
+blake2 = "0.10.4"
+bigdecimal = "0.3.0"
+
+log = "0.4.17"
+env_logger = "0.9.0"
