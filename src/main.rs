@@ -8,8 +8,9 @@ use actix_web::{web, middleware, App, HttpServer};
 
 mod error;
 mod memory;
-mod api;
 mod rocksdb;
+mod api;
+// mod animo;
 
 use crate::memory::Memory;
 use crate::rocksdb::RocksDB;
@@ -44,10 +45,10 @@ mod tests {
     use super::*;
     use actix_web::{test, web, App};
     use actix_web::web::Bytes;
-    use crate::memory::{Change, IDS, Record, Value};
+    use crate::memory::{ChangeTransformation, Transformation, TransformationKey, Value};
 
     #[actix_web::test]
-    async fn test_index_get() {
+    async fn test_put_get() {
         std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
         env_logger::init();
 
@@ -63,11 +64,11 @@ mod tests {
         ).await;
 
         let changes = vec![
-            Change {
-                primary: "language".into(),
-                relation: vec!["label".into(), "english".into()].into(),
-                before: Value::Nothing,
-                after: Value::String("language".into())
+            ChangeTransformation {
+                context: vec!["language".into(), "label".into()].into(),
+                what: "english".into(),
+                into_before: Value::Nothing,
+                into_after: Value::String("language".into())
             }
         ];
 
@@ -79,8 +80,11 @@ mod tests {
         let response = test::call_and_read_body(&app, req).await;
         assert_eq!(response, Bytes::from_static(b""));
 
-        let keys: Vec<IDS> = vec![
-            vec!["language".into(), "label".into(), "english".into()].into()
+        let keys: Vec<TransformationKey> = vec![
+            TransformationKey {
+                context: vec!["language".into(), "label".into()].into(),
+                what: "english".into()
+            }
         ];
 
         let req = test::TestRequest::post()
@@ -88,11 +92,12 @@ mod tests {
             .set_json(keys)
             .to_request();
 
-        let response: Vec<Record> = test::call_and_read_body_json(&app, req).await;
+        let response: Vec<Transformation> = test::call_and_read_body_json(&app, req).await;
         assert_eq!(response, vec![
-            Record {
-                key: vec!["language".into(), "label".into(), "english".into()].into(),
-                value: Value::String("language".into())
+            Transformation {
+                context: vec!["language".into(), "label".into()].into(),
+                what: "english".into(),
+                into: Value::String("language".into())
             }
         ]);
 
