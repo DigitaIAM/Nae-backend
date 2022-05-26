@@ -2,7 +2,7 @@ use crate::error::DBError;
 use crate::{Memory, RocksDB};
 use crate::memory::{ChangeTransformation, ID, IDS, Transformation, TransformationKey, Value};
 
-// Report
+// Report for dates
 //           | open       | in         | out        | close      |
 //           | qty | cost | qty | cost | qty | cost | qty | cost |
 // store     |  -  |  +   |  -  |  +   |  -  |  +   |  -  |  +   |
@@ -10,17 +10,41 @@ use crate::memory::{ChangeTransformation, ID, IDS, Transformation, Transformatio
 //   docs    |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
 //    rec?   |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
 
+// store     |  -  |  +   |  -  |  +   |  -  |  +   |  -  |  +   |
+//  docs     |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
+//   goods   |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
+//    rec?   |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
+
+
+// расход1 storeB копыта 1
+// расход1 storeB рога   2
+// расход2 storeB копыта 3
+
+// отчет о движение
+// storeB    |     | =100 |     |      |     |  =80 |     |  =20 |
+//  копыта   |  5  |  100 |     |      | =4  |  =80 |  =1 |  =20 |
+//   расход1 |  5  |  100 |     |      |  1  |  =20 |  =4 |  =80 |
+//   расход2 |  4  |  80  |     |      |  3  |  =60 |  =1 |  =20 |
+
+//реестр документов
+// storeB    |     | =100 |     |      |     |  =80 |     |  =20 |
+//  расход1  |     |  100 |     |      |     |  =20 |     |  =80 |
+//   копыта  |  5  |  100 |     |      |  1  |  =20 |  =4 |  =80 |
+//  расход2  |     |  80  |     |      |     |  =60 |     |  =20 |
+//   копыта  |  4  |  80  |     |      | =3  |  =60 |  =1 |  =20 |
+
 // ledger
 trait OrderedCalculator {
 
     // goods = uom(kg, liter)
 
-    // operation types = In(qty(number, uom), cost(number, currency)), Out(qty(..), cost(..))
+    // operation = In(qty(number, uom), cost(number, currency)), Out(qty(..), cost(..))
+    // balance(qty(number, uom), cost(number, currency))
 
-    // key-value = key(store + goods + date) = value((context, operation_qty, operation_cost) + (balance_qty, balance_cost))
+    // key-value = key(store + goods + date) = value(context, operation, balance)
 
-    // current.balance_qty = prev.balance_qty + current.operation_qty
-    // current.balance_cost = prev.balance_cost + current.operation_cost
+    // current.balance.qty = prev.balance.qty + current.operation.qty
+    // current.balance.cost = prev.balance.cost + current.operation.cost
 
     // current.operation_cost = current.operation_qty * (prev.operation_cost / prev.operation_qty)
 
