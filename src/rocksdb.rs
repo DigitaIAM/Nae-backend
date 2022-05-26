@@ -1,15 +1,37 @@
 use std::sync::Arc;
-use rocksdb::{DB, Options, WriteBatch};
+use rocksdb::{ColumnFamily, DB,  DBWithThreadMode, Options, SingleThreaded, SnapshotWithThreadMode, WriteBatch};
 use crate::error::DBError;
 use crate::Memory;
+use crate::animo::OrderedCalculator;
 use crate::memory::{ChangeTransformation, ID, Transformation, TransformationKey, Value};
 
 const CF_CORE: &str = "cf_core";
-const CF_ANIMO: &str = "cf_animo";
+pub(crate) const CF_ANIMO: &str = "cf_animo";
 
 #[derive(Clone)]
 pub struct RocksDB {
-    db: Arc<DB>,
+    pub(crate) db: Arc<DB>,
+    dispatcher: Arc<OrderedCalculator> // TODO Arc<Vec<Box<dyn Dispatcher>>>
+}
+
+pub struct Snapshot<'a> {
+    pub rf: &'a RocksDB,
+    pub pit: SnapshotWithThreadMode<'a, DBWithThreadMode<SingleThreaded>>,
+    // pub mutations: Vec<ChangeTransformation>,
+}
+
+impl<'a> Snapshot<'a> {
+    pub fn cf_core(&self) -> &ColumnFamily {
+        self.rf.db.cf_handle(CF_CORE).unwrap()
+    }
+
+    pub fn cf_animo(&self) -> &ColumnFamily {
+        self.rf.db.cf_handle(CF_ANIMO).unwrap()
+    }
+}
+
+trait Dispatcher {
+    fn on_mutations(&self, pit: RocksDB, mutations: Vec<ChangeTransformation>);
 }
 
 impl Memory for RocksDB {
@@ -36,14 +58,17 @@ impl Memory for RocksDB {
         create_cf(&mut db, &cfs, CF_CORE);
         create_cf(&mut db, &cfs, CF_ANIMO);
 
-        Ok(RocksDB { db: Arc::new(db) })
+        Ok(RocksDB {
+            db: Arc::new(db),
+            dispatcher: Arc::new(OrderedCalculator::default()),
+        })
     }
 
     fn modify(&self, mutations: Vec<ChangeTransformation>) -> Result<(), DBError> {
         let cf = self.db.cf_handle(CF_CORE).unwrap();
 
         let mut batch = WriteBatch::default();
-        for change in mutations {
+        for change in &mutations {
             let k = ID::bytes(&change.context, &change.what);
             // TODO let b = change.into_before.to_bytes()?;
             let v = change.into_after.to_bytes()?;
@@ -53,8 +78,21 @@ impl Memory for RocksDB {
             batch.put_cf(cf, k, v);
         }
 
-        self.db.write(batch)
-            .map_err(|e| e.to_string().into())
+        let wr: Result<(), DBError> = self.db.write(batch)
+            .map_err(|e| e.to_string().into());
+        wr?;
+
+        // TODO require snapshot with modification
+        let pit = self.db.snapshot();
+        let s = Snapshot {
+            rf: self,
+            pit
+        };
+
+        // TODO how to handle error?
+        self.dispatcher.on_mutation(&s, mutations)?;
+
+        Ok(())
     }
 
     fn query(&self, keys: Vec<TransformationKey>) -> Result<Vec<Transformation>, DBError> {

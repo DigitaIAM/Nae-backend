@@ -1,10 +1,14 @@
 use serde::{Deserialize, Serialize};
 use blake2::{Digest, Blake2s256};
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
+use chrono::serde::ts_milliseconds;
 use crate::error::DBError;
 
+pub type Time = DateTime<Utc>;
+
 type HASHER = Blake2s256;
-const ID_BYTES: usize = 32;
+pub(crate) const ID_BYTES: usize = 32;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ID([u8; ID_BYTES]);
@@ -12,13 +16,15 @@ pub struct ID([u8; ID_BYTES]);
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct IDS(pub Vec<ID>);
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum Value {
     Nothing,
     ID(ID),
     IDS(IDS),
     String(String),
-    Number(Decimal) // Number // TODO BigDecimal ?
+    Number(Decimal), // Number // TODO BigDecimal ?
+    #[serde(with = "ts_milliseconds")]
+    DateTime(Time)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -65,22 +71,55 @@ impl From<&str> for Value {
 
 impl Value {
     pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
-        bincode::serialize(self)
+        // bincode::serialize(self)
+        //     .map_err(|_| "fail to encode value".into())
+
+        serde_json::to_string(self)
+            .and_then(|s| Ok(s.as_bytes().to_vec()))
             .map_err(|_| "fail to encode value".into())
     }
 
     pub(crate) fn from_bytes(bs: Option<Vec<u8>>) -> Result<Self, DBError> {
+        // match bs {
+        //     Some(bs) => bincode::deserialize(&bs)
+        //         .map_err(|_| "fail to decode value".into()),
+        //     None => Ok(Value::Nothing)
+        // }
         match bs {
-            Some(bs) => bincode::deserialize(&bs)
-                .map_err(|_| "fail to decode value".into()),
-            None => Ok(Value::Nothing)
+            None => Ok(Value::Nothing),
+            Some(bs) => {
+                serde_json::from_slice(&bs)
+                    .map_err(|_| "fail to decode value".into())
+            }
+
         }
     }
 
-    pub(crate) fn number_or_err(self) -> Result<Decimal, DBError> {
+    pub(crate) fn as_number(self) -> Result<Decimal, DBError> {
         match self {
             Value::Number(number) => Ok(number),
-            _ => Err("value is not number".into())
+            _ => Err("value is not a number".into())
+        }
+    }
+
+    pub(crate) fn as_id(self) -> Result<ID, DBError> {
+        match self {
+            Value::ID(id) => Ok(id),
+            _ => Err("value is not an id".into())
+        }
+    }
+
+    pub(crate) fn as_time(self) -> Result<Time, DBError> {
+        match self {
+            Value::DateTime(time) => Ok(time),
+            _ => Err("value is not an id".into())
+        }
+    }
+
+    pub(crate) fn one_of(&self, ids: Vec<ID>) -> bool {
+        match self {
+            Value::ID(id) => ids.contains(id),
+            _ => false,
         }
     }
 }
@@ -92,6 +131,10 @@ impl TransformationKey {
 }
 
 impl ID {
+    pub fn as_slice(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+
     pub fn bytes(context: &IDS, what: &ID) -> Vec<u8> {
         let mut bs = Vec::with_capacity(ID_BYTES * (1 + context.len()));
 
@@ -106,16 +149,20 @@ impl ID {
 }
 
 impl IDS {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bs = Vec::with_capacity(ID_BYTES * self.0.len());
-        for id in &self.0 {
-            bs.extend_from_slice(id.0.as_slice());
-        }
-        bs
-    }
+    // pub fn to_bytes(&self) -> Vec<u8> {
+    //     let mut bs = Vec::with_capacity(ID_BYTES * self.0.len());
+    //     for id in &self.0 {
+    //         bs.extend_from_slice(id.0.as_slice());
+    //     }
+    //     bs
+    // }
 
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn to_vec(self) -> Vec<ID> {
+        self.0
     }
 }
 
@@ -157,5 +204,31 @@ mod tests {
         let json = serde_json::to_string(&trans).unwrap();
 
         assert_eq!(json, "{\"context\":[[98,88,81,227,135,110,110,109,164,5,201,90,194,70,135,206,75,178,205,216,251,216,69,146,120,246,240,206,128,62,19,238],[205,122,236,69,159,185,201,253,103,216,158,107,115,60,57,77,208,80,61,243,171,61,8,232,8,148,201,164,161,77,8,109]],\"what\":[122,167,248,2,221,30,181,208,192,68,198,5,234,197,226,208,176,34,65,33,3,129,84,53,142,154,43,190,213,230,96,15],\"into_before\":\"Nothing\",\"into_after\":{\"String\":\"4\"}}");
+    }
+
+    #[test]
+    fn test_value_number_json() {
+        let value = Value::Number(10.into());
+
+        let json = serde_json::to_string(&value).unwrap();
+
+        assert_eq!(json, "{\"Number\":\"10\"}");
+
+        let restored = serde_json::from_str(json.as_str()).unwrap();
+
+        assert_eq!(value, restored);
+    }
+
+    #[test]
+    fn test_value_number_bincode() {
+        let value = Value::Number(10.into());
+
+        let bs = bincode::serialize(&value).unwrap();
+
+        assert_eq!(bs, vec![4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 49, 48]);
+
+        let restored: Value = bincode::deserialize(&bs).unwrap();
+
+        assert_eq!(value, restored);
     }
 }
