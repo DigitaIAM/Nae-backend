@@ -10,7 +10,7 @@ mod error;
 mod memory;
 mod rocksdb;
 mod api;
-// mod animo;
+mod animo;
 
 use crate::memory::Memory;
 use crate::rocksdb::RocksDB;
