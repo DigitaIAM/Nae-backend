@@ -157,7 +157,7 @@ impl OrderedCalculator {
         bs.extend_from_slice(store.as_slice());
         bs.extend_from_slice(goods.as_slice());
 
-        bs.extend_from_slice(time.timestamp().to_ne_bytes().as_slice());
+        bs.extend_from_slice(time.timestamp().to_be_bytes().as_slice());
 
         // TODO use hash of IDS to guaranty uniqueness
         bs.extend_from_slice(context.0[0].as_slice());
@@ -391,7 +391,7 @@ mod tests {
         };
 
         db.modify(event("docA", "g1", 10, 50)).expect("Ok");
-        thread::sleep(Duration::from_millis(1000));
+        thread::sleep(Duration::from_millis(1));
         db.modify(event("docB", "g1", 3, 15)).expect("Ok");
     }
 }
