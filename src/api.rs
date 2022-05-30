@@ -11,10 +11,10 @@ pub(crate) async fn not_implemented() -> impl Responder {
 #[post("/memory/query")]
 pub(crate) async fn memory_query(db: web::Data<RocksDB>, keys: web::Json<Vec<TransformationKey>>) -> Result<HttpResponse, Error> {
     // use web::block to offload db request
-    let transformations = web::block(move || {
+    let transformations = // TODO web::block(move || {
         db.query(keys.0)
-    })
-        .await?
+    // })
+    //     .await?
         .map_err(actix_web::error::ErrorInternalServerError)?;
 
     Ok(HttpResponse::Ok().json(transformations))
@@ -25,10 +25,10 @@ pub(crate) async fn memory_modify(
     db: web::Data<RocksDB>, mutations: web::Json<Vec<ChangeTransformation>>
 ) -> Result<HttpResponse, Error> {
     // use web::block to offload db request
-    web::block(move || {
+    // TODO web::block(move || {
         db.modify(mutations.0)
-    })
-        .await?
+    // })
+    //     .await?
         .map_err(actix_web::error::ErrorInternalServerError)?;
 
     Ok(HttpResponse::Ok().body(""))

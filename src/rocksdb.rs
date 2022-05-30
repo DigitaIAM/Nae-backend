@@ -1,37 +1,69 @@
 use std::sync::Arc;
-use rocksdb::{ColumnFamily, DB,  DBWithThreadMode, Options, SingleThreaded, SnapshotWithThreadMode, WriteBatch};
+use rocksdb::{BoundColumnFamily, DB, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch};
 use crate::error::DBError;
 use crate::Memory;
-use crate::animo::OrderedCalculator;
-use crate::memory::{ChangeTransformation, ID, Transformation, TransformationKey, Value};
+use crate::animo::OpsManager;
+use crate::memory::{ChangeTransformation, Context, ID, Transformation, TransformationKey, Value};
 
 const CF_CORE: &str = "cf_core";
-pub(crate) const CF_ANIMO: &str = "cf_animo";
+const CF_OPERATIONS: &str = "cf_operations";
+const CF_MEMOS: &str = "cf_memos";
+
+pub(crate) trait ToBytes {
+    fn to_bytes(&self) -> Result<Vec<u8>, DBError>;
+}
+
+pub(crate) trait FromBytes<V> {
+    fn from_bytes(bs: &[u8]) -> Result<V, DBError>;
+}
 
 #[derive(Clone)]
 pub struct RocksDB {
     pub(crate) db: Arc<DB>,
-    dispatcher: Arc<OrderedCalculator> // TODO Arc<Vec<Box<dyn Dispatcher>>>
+    pub(crate) dispatchers: Vec<Arc<dyn Dispatcher>>,
+    pub(crate) ops_manager: Arc<OpsManager>,
+}
+
+impl RocksDB {
+    pub(crate) fn snapshot(&self) -> Snapshot {
+        let pit = self.db.snapshot();
+        Snapshot { rf: self, pit }
+    }
 }
 
 pub struct Snapshot<'a> {
-    pub rf: &'a RocksDB,
-    pub pit: SnapshotWithThreadMode<'a, DBWithThreadMode<SingleThreaded>>,
+    pub(crate) rf: &'a RocksDB,
+    pub(crate) pit: SnapshotWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>,
     // pub mutations: Vec<ChangeTransformation>,
 }
 
 impl<'a> Snapshot<'a> {
-    pub fn cf_core(&self) -> &ColumnFamily {
-        self.rf.db.cf_handle(CF_CORE).unwrap()
+    pub fn cf_core(&self) -> Arc<BoundColumnFamily> {
+        self.rf.db.cf_handle(CF_CORE).expect("core cf")
     }
 
-    pub fn cf_animo(&self) -> &ColumnFamily {
-        self.rf.db.cf_handle(CF_ANIMO).unwrap()
+    pub fn cf_operations(&self) -> Arc<BoundColumnFamily> {
+        self.rf.db.cf_handle(CF_OPERATIONS).expect("operations cf")
+    }
+
+    pub fn cf_memos(&self) -> Arc<BoundColumnFamily> {
+        self.rf.db.cf_handle(CF_MEMOS).expect("memos cf")
+    }
+
+    pub fn load_by(&self, context: &Context, what: &str) -> Result<Value, DBError> {
+        let k = ID::bytes(context, &ID::from(what));
+        let v = self.pit.get_cf(&self.cf_core(), &k)?;
+
+        let value = Value::from_bytes(v)?;
+
+        debug!("load {:?} by {:?}", value, k);
+
+        Ok(value)
     }
 }
 
-trait Dispatcher {
-    fn on_mutations(&self, pit: RocksDB, mutations: Vec<ChangeTransformation>);
+pub trait Dispatcher {
+    fn on_mutation(&self, s: &Snapshot, mutations: &Vec<ChangeTransformation>) -> Result<(), DBError>;
 }
 
 impl Memory for RocksDB {
@@ -56,11 +88,15 @@ impl Memory for RocksDB {
 
         // create ColumnFamilies if not exist
         create_cf(&mut db, &cfs, CF_CORE);
-        create_cf(&mut db, &cfs, CF_ANIMO);
+        create_cf(&mut db, &cfs, CF_OPERATIONS);
+        create_cf(&mut db, &cfs, CF_MEMOS);
+
+        let rf = Arc::new(db);
 
         Ok(RocksDB {
-            db: Arc::new(db),
-            dispatcher: Arc::new(OrderedCalculator::default()),
+            db: rf.clone(),
+            dispatchers: vec![],
+            ops_manager: Arc::new(OpsManager { db: rf.clone() }),
         })
     }
 
@@ -75,7 +111,7 @@ impl Memory for RocksDB {
 
             debug!("put {:?} = {:?}", k, v);
 
-            batch.put_cf(cf, k, v);
+            batch.put_cf(&cf, k, v);
         }
 
         let wr: Result<(), DBError> = self.db.write(batch)
@@ -90,7 +126,9 @@ impl Memory for RocksDB {
         };
 
         // TODO how to handle error?
-        self.dispatcher.on_mutation(&s, mutations)?;
+        for dispatcher in &self.dispatchers {
+            dispatcher.on_mutation(&s, &mutations)?;
+        }
 
         Ok(())
     }
@@ -103,7 +141,7 @@ impl Memory for RocksDB {
         let pit = self.db.snapshot();
         for key in keys {
             let k = key.to_bytes();
-            let v = pit.get_cf(cf, &k)?;
+            let v = pit.get_cf(&cf, &k)?;
 
             debug!("get {:?} = {:?}", k, v);
 

@@ -1,7 +1,9 @@
 #[macro_use]
 extern crate log;
+extern crate core;
 
-use actix_web::{web, middleware, App, HttpServer};
+use actix_web::middleware;
+// use actix_web::{web, middleware, App, HttpServer};
 
 // mod websocket;
 // use crate::websocket::websocket;
@@ -15,29 +17,29 @@ mod animo;
 use crate::memory::Memory;
 use crate::rocksdb::RocksDB;
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+// TODO #[actix_web::main]
+async fn main() { // TODO -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=debug,actix_server=debug");
     env_logger::init();
 
     info!("starting up 127.0.0.1:8080");
 
-    let db: RocksDB = Memory::init("./data/memory").unwrap();
-
-    HttpServer::new(move || {
-        App::new()
-            .app_data(web::Data::new(db.clone()))
-            .service(
-                web::scope("/v1")
-                    .service(api::memory_query)
-                    .service(api::memory_modify)
-            )
-            // .route("/ws/", web::get().to(websocket))
-            .default_service(web::route().to(api::not_implemented))
-    })
-        .bind(("127.0.0.1", 8080))?
-        .run()
-        .await
+    // TODO let db: RocksDB = Memory::init("./data/memory").unwrap();
+    //
+    // HttpServer::new(move || {
+    //     App::new()
+    //         .app_data(web::Data::new(db.clone()))
+    //         .service(
+    //             web::scope("/v1")
+    //                 .service(api::memory_query)
+    //                 .service(api::memory_modify)
+    //         )
+    //         // .route("/ws/", web::get().to(websocket))
+    //         .default_service(web::route().to(api::not_implemented))
+    // })
+    //     .bind(("127.0.0.1", 8080))?
+    //     .run()
+    //     .await
 }
 
 #[cfg(test)]

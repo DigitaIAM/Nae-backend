@@ -10,10 +10,10 @@ pub type Time = DateTime<Utc>;
 type HASHER = Blake2s256;
 pub(crate) const ID_BYTES: usize = 32;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ID([u8; ID_BYTES]);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
 pub struct IDS(pub Vec<ID>);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -27,9 +27,12 @@ pub enum Value {
     DateTime(Time)
 }
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Context(pub Vec<ID>);
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChangeTransformation {
-    pub context: IDS,
+    pub context: Context,
     pub what: ID,
     pub into_before: Value,
     pub into_after: Value
@@ -37,13 +40,13 @@ pub struct ChangeTransformation {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransformationKey {
-    pub context: IDS,
+    pub context: Context,
     pub what: ID,
 }
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Transformation {
-    pub context: IDS,
+    pub context: Context,
     pub what: ID,
     pub into: Value,
 }
@@ -59,6 +62,12 @@ impl From<&str> for ID {
 impl From<Vec<ID>> for IDS {
     fn from(v: Vec<ID>) -> Self {
         IDS(v)
+    }
+}
+
+impl From<Vec<ID>> for Context {
+    fn from(v: Vec<ID>) -> Self {
+        Context(v)
     }
 }
 
@@ -112,7 +121,7 @@ impl Value {
     pub(crate) fn as_time(self) -> Result<Time, DBError> {
         match self {
             Value::DateTime(time) => Ok(time),
-            _ => Err("value is not an id".into())
+            _ => Err("value is not an time".into())
         }
     }
 
@@ -135,7 +144,7 @@ impl ID {
         self.0.as_slice()
     }
 
-    pub fn bytes(context: &IDS, what: &ID) -> Vec<u8> {
+    pub fn bytes(context: &Context, what: &ID) -> Vec<u8> {
         let mut bs = Vec::with_capacity(ID_BYTES * (1 + context.len()));
 
         for id in &context.0 {
@@ -157,13 +166,23 @@ impl IDS {
     //     bs
     // }
 
+    // pub fn len(&self) -> usize {
+    //     self.0.len()
+    // }
+    //
+    // pub fn to_vec(self) -> Vec<ID> {
+    //     self.0
+    // }
+}
+
+impl Context {
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    pub fn to_vec(self) -> Vec<ID> {
-        self.0
-    }
+    // pub fn to_vec(self) -> Vec<ID> {
+    //     self.0
+    // }
 }
 
 
