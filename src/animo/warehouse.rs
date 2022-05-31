@@ -6,6 +6,7 @@ use crate::animo::primitives::{Qty, Money};
 use crate::error::DBError;
 use crate::memory::{Context, ID, ID_BYTES, Time};
 use crate::rocksdb::{FromBytes, Snapshot, ToBytes};
+use crate::shared::*;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum OpWarehouse {
@@ -213,9 +214,9 @@ impl OperationGenerator for Balance {
 
     fn depends_on(&self) -> Vec<ID> {
         vec![
-            "specific-of".into(),
-            "store".into(), "date".into(),
-            "goods".into(), "qty".into(), "cost".into()
+            *SPECIFIC_OF,
+            *STORE, *DATE,
+            *GOODS, *QTY, *COST
         ]
     }
 
@@ -227,8 +228,8 @@ impl OperationGenerator for Balance {
         // filter contexts by "object type"
         let mut contexts = Vec::with_capacity(cs.len());
         for c in cs {
-            if let Some(instance_of) = env.resolve(&c, "specific-of")? {
-                if instance_of.into.one_of(vec!["GoodsReceive".into(), "GoodsIssue".into()]) {
+            if let Some(instance_of) = env.resolve(&c, *SPECIFIC_OF)? {
+                if instance_of.into.one_of(vec![*GOODS_RECEIVE, *GOODS_ISSUE]) {
                     contexts.push(c);
                 }
             }
@@ -237,16 +238,16 @@ impl OperationGenerator for Balance {
         // TODO resolve up-dependent contexts
 
         for context in contexts {
-            let instance_of = env.resolve(&context, "specific-of").unwrap().unwrap().into.as_id()?;
-            let store = env.resolve_as_id(&context, "store")?;
-            let goods = env.resolve_as_id(&context, "goods")?;
-            let date = env.resolve_as_time(&context, "date")?;
+            let instance_of = env.resolve_as_id(&context, *SPECIFIC_OF)?;
+            let store = env.resolve_as_id(&context, *STORE)?;
+            let goods = env.resolve_as_id(&context, *GOODS)?;
+            let date = env.resolve_as_time(&context, *DATE)?;
 
-            let qty = env.resolve_as_number(&context, "qty")?;
-            let cost = env.resolve_as_number(&context, "cost")?;
+            let qty = env.resolve_as_number(&context, *QTY)?;
+            let cost = env.resolve_as_number(&context, *COST)?;
 
             // TODO calculate Op
-            let op = if instance_of == "GoodsReceive".into() {
+            let op = if instance_of == *GOODS_RECEIVE {
                 OpWarehouse::In(Qty(qty), Money(cost))
             } else {
                 OpWarehouse::Out(Qty(qty), Money(cost))

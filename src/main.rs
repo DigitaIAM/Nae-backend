@@ -1,5 +1,9 @@
 #[macro_use]
 extern crate log;
+
+#[macro_use]
+extern crate lazy_static;
+
 extern crate core;
 
 use actix_web::{web, middleware, App, HttpServer};
@@ -8,6 +12,7 @@ use actix_web::{web, middleware, App, HttpServer};
 // use crate::websocket::websocket;
 
 mod error;
+mod shared;
 mod memory;
 mod rocksdb;
 mod api;

@@ -11,7 +11,7 @@ pub type Time = DateTime<Utc>;
 type HASHER = Blake2s256;
 pub(crate) const ID_BYTES: usize = 32;
 
-#[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq, Copy)]
 pub struct ID([u8; ID_BYTES]);
 
 #[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
@@ -130,6 +130,11 @@ impl Value {
 }
 
 impl ID {
+    // TODO make `const`
+    pub(crate) fn for_constant(data: &str) -> Self {
+        data.into()
+    }
+
     pub fn as_slice(&self) -> &[u8] {
         self.0.as_slice()
     }

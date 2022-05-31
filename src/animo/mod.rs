@@ -76,15 +76,15 @@ impl<'a> Env<'a> {
         self.pit.rf.ops_manager.clone()
     }
 
-    pub(crate) fn resolve(&self, context: &Context, what: &str) -> Result<Option<Transformation>, DBError> {
+    pub(crate) fn resolve(&self, context: &Context, what: ID) -> Result<Option<Transformation>, DBError> {
         // TODO calculate
 
-        let what = ID::from(what);
+        // let what = ID::from(what);
 
         // read value for give `context` and `what`. In case it's not exist, repeat on "above" context
         let mut memory = self.pit.load_by(context, &what)?;
         if memory != Value::Nothing {
-            Ok(Some(Transformation { context: context.clone(), what: what.into(), into: memory }))
+            Ok(Some(Transformation { context: context.clone(), what, into: memory }))
         } else {
             let mut context = context.clone();
             loop {
@@ -93,7 +93,7 @@ impl<'a> Env<'a> {
                         context = Context(ids.to_vec());
                         memory = self.pit.load_by(&context, &what)?;
                         if memory != Value::Nothing {
-                            break Ok(Some(Transformation { context, what: what.into(), into: memory }))
+                            break Ok(Some(Transformation { context, what, into: memory }))
                         }
                     }
                     None => break Ok(None),
@@ -102,27 +102,27 @@ impl<'a> Env<'a> {
         }
     }
 
-    pub(crate) fn resolve_as_id(&self, context: &Context, what: &str) -> Result<ID, DBError> {
+    pub(crate) fn resolve_as_id(&self, context: &Context, what: ID) -> Result<ID, DBError> {
         let id = self.resolve(context, what)?
-            .expect(format!("{} is not exist", what).as_str())
+            .expect(format!("{:?} is not exist", what).as_str())
             .into.as_id()
-            .expect(format!("{} is not ID", what).as_str());
+            .expect(format!("{:?} is not ID", what).as_str());
         Ok(id)
     }
 
-    pub(crate) fn resolve_as_time(&self, context: &Context, what: &str) -> Result<Time, DBError> {
+    pub(crate) fn resolve_as_time(&self, context: &Context, what: ID) -> Result<Time, DBError> {
         let time = self.resolve(context, what)?
-            .expect(format!("{} is not exist", what).as_str())
+            .expect(format!("{:?} is not exist", what).as_str())
             .into.as_time()
-            .expect(format!("{} is not Time", what).as_str());
+            .expect(format!("{:?} is not Time", what).as_str());
         Ok(time)
     }
 
-    pub(crate) fn resolve_as_number(&self, context: &Context, what: &str) -> Result<Decimal, DBError> {
+    pub(crate) fn resolve_as_number(&self, context: &Context, what: ID) -> Result<Decimal, DBError> {
         let number = self.resolve(context, what)?
-            .expect(format!("{} is not exist", what).as_str())
+            .expect(format!("{:?} is not exist", what).as_str())
             .into.as_number()
-            .expect(format!("{} is not Number", what).as_str());
+            .expect(format!("{:?} is not Number", what).as_str());
         Ok(number)
     }
 }
@@ -201,12 +201,14 @@ impl<T> Dispatcher for Animo<T> where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::shared::*;
+
     use std::cmp::Ordering;
     use chrono::DateTime;
     use crate::{Memory, RocksDB};
     use crate::animo::primitives::{Money, Qty};
     use crate::animo::warehouse::Balance;
-    use super::*;
 
 
     #[test]
@@ -241,31 +243,31 @@ mod tests {
             DateTime::parse_from_rfc3339(format!("{}T00:00:00Z", dt).as_str()).unwrap().into()
         };
 
-        let event = |doc: &str, date: &str, class: &str, goods: &str, qty: i32, cost: Option<i32>| {
+        let event = |doc: &str, date: &str, class: ID, goods: &str, qty: i32, cost: Option<i32>| {
             let mut records = vec![
                 Transformation {
                     context: vec![doc.into()].into(),
-                    what: "specific-of".into(),
-                    into: Value::ID(class.into()),
+                    what: *SPECIFIC_OF,
+                    into: Value::ID(class),
                 },
                 Transformation {
                     context: vec![doc.into()].into(),
-                    what: "date".into(),
+                    what: *DATE,
                     into: Value::DateTime(time(date)),
                 },
                 Transformation {
                     context: vec![doc.into()].into(),
-                    what: "store".into(),
+                    what: *STORE,
                     into: Value::ID("wh1".into()),
                 },
                 Transformation {
                     context: vec![doc.into()].into(),
-                    what: "goods".into(),
+                    what: *GOODS,
                     into: Value::ID(goods.into()),
                 },
                 Transformation {
                     context: vec![doc.into()].into(),
-                    what: "qty".into(),
+                    what: *QTY,
                     into: Value::Number(qty.into()),
                 }
             ];
@@ -273,7 +275,7 @@ mod tests {
                 records.push(
                     Transformation {
                         context: vec![doc.into()].into(),
-                        what: "cost".into(),
+                        what: *COST,
                         into: Value::Number(cost.into()),
                     }
                 );
@@ -286,9 +288,9 @@ mod tests {
             }).collect::<Vec<_>>()
         };
 
-        db.modify(event("docA", "2022-05-27", "GoodsReceive", "g1", 10, Some(50))).expect("Ok");
-        db.modify(event("docB", "2022-05-30", "GoodsReceive", "g1", 2, Some(10))).expect("Ok");
-        db.modify(event("docC", "2022-05-28", "GoodsIssue", "g1", 5, Some(25))).expect("Ok");
+        db.modify(event("docA", "2022-05-27", *GOODS_RECEIVE, "g1", 10, Some(50))).expect("Ok");
+        db.modify(event("docB", "2022-05-30", *GOODS_RECEIVE, "g1", 2, Some(10))).expect("Ok");
+        db.modify(event("docC", "2022-05-28", *GOODS_ISSUE, "g1", 5, Some(25))).expect("Ok");
 
         // 2022-05-27	qty	10	cost	50	=	10	50
         // 2022-05-28	qty	-5	cost	-25	=	5	25		< 2022-05-28
