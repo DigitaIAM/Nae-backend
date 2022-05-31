@@ -66,20 +66,6 @@ pub(crate) trait OperationGenerator {
     fn generate_op(&self, env: &mut Env, contexts: HashSet<Context>) -> Result<(), DBError>;
 }
 
-// pub(crate) struct Id(Vec<u8>);
-//
-// pub(crate) struct Provided<T> {
-//     id: Id,
-//     value: T,
-// }
-//
-// pub(crate) struct Calculated<O> {
-//     based: Box<dyn Calculation>,
-//     // input: Vec<Id>,
-//     // op: Box<dyn Operation<O>>,
-//     output: O,
-// }
-
 pub(crate) struct Env<'a> {
     pub(crate) pit: &'a Snapshot<'a>,
 }
@@ -93,8 +79,10 @@ impl<'a> Env<'a> {
     pub(crate) fn resolve(&self, context: &Context, what: &str) -> Result<Option<Transformation>, DBError> {
         // TODO calculate
 
+        let what = ID::from(what);
+
         // read value for give `context` and `what`. In case it's not exist, repeat on "above" context
-        let mut memory = self.pit.load_by(context, what)?;
+        let mut memory = self.pit.load_by(context, &what)?;
         if memory != Value::Nothing {
             Ok(Some(Transformation { context: context.clone(), what: what.into(), into: memory }))
         } else {
@@ -103,7 +91,7 @@ impl<'a> Env<'a> {
                 match context.0.split_last() {
                     Some((_, ids)) => {
                         context = Context(ids.to_vec());
-                        memory = self.pit.load_by(&context, what)?;
+                        memory = self.pit.load_by(&context, &what)?;
                         if memory != Value::Nothing {
                             break Ok(Some(Transformation { context, what: what.into(), into: memory }))
                         }
@@ -172,7 +160,7 @@ impl<T> Animo<T> where
 }
 
 impl<T> Dispatcher for Animo<T> where
-    T: OperationGenerator + Eq + Hash
+    T: OperationGenerator + Eq + Hash + Sync + Send
 {
     // push propagation of mutations
     fn on_mutation(&self, s: &Snapshot, mutations: &Vec<ChangeTransformation>) -> Result<(), DBError> {
@@ -247,7 +235,7 @@ mod tests {
             what_to_node_producers: HashMap::new(),
         };
         animo.register_op_producer(Arc::new(Balance::default()));
-        db.dispatchers.push(Arc::new(animo));
+        db.register_dispatcher(Arc::new(animo)).unwrap();
 
         let time = |dt: &str| -> Time {
             DateTime::parse_from_rfc3339(format!("{}T00:00:00Z", dt).as_str()).unwrap().into()

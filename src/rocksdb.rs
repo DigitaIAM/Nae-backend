@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use rocksdb::{BoundColumnFamily, DB, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch};
 use crate::error::DBError;
 use crate::Memory;
@@ -20,11 +20,20 @@ pub(crate) trait FromBytes<V> {
 #[derive(Clone)]
 pub struct RocksDB {
     pub(crate) db: Arc<DB>,
-    pub(crate) dispatchers: Vec<Arc<dyn Dispatcher>>,
+    pub(crate) dispatchers: Arc<Mutex<Vec<Arc<dyn Dispatcher>>>>,
     pub(crate) ops_manager: Arc<OpsManager>,
 }
 
 impl RocksDB {
+    pub(crate) fn register_dispatcher(&mut self, dispatcher: Arc<dyn Dispatcher>) -> Result<(), DBError> {
+        match self.dispatchers.lock() {
+            Ok(mut v) => {
+                v.push(dispatcher);
+                Ok(())
+            }
+            Err(e) => Err(DBError::from(e.to_string()))
+        }
+    }
     pub(crate) fn snapshot(&self) -> Snapshot {
         let pit = self.db.snapshot();
         Snapshot { rf: self, pit }
@@ -50,11 +59,14 @@ impl<'a> Snapshot<'a> {
         self.rf.db.cf_handle(CF_MEMOS).expect("memos cf")
     }
 
-    pub fn load_by(&self, context: &Context, what: &str) -> Result<Value, DBError> {
-        let k = ID::bytes(context, &ID::from(what));
+    pub(crate) fn load_by(&self, context: &Context, what: &ID) -> Result<Value, DBError> {
+        let k = ID::bytes(context, what);
         let v = self.pit.get_cf(&self.cf_core(), &k)?;
 
-        let value = Value::from_bytes(v)?;
+        let value = match v {
+            None => Value::Nothing,
+            Some(bs) => Value::from_bytes(bs.as_slice())?
+        };
 
         debug!("load {:?} by {:?}", value, k);
 
@@ -62,7 +74,7 @@ impl<'a> Snapshot<'a> {
     }
 }
 
-pub trait Dispatcher {
+pub trait Dispatcher: Sync + Send {
     fn on_mutation(&self, s: &Snapshot, mutations: &Vec<ChangeTransformation>) -> Result<(), DBError>;
 }
 
@@ -95,7 +107,7 @@ impl Memory for RocksDB {
 
         Ok(RocksDB {
             db: rf.clone(),
-            dispatchers: vec![],
+            dispatchers: Arc::new(Mutex::new(vec![])),
             ops_manager: Arc::new(OpsManager { db: rf.clone() }),
         })
     }
@@ -119,33 +131,26 @@ impl Memory for RocksDB {
         wr?;
 
         // TODO require snapshot with modification
-        let pit = self.db.snapshot();
-        let s = Snapshot {
-            rf: self,
-            pit
-        };
+        let s = self.snapshot();
 
         // TODO how to handle error?
-        for dispatcher in &self.dispatchers {
-            dispatcher.on_mutation(&s, &mutations)?;
+        {
+            let dispatchers = self.dispatchers.lock()
+                .map_err(|e| DBError::from(e.to_string()))?;
+            for dispatcher in dispatchers.iter() {
+                dispatcher.on_mutation(&s, &mutations)?;
+            }
         }
 
         Ok(())
     }
 
     fn query(&self, keys: Vec<TransformationKey>) -> Result<Vec<Transformation>, DBError> {
-        let cf = self.db.cf_handle(CF_CORE).unwrap();
+        let s = self.snapshot();
 
         let mut result = Vec::with_capacity(keys.len());
-
-        let pit = self.db.snapshot();
         for key in keys {
-            let k = key.to_bytes();
-            let v = pit.get_cf(&cf, &k)?;
-
-            debug!("get {:?} = {:?}", k, v);
-
-            let value = Value::from_bytes(v)?;
+            let value = s.load_by(&key.context, &key.what)?;
 
             result.push(Transformation { context: key.context, what: key.what, into: value });
         }

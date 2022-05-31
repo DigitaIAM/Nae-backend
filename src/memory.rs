@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use chrono::serde::ts_milliseconds;
 use crate::error::DBError;
+use crate::rocksdb::{FromBytes, ToBytes};
 
 pub type Time = DateTime<Utc>;
 
@@ -22,7 +23,7 @@ pub enum Value {
     ID(ID),
     IDS(IDS),
     String(String),
-    Number(Decimal), // Number // TODO BigDecimal ?
+    Number(Decimal),
     #[serde(with = "ts_milliseconds")]
     DateTime(Time)
 }
@@ -78,32 +79,27 @@ impl From<&str> for Value {
 }
 
 
-impl Value {
-    pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
+impl ToBytes for Value {
+    fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
         // bincode::serialize(self)
         //     .map_err(|_| "fail to encode value".into())
 
         serde_json::to_string(self)
             .and_then(|s| Ok(s.as_bytes().to_vec()))
-            .map_err(|_| "fail to encode value".into())
+            .map_err(|_| format!("fail to encode value {:?}", self).into())
     }
+}
 
-    pub(crate) fn from_bytes(bs: Option<Vec<u8>>) -> Result<Self, DBError> {
-        // match bs {
-        //     Some(bs) => bincode::deserialize(&bs)
-        //         .map_err(|_| "fail to decode value".into()),
-        //     None => Ok(Value::Nothing)
-        // }
-        match bs {
-            None => Ok(Value::Nothing),
-            Some(bs) => {
-                serde_json::from_slice(&bs)
-                    .map_err(|_| "fail to decode value".into())
-            }
-
-        }
+impl FromBytes<Value> for Value {
+    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+        serde_json::from_slice(&bs)
+            .map_err(|_| "fail to decode value".into())
+        // bincode::deserialize(&bs)
+        //     .map_err(|_| "fail to decode value".into()),
     }
+}
 
+impl Value {
     pub(crate) fn as_number(self) -> Result<Decimal, DBError> {
         match self {
             Value::Number(number) => Ok(number),
@@ -130,12 +126,6 @@ impl Value {
             Value::ID(id) => ids.contains(id),
             _ => false,
         }
-    }
-}
-
-impl TransformationKey {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        ID::bytes(&self.context, &self.what)
     }
 }
 

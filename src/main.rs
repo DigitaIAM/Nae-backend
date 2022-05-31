@@ -23,11 +23,11 @@ async fn main() -> std::io::Result<()> {
 
     info!("starting up 127.0.0.1:8080");
 
-    // let db: RocksDB = Memory::init("./data/memory").unwrap();
+    let db: RocksDB = Memory::init("./data/memory").unwrap();
 
     HttpServer::new(move || {
         App::new()
-            // TODO .app_data(web::Data::new(db.clone()))
+            .app_data(web::Data::new(db.clone()))
             .service(
                 web::scope("/v1")
                     .service(api::memory_query)
