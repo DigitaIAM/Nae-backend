@@ -40,11 +40,11 @@ impl Operation<Balance> for OpWarehouse {
                     OpWarehouse::In(r_qty, r_cost) => {
                         // 10 > 8 = -2 (8-10)
                         // 10 > 12 = 2 (12-10)
-                        Balance(r_qty - &l_qty, r_cost - &l_cost)
+                        Balance(r_qty - l_qty, r_cost - l_cost)
                     }
                     OpWarehouse::Out(r_qty, r_cost) => {
                         // 10 > -8 = -18 (-10-8)
-                        Balance(-(l_qty + &r_qty), -(l_cost + &r_cost))
+                        Balance(-(l_qty + r_qty), -(l_cost + r_cost))
                     }
                 }
             }
@@ -52,12 +52,12 @@ impl Operation<Balance> for OpWarehouse {
                 match other {
                     OpWarehouse::In(r_qty, r_cost) => {
                         // -10 > 8 = 18 (10+8)
-                        Balance(l_qty + &r_qty, l_cost + &r_cost)
+                        Balance(l_qty + r_qty, l_cost + r_cost)
                     }
                     OpWarehouse::Out(r_qty, r_cost) => {
                         // -10 > -8 = +2 (10-8)
                         // -10 > -12 = -2 (10-12)
-                        Balance(l_qty - &r_qty, l_cost + &r_cost)
+                        Balance(l_qty - r_qty, l_cost + r_cost)
                     }
                 }
             }
@@ -177,8 +177,7 @@ impl Balance {
             if r_position != position {
                 // TODO write test for this branch
                 // calculate on interval between memo position and requested position
-                let mut it = ops_manager.ops_between(s, &r_position, &position);
-                while let Some((_,op)) = it.next() {
+                for (_,op) in ops_manager.ops_between(s, &r_position, &position) {
                     balance = balance.apply(&op);
                 }
 
@@ -191,8 +190,7 @@ impl Balance {
             let zero_position = Balance::local_topology_position_of_zero(store, goods);
             let mut balance = Balance::default();
 
-            let mut it = ops_manager.ops_following::<OpWarehouse>(s, &zero_position)?;
-            while let Some((k,op)) = it.next() {
+            for (k,op) in ops_manager.ops_following::<OpWarehouse>(s, &zero_position)? {
                 let ordering = k.cmp(&position);
                 if ordering <= Ordering::Equal {
                     balance = balance.apply(&op);

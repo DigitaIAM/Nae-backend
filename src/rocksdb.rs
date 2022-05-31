@@ -75,7 +75,7 @@ impl<'a> Snapshot<'a> {
 }
 
 pub trait Dispatcher: Sync + Send {
-    fn on_mutation(&self, s: &Snapshot, mutations: &Vec<ChangeTransformation>) -> Result<(), DBError>;
+    fn on_mutation(&self, s: &Snapshot, mutations: &[ChangeTransformation]) -> Result<(), DBError>;
 }
 
 impl Memory for RocksDB {
@@ -86,13 +86,13 @@ impl Memory for RocksDB {
         options.create_missing_column_families(true);
 
         // list existing ColumnFamilies
-        let cfs = DB::list_cf(&options, path).unwrap_or(vec![]);
+        let cfs = DB::list_cf(&options, path).unwrap_or_default();
 
         // open DB
         let mut db = DB::open_cf(&options, path, cfs.clone()).unwrap();
 
         let create_cf = |db: &mut DB, cfs: &Vec<String>, cf_name: &str| {
-            if cfs.iter().find(|cf| cf == &cf_name).is_none() {
+            if !cfs.iter().any(|cf| cf == cf_name) {
                 let options = Options::default();
                 db.create_cf(cf_name, &options).unwrap();
             }
@@ -104,11 +104,10 @@ impl Memory for RocksDB {
         create_cf(&mut db, &cfs, CF_MEMOS);
 
         let rf = Arc::new(db);
-
         Ok(RocksDB {
             db: rf.clone(),
             dispatchers: Arc::new(Mutex::new(vec![])),
-            ops_manager: Arc::new(OpsManager { db: rf.clone() }),
+            ops_manager: Arc::new(OpsManager { db: rf }),
         })
     }
 

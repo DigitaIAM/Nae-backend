@@ -33,6 +33,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(db.clone()))
+            .wrap(middleware::Logger::default())
             .service(
                 web::scope("/v1")
                     .service(api::memory_query)

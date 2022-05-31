@@ -107,8 +107,7 @@ impl OpsManager {
         db.put_cf(&s.cf_operations(), &local_topology_position, op.to_bytes()?)?;
 
         // propagation
-        let mut it = self.memos_after::<V>(s, &local_topology_position)?;
-        while let Some((r_position, current_value)) = it.next() {
+        for (r_position, current_value) in self.memos_after::<V>(s, &local_topology_position)? {
             // TODO get dependents and notify them
 
             let new_value = current_value.apply_delta(&delta);

@@ -103,27 +103,27 @@ impl<'a> Env<'a> {
     }
 
     pub(crate) fn resolve_as_id(&self, context: &Context, what: ID) -> Result<ID, DBError> {
-        let id = self.resolve(context, what)?
-            .expect(format!("{:?} is not exist", what).as_str())
-            .into.as_id()
-            .expect(format!("{:?} is not ID", what).as_str());
-        Ok(id)
+        self.resolve(context, what)?
+            .ok_or_else(|| format!("{:?} is not exist", what).into())
+            .and_then(|t| t.into.as_id()
+                .map_err(|_| format!("{:?} is not ID", what).into())
+            )
     }
 
     pub(crate) fn resolve_as_time(&self, context: &Context, what: ID) -> Result<Time, DBError> {
-        let time = self.resolve(context, what)?
-            .expect(format!("{:?} is not exist", what).as_str())
-            .into.as_time()
-            .expect(format!("{:?} is not Time", what).as_str());
-        Ok(time)
+        self.resolve(context, what)?
+            .ok_or_else(|| format!("{:?} is not exist", what).into())
+            .and_then(|t| t.into.as_time()
+                .map_err(|_| format!("{:?} is not Time", what).into())
+            )
     }
 
     pub(crate) fn resolve_as_number(&self, context: &Context, what: ID) -> Result<Decimal, DBError> {
-        let number = self.resolve(context, what)?
-            .expect(format!("{:?} is not exist", what).as_str())
-            .into.as_number()
-            .expect(format!("{:?} is not Number", what).as_str());
-        Ok(number)
+        self.resolve(context, what)?
+            .ok_or_else(|| format!("{:?} is not exist", what).into())
+            .and_then(|t| t.into.as_number()
+                .map_err(|_| format!("{:?} is not Number", what).into())
+            )
     }
 }
 
@@ -163,27 +163,24 @@ impl<T> Dispatcher for Animo<T> where
     T: OperationGenerator + Eq + Hash + Sync + Send
 {
     // push propagation of mutations
-    fn on_mutation(&self, s: &Snapshot, mutations: &Vec<ChangeTransformation>) -> Result<(), DBError> {
+    fn on_mutation(&self, s: &Snapshot, mutations: &[ChangeTransformation]) -> Result<(), DBError> {
         // calculate node_producers that affected by mutations
         let mut producers: HashMap<Arc<T>, HashSet<Context>> = HashMap::new();
         for mutation in mutations {
-            match self.what_to_node_producers.get(&mutation.what) {
-                Some(set) => {
-                    for item in set {
-                        match producers.get_mut(item) {
-                            Some(contexts) => {
-                                contexts.insert(mutation.context.clone());
-                            },
-                            None => {
-                                let mut contexts = HashSet::new();
-                                contexts.insert(mutation.context.clone());
-                                producers.insert(item.clone(), contexts);
-                            }
-                        };
+            if let Some(set) = self.what_to_node_producers.get(&mutation.what) {
+                for item in set {
+                    match producers.get_mut(item) {
+                        Some(contexts) => {
+                            contexts.insert(mutation.context.clone());
+                        },
+                        None => {
+                            let mut contexts = HashSet::new();
+                            contexts.insert(mutation.context.clone());
+                            producers.insert(item.clone(), contexts);
+                        }
                     }
                 }
-                _ => {},
-            };
+            }
         }
 
         // TODO calculate up-dependant contexts here or at producer?

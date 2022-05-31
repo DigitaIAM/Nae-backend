@@ -8,20 +8,20 @@ use crate::rocksdb::{FromBytes, ToBytes};
 
 pub type Time = DateTime<Utc>;
 
-type HASHER = Blake2s256;
+type Hasher = Blake2s256;
 pub(crate) const ID_BYTES: usize = 32;
 
 #[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq, Copy)]
 pub struct ID([u8; ID_BYTES]);
 
 #[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
-pub struct IDS(pub Vec<ID>);
+pub struct IDs(pub Vec<ID>);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum Value {
     Nothing,
     ID(ID),
-    IDS(IDS),
+    IDs(IDs),
     String(String),
     Number(Decimal),
     #[serde(with = "ts_milliseconds")]
@@ -55,14 +55,14 @@ pub struct Transformation {
 impl From<&str> for ID {
     fn from(data: &str) -> Self {
         let mut bs = [0; 32];
-        bs.copy_from_slice(HASHER::digest(data).as_slice());
+        bs.copy_from_slice(Hasher::digest(data).as_slice());
         ID(bs)
     }
 }
 
-impl From<Vec<ID>> for IDS {
+impl From<Vec<ID>> for IDs {
     fn from(v: Vec<ID>) -> Self {
-        IDS(v)
+        IDs(v)
     }
 }
 
@@ -81,42 +81,37 @@ impl From<&str> for Value {
 
 impl ToBytes for Value {
     fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
-        // bincode::serialize(self)
-        //     .map_err(|_| "fail to encode value".into())
-
         serde_json::to_string(self)
-            .and_then(|s| Ok(s.as_bytes().to_vec()))
+            .map(|s| s.as_bytes().to_vec())
             .map_err(|_| format!("fail to encode value {:?}", self).into())
     }
 }
 
 impl FromBytes<Value> for Value {
     fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
-        serde_json::from_slice(&bs)
+        serde_json::from_slice(bs)
             .map_err(|_| "fail to decode value".into())
-        // bincode::deserialize(&bs)
-        //     .map_err(|_| "fail to decode value".into()),
     }
 }
 
 impl Value {
-    pub(crate) fn as_number(self) -> Result<Decimal, DBError> {
+    pub(crate) fn as_number(&self) -> Result<Decimal, DBError> {
         match self {
-            Value::Number(number) => Ok(number),
+            Value::Number(number) => Ok(*number),
             _ => Err("value is not a number".into())
         }
     }
 
-    pub(crate) fn as_id(self) -> Result<ID, DBError> {
+    pub(crate) fn as_id(&self) -> Result<ID, DBError> {
         match self {
-            Value::ID(id) => Ok(id),
+            Value::ID(id) => Ok(*id),
             _ => Err("value is not an id".into())
         }
     }
 
-    pub(crate) fn as_time(self) -> Result<Time, DBError> {
+    pub(crate) fn as_time(&self) -> Result<Time, DBError> {
         match self {
-            Value::DateTime(time) => Ok(time),
+            Value::DateTime(time) => Ok(*time),
             _ => Err("value is not an time".into())
         }
     }
@@ -152,7 +147,7 @@ impl ID {
     }
 }
 
-impl IDS {
+impl IDs {
     // pub fn to_bytes(&self) -> Vec<u8> {
     //     let mut bs = Vec::with_capacity(ID_BYTES * self.0.len());
     //     for id in &self.0 {
