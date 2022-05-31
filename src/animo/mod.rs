@@ -285,9 +285,10 @@ mod tests {
             }).collect::<Vec<_>>()
         };
 
-        db.modify(event("docA", "2022-05-27", *GOODS_RECEIVE, "g1", 10, Some(50))).expect("Ok");
-        db.modify(event("docB", "2022-05-30", *GOODS_RECEIVE, "g1", 2, Some(10))).expect("Ok");
-        db.modify(event("docC", "2022-05-28", *GOODS_ISSUE, "g1", 5, Some(25))).expect("Ok");
+        debug!("MODIFY A-C");
+        db.modify(event("A", "2022-05-27", *GOODS_RECEIVE, "g1", 10, Some(50))).expect("Ok");
+        db.modify(event("B", "2022-05-30", *GOODS_RECEIVE, "g1", 2, Some(10))).expect("Ok");
+        db.modify(event("C", "2022-05-28", *GOODS_ISSUE, "g1", 5, Some(25))).expect("Ok");
 
         // 2022-05-27	qty	10	cost	50	=	10	50
         // 2022-05-28	qty	-5	cost	-25	=	5	25		< 2022-05-28
@@ -308,5 +309,13 @@ mod tests {
         let s = db.snapshot();
         let g1_balance = Balance::get_memo(&s, &"wh1".into(), &"g1".into(), &time("2022-05-31")).expect("Ok");
         assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance);
+
+        debug!("MODIFY D");
+        db.modify(event("D", "2022-05-31", *GOODS_ISSUE, "g1", 1, Some(5))).expect("Ok");
+
+        debug!("READING 2022-05-31");
+        let s = db.snapshot();
+        let g1_balance = Balance::get_memo(&s, &"wh1".into(), &"g1".into(), &time("2022-05-31")).expect("Ok");
+        assert_eq!(Balance(Qty(6.into()),Money(30.into())), g1_balance);
     }
 }

@@ -175,6 +175,7 @@ impl Balance {
         let balance = if let Some((r_position, mut balance)) = ops_manager.get_closest_memo::<Balance>(s, &position)? {
             debug!("closest memo {:?} at {:?}", balance, r_position);
             if r_position != position {
+                debug!("calculate from closest memo {:?}", r_position);
                 // TODO write test for this branch
                 // calculate on interval between memo position and requested position
                 for (_,op) in ops_manager.ops_between(s, &r_position, &position) {
