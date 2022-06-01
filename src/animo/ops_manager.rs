@@ -1,6 +1,7 @@
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use rocksdb::{AsColumnFamilyRef, DB, DBIteratorWithThreadMode, DBWithThreadMode, Direction, IteratorMode, MultiThreaded, ReadOptions};
+use rocksdb::{AsColumnFamilyRef, DB, DBIteratorWithThreadMode, DBWithThreadMode, Direction, Error, IteratorMode, MultiThreaded, ReadOptions};
 use crate::animo::{Env, Object, Operation};
 use crate::error::DBError;
 use crate::rocksdb::{FromBytes, Snapshot, ToBytes};
@@ -114,6 +115,40 @@ impl OpsManager {
 
             // store updated memo
             db.put_cf(&s.cf_memos(), &r_position, new_value.to_bytes()?)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn write_aggregation_delta<O,V>(&self, env: &Env, local_topology_position: Vec<u8>, local_topology_checkpoint: Vec<u8>, delta: V) -> Result<(), DBError>
+        where
+            O: Operation<V>,
+            V: Object<V,O> + FromBytes<V> + ToBytes + Debug
+    {
+        let s = env.pit;
+        let db = self.db.clone();
+
+        debug!("propagate delta {:?} at {:?}", delta, local_topology_position);
+
+        // propagation
+        for (position, memo) in self.memos_after::<V>(s, &local_topology_position)? {
+            // TODO get dependents and notify them
+
+            debug!("next memo {:?} at {:?}", memo, position);
+
+            let new_memo = memo.apply_delta(&delta);
+
+            // store updated memo
+            db.put_cf(&s.cf_memos(), &position, new_memo.to_bytes()?)?;
+        }
+
+        // make sure checkpoint exist
+        match s.pit.get_cf(&s.cf_memos(), &local_topology_checkpoint)? {
+            None => {
+                // store checkpoint
+                db.put_cf(&s.cf_memos(), &local_topology_checkpoint, delta.to_bytes()?)?;
+            }
+            Some(_) => {} // exist, nothing to do
         }
 
         Ok(())

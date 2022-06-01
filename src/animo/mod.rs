@@ -61,8 +61,10 @@ pub(crate) trait Operation<V> {
 }
 
 pub(crate) trait OperationGenerator {
+    // TODO remove `&self`
     fn depends_on(&self) -> Vec<ID>;
 
+    // TODO remove `&self`
     fn generate_op(&self, env: &mut Env, contexts: HashSet<Context>) -> Result<(), DBError>;
 }
 
@@ -139,9 +141,11 @@ pub(crate) struct Animo<T> where
 impl<T> Animo<T> where
     T: OperationGenerator + Eq + Hash
 {
-    pub fn register_op_producer(&mut self, node_producer: Arc<T>) {
+    pub fn register_op_producer(&mut self, node_producer: Arc<T>)
+        where T: OperationGenerator + Eq + Hash
+    {
         // update helper map for fast resolve of dependants on given mutation
-        for id in  node_producer.depends_on() {
+        for id in node_producer.depends_on() {
             match self.what_to_node_producers.get_mut(&id) {
                 None => {
                     let mut set = HashSet::new();
@@ -193,129 +197,5 @@ impl<T> Dispatcher for Animo<T> where
         }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::shared::*;
-
-    use std::cmp::Ordering;
-    use chrono::DateTime;
-    use crate::{Memory, RocksDB};
-    use crate::animo::primitives::{Money, Qty};
-    use crate::animo::warehouse::Balance;
-
-
-    #[test]
-    fn test_bytes_order() {
-        let mut bs1 = 0_u64.to_ne_bytes();
-        for num in 1_u64..u64::MAX {
-            if num % 1_000_000 == 0 {
-                print!(".");
-            }
-            let bs2 = num.to_be_bytes();
-            assert_eq!(Ordering::Less, bs1.as_slice().cmp(bs2.as_slice()));
-            bs1 = bs2;
-        }
-    }
-
-    #[test]
-    fn test_store_operations() {
-        std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
-        env_logger::init();
-
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let tmp_path = tmp_dir.path().to_str().unwrap();
-        let mut db: RocksDB = Memory::init(tmp_path).unwrap();
-        let mut animo = Animo {
-            op_producers: vec![],
-            what_to_node_producers: HashMap::new(),
-        };
-        animo.register_op_producer(Arc::new(Balance::default()));
-        db.register_dispatcher(Arc::new(animo)).unwrap();
-
-        let time = |dt: &str| -> Time {
-            DateTime::parse_from_rfc3339(format!("{}T00:00:00Z", dt).as_str()).unwrap().into()
-        };
-
-        let event = |doc: &str, date: &str, class: ID, goods: &str, qty: i32, cost: Option<i32>| {
-            let mut records = vec![
-                Transformation {
-                    context: vec![doc.into()].into(),
-                    what: *SPECIFIC_OF,
-                    into: Value::ID(class),
-                },
-                Transformation {
-                    context: vec![doc.into()].into(),
-                    what: *DATE,
-                    into: Value::DateTime(time(date)),
-                },
-                Transformation {
-                    context: vec![doc.into()].into(),
-                    what: *STORE,
-                    into: Value::ID("wh1".into()),
-                },
-                Transformation {
-                    context: vec![doc.into()].into(),
-                    what: *GOODS,
-                    into: Value::ID(goods.into()),
-                },
-                Transformation {
-                    context: vec![doc.into()].into(),
-                    what: *QTY,
-                    into: Value::Number(qty.into()),
-                }
-            ];
-            if let Some(cost) = cost {
-                records.push(
-                    Transformation {
-                        context: vec![doc.into()].into(),
-                        what: *COST,
-                        into: Value::Number(cost.into()),
-                    }
-                );
-            }
-            records.iter().map(|t| ChangeTransformation {
-                context: t.context.clone(),
-                what: t.what.clone(),
-                into_before: Value::Nothing,
-                into_after: t.into.clone()
-            }).collect::<Vec<_>>()
-        };
-
-        debug!("MODIFY A-C");
-        db.modify(event("A", "2022-05-27", *GOODS_RECEIVE, "g1", 10, Some(50))).expect("Ok");
-        db.modify(event("B", "2022-05-30", *GOODS_RECEIVE, "g1", 2, Some(10))).expect("Ok");
-        db.modify(event("C", "2022-05-28", *GOODS_ISSUE, "g1", 5, Some(25))).expect("Ok");
-
-        // 2022-05-27	qty	10	cost	50	=	10	50
-        // 2022-05-28	qty	-5	cost	-25	=	5	25		< 2022-05-28
-        // 2022-05-30	qty	2	cost	10	=	7 	35
-        // 													< 2022-05-31
-
-        debug!("READING 2022-05-31");
-        let s = db.snapshot();
-        let g1_balance = Balance::get_memo(&s, &"wh1".into(), &"g1".into(), &time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance);
-
-        debug!("READING 2022-05-28");
-        let s = db.snapshot();
-        let g1_balance = Balance::get_memo(&s, &"wh1".into(), &"g1".into(), &time("2022-05-28")).expect("Ok");
-        assert_eq!(Balance(Qty(5.into()),Money(25.into())), g1_balance);
-
-        debug!("READING 2022-05-31");
-        let s = db.snapshot();
-        let g1_balance = Balance::get_memo(&s, &"wh1".into(), &"g1".into(), &time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance);
-
-        debug!("MODIFY D");
-        db.modify(event("D", "2022-05-31", *GOODS_ISSUE, "g1", 1, Some(5))).expect("Ok");
-
-        debug!("READING 2022-05-31");
-        let s = db.snapshot();
-        let g1_balance = Balance::get_memo(&s, &"wh1".into(), &"g1".into(), &time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(6.into()),Money(30.into())), g1_balance);
     }
 }

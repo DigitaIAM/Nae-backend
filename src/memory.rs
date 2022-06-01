@@ -52,6 +52,16 @@ pub struct Transformation {
     pub into: Value,
 }
 
+impl Transformation {
+    pub fn new(context: &Context, what: ID, into: Value) -> Self {
+        Transformation {
+            context: context.clone(),
+            what,
+            into,
+        }
+    }
+}
+
 impl From<&str> for ID {
     fn from(data: &str) -> Self {
         let mut bs = [0; 32];
@@ -72,12 +82,29 @@ impl From<Vec<ID>> for Context {
     }
 }
 
+impl From<ID> for Value {
+    fn from(data: ID) -> Self {
+        Value::ID(data)
+    }
+}
+
 impl From<&str> for Value {
     fn from(data: &str) -> Self {
         Value::String(data.into())
     }
 }
 
+impl From<u32> for Value {
+    fn from(data: u32) -> Self {
+        Value::Number(data.into())
+    }
+}
+
+impl From<Time> for Value {
+    fn from(data: Time) -> Self {
+        Value::DateTime(data)
+    }
+}
 
 impl ToBytes for Value {
     fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
