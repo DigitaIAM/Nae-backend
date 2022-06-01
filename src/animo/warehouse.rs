@@ -70,7 +70,7 @@ impl WarehouseStock {
         // TODO move method to Ops manager
         let ops_manager = s.rf.ops_manager.clone();
 
-        let position = Self::local_topology_position(store, goods, time);
+        let position = WarehouseStock::local_topology_position(store, goods, time);
 
         debug!("pining memo at {:?}", position);
 
