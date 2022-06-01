@@ -54,10 +54,14 @@ mod tests {
     use actix_web::web::Bytes;
     use crate::memory::{ChangeTransformation, Transformation, TransformationKey, Value};
 
+    fn init() {
+        std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
     #[actix_web::test]
     async fn test_put_get() {
-        std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
-        env_logger::init();
+        init();
 
         let db: RocksDB = Memory::init("./data/tests").unwrap();
 

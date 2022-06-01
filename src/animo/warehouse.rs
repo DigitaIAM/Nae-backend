@@ -496,6 +496,11 @@ mod tests {
     use crate::animo::warehouse::Balance;
     use crate::memory::{ChangeTransformation, Transformation, Value};
 
+    fn init() {
+        std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
     #[test]
     fn test_bytes_order() {
         println!("testing order");
@@ -512,8 +517,7 @@ mod tests {
 
     #[test]
     fn test_store_operations() {
-        std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
-        env_logger::init();
+        init();
 
         let tmp_dir = tempfile::tempdir().unwrap();
         let tmp_path = tmp_dir.path().to_str().unwrap();
@@ -590,8 +594,7 @@ mod tests {
 
     #[test]
     fn test_warehouse_stock() {
-        std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
-        env_logger::init();
+        init();
 
         let tmp_dir = tempfile::tempdir().unwrap();
         let tmp_path = tmp_dir.path().to_str().unwrap();
