@@ -1,8 +1,9 @@
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use rocksdb::{AsColumnFamilyRef, DB, DBIteratorWithThreadMode, DBWithThreadMode, Direction, Error, IteratorMode, MultiThreaded, ReadOptions};
-use crate::animo::{Env, Object, Operation};
+use crate::animo::{AggregationDelta, Txn, Object, Operation};
 use crate::error::DBError;
 use crate::rocksdb::{FromBytes, Snapshot, ToBytes};
 
@@ -87,46 +88,47 @@ impl OpsManager {
         BetweenIterator(preceding(s, &s.cf_operations(), fm), to)
     }
 
-
-    pub(crate) fn write<O, V>(&self, env: &Env, local_topology_position: Vec<u8>, op: O) -> Result<(), DBError>
+    pub(crate) fn write_ops<O, V>(&self, tx: &mut Txn, ops: Vec<O>) -> Result<(), DBError>
     where
         O: Operation<V> + FromBytes<O> + ToBytes,
         V: Object<V,O> + FromBytes<V> + ToBytes
     {
-        let s = env.pit;
-        let db = self.db.clone();
+        for op in ops {
+            // calculate delta for propagation
+            let delta = if let Some(current) = tx.get_operation(&op)? {
+                current.delta_between_operations(&op)
+            } else {
+                op.delta_after_operation()
+            };
 
-        // calculate delta for propagation
-        let delta = if let Some(bs) = db.get_cf(&s.cf_operations(), &local_topology_position)? {
-            let current = O::from_bytes(bs.as_slice())?;
-            current.delta_between_operations(&op)
-        } else {
-            op.delta_after_operation()
-        };
+            // store
+            tx.put_operation(&op)?;
 
-        // store
-        db.put_cf(&s.cf_operations(), &local_topology_position, op.to_bytes()?)?;
+            // propagation
+            for memo in tx.memos_after::<V>(&op.position())? {
+                // TODO get dependents and notify them
 
-        // propagation
-        for (r_position, current_value) in self.memos_after::<V>(s, &local_topology_position)? {
-            // TODO get dependents and notify them
+                memo.apply_delta(&delta);
 
-            let new_value = current_value.apply_delta(&delta);
-
-            // store updated memo
-            db.put_cf(&s.cf_memos(), &r_position, new_value.to_bytes()?)?;
+                // store updated memo
+                tx.put_memo(&memo)?;
+            }
         }
 
         Ok(())
     }
 
-    pub(crate) fn write_aggregation_delta<O,V>(&self, env: &Env, local_topology_position: Vec<u8>, local_topology_checkpoint: Vec<u8>, delta: V) -> Result<(), DBError>
+    pub(crate) fn write_aggregation_delta<O,V>(&self, env: &Txn, delta: impl AggregationDelta<V>) -> Result<(), DBError>
         where
             O: Operation<V>,
             V: Object<V,O> + FromBytes<V> + ToBytes + Debug
     {
-        let s = env.pit;
+        let s = env.s;
         let db = self.db.clone();
+
+        let local_topology_position = delta.position();
+        let local_topology_checkpoint = delta.position_of_aggregation()?;
+        let delta = delta.delta();
 
         debug!("propagate delta {:?} at {:?}", delta, local_topology_position);
 

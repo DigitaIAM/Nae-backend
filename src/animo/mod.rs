@@ -5,12 +5,15 @@ mod warehouse;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::Arc;
+use rocksdb::{Error, WriteBatch};
 use rust_decimal::Decimal;
 use crate::error::DBError;
 use crate::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
-use crate::rocksdb::{Dispatcher, Snapshot};
+use crate::rocksdb::{Dispatcher, FromBytes, Snapshot, ToBytes};
 
 pub use ops_manager::OpsManager;
+use crate::animo::ops_manager::ItemsIterator;
+use crate::animo::warehouse::WarehouseStock;
 
 
 // Report for dates
@@ -49,6 +52,7 @@ pub(crate) trait Calculation {
     fn produce(&self) -> ID;
 }
 
+// Objects and operations  at topology
 pub(crate) trait Object<V, O> where O: Operation<V> {
     fn apply_delta(&self, delta: &Self) -> Self;
 
@@ -60,22 +64,89 @@ pub(crate) trait Operation<V> {
     fn delta_between_operations(&self, other: &Self) -> V;
 }
 
-pub(crate) trait OperationGenerator {
+// pub(crate) trait Topology {
+//     fn is_operations_topology(&self) -> bool;
+//     fn as_operations_topology<V,O>(&self) -> Arc<dyn OperationsTopology<V,O>>;
+//
+//     fn is_dependent_topology(&self) -> bool;
+//     fn as_aggregation_topology<T,O,V,VV>(&self) -> Arc<dyn AggregationTopology<T,O,V,V>>;
+// }
+
+pub(crate) trait OperationsTopology {
+    type Obj: Object<Self::Obj, Self::Op>;
+    type Op: Operation<Self::Obj>;
+
     // TODO remove `&self`
     fn depends_on(&self) -> Vec<ID>;
 
     // TODO remove `&self`
-    fn generate_op(&self, env: &mut Env, contexts: HashSet<Context>) -> Result<(), DBError>;
+    fn on_mutation(&self, tx: &mut Txn, contexts: HashSet<Context>) -> Result<Vec<Op>, DBError>;
 }
 
-pub(crate) struct Env<'a> {
-    pub(crate) pit: &'a Snapshot<'a>,
+pub(crate) trait AggregationTopology {
+    type DependOn: OperationsTopology;
+    type Op = <DependOn as OperationsTopology>::Op;
+
+    // TODO remove `&self`
+    fn depends_on(&self) -> DependOn;
+
+    // TODO remove `&self`
+    fn on_operation(&self, env: &mut Txn, ops: Vec<DependOn::Op>) -> Result<(), DBError>;
 }
 
-impl<'a> Env<'a> {
+trait Memo<T,V> {
+    fn position(&self) -> &[u8];
+
+    fn value(&self) -> V;
+}
+
+trait AggregationDelta<V> {
+    fn position(&self) -> Vec<u8>;
+    fn position_of_aggregation(&self) -> Result<Vec<u8>, DBError>;
+    fn delta(&self) -> V;
+}
+
+pub(crate) struct Txn<'a> {
+    s: &'a Snapshot<'a>,
+    batch: WriteBatch,
+}
+
+impl<'a> Txn<'a> {
+
+    pub(crate) fn get_operation<V, O: Operation<V> + FromBytes<O>>(&self, op: &O) -> Result<Option<O>, DBError> {
+        match self.s.pit.get_cf(&s.cf_operations(), op.position().as_slice()) {
+            Ok(bs) => {
+                match bs {
+                    None => Ok(None),
+                    Some(_) => Ok(O::from_bytes(bs.as_slice())?)
+                }
+            }
+            Err(e) => Err(e.to_string().into())
+        }
+    }
+
+    pub(crate) fn put_operation<V, O: Operation<V> + ToBytes>(&mut self, op: &O) -> Result<(), DBError> {
+        self.batch.put_cf(&s.cf_operations(), op.position().as_slice(), op.to_bytes()?);
+        Ok(())
+    }
+
+    pub(crate) fn memos_after<'a,O>(&self, position: &Vec<u8>) -> Result<ItemsIterator<'a,O>, DBError> {
+        self.s.rf.ops_manager.memos_after(self.s, position)
+    }
+
+    pub(crate) fn put_memo<T,V: ToBytes>(&mut self, memo: &impl Memo<T,V>) -> Result<(), DBError> {
+        self.batch.put_cf(&s.cf_memos(), &memo.position(), memo.value().to_bytes()?);
+        Ok(())
+    }
+
+    pub(crate) fn commit(self) -> Result<Self,DBError> {
+        self.s.rf.db.write(self.batch)
+            .map_err(|e| e.to_string().into())
+            .map(|_| self)
+    }
 
     pub(crate) fn ops_manager(&mut self) -> Arc<OpsManager> {
-        self.pit.rf.ops_manager.clone()
+        self.s.rf.ops_manager.clone()
     }
 
     pub(crate) fn resolve(&self, context: &Context, what: ID) -> Result<Option<Transformation>, DBError> {
@@ -84,7 +155,7 @@ impl<'a> Env<'a> {
         // let what = ID::from(what);
 
         // read value for give `context` and `what`. In case it's not exist, repeat on "above" context
-        let mut memory = self.pit.load_by(context, &what)?;
+        let mut memory = self.s.load_by(context, &what)?;
         if memory != Value::Nothing {
             Ok(Some(Transformation { context: context.clone(), what, into: memory }))
         } else {
@@ -93,7 +164,7 @@ impl<'a> Env<'a> {
                 match context.0.split_last() {
                     Some((_, ids)) => {
                         context = Context(ids.to_vec());
-                        memory = self.pit.load_by(&context, &what)?;
+                        memory = self.s.load_by(&context, &what)?;
                         if memory != Value::Nothing {
                             break Ok(Some(Transformation { context, what, into: memory }))
                         }
@@ -129,49 +200,54 @@ impl<'a> Env<'a> {
     }
 }
 
-pub(crate) struct Animo<T> where
-    T: OperationGenerator + Eq + Hash
-{
-    op_producers: Vec<Arc<T>>,
-
-    // list of node producers that depend on id
-    what_to_node_producers: HashMap<ID, HashSet<Arc<T>>>
+enum Topologies {
+    Operation(Box<dyn OperationsTopology>),
+    Aggregation(Box<dyn AggregationTopology>),
 }
 
-impl<T> Animo<T> where
-    T: OperationGenerator + Eq + Hash
-{
-    pub fn register_op_producer(&mut self, node_producer: Arc<T>)
-        where T: OperationGenerator + Eq + Hash
-    {
-        // update helper map for fast resolve of dependants on given mutation
-        for id in node_producer.depends_on() {
-            match self.what_to_node_producers.get_mut(&id) {
-                None => {
-                    let mut set = HashSet::new();
-                    set.insert(node_producer.clone());
-                    self.what_to_node_producers.insert(id, set);
-                }
-                Some(v) => {
-                    v.insert(node_producer.clone());
+pub(crate) struct Animo {
+    topologies: Vec<Topologies>,
+
+    // list of node producers that depend on id
+    what_to_topologies: HashMap<ID, HashSet<Topologies>>
+}
+
+impl Animo {
+    pub fn register_topology(&mut self, topology: Topologies) {
+        match &topology {
+            Topologies::Operation(t) => {
+                // update helper map for fast resolve of dependants on given mutation
+                for id in topology.depends_on() {
+                    match self.what_to_topologies.get_mut(&id) {
+                        None => {
+                            let mut set = HashSet::new();
+                            set.insert(topology.clone());
+                            self.what_to_topologies.insert(id, set);
+                        }
+                        Some(v) => {
+                            v.insert(topology.clone());
+                        }
+                    }
                 }
             }
+            _ => {}
         }
 
         // add to list of op-producers
-        self.op_producers.push(node_producer);
+        self.topologies.push(topology);
     }
 }
 
-impl<T> Dispatcher for Animo<T> where
-    T: OperationGenerator + Eq + Hash + Sync + Send
+impl<T,V,O> Dispatcher for Animo<T,V,O> where
+    V: Object<V, O>,
+    T: OperationsTopology<V> + Eq + Hash
 {
     // push propagation of mutations
     fn on_mutation(&self, s: &Snapshot, mutations: &[ChangeTransformation]) -> Result<(), DBError> {
         // calculate node_producers that affected by mutations
         let mut producers: HashMap<Arc<T>, HashSet<Context>> = HashMap::new();
         for mutation in mutations {
-            if let Some(set) = self.what_to_node_producers.get(&mutation.what) {
+            if let Some(set) = self.what_to_topologies.get(&mutation.what) {
                 for item in set {
                     match producers.get_mut(item) {
                         Some(contexts) => {
@@ -189,11 +265,11 @@ impl<T> Dispatcher for Animo<T> where
 
         // TODO calculate up-dependant contexts here or at producer?
 
-        let mut env = Env { pit: s };
+        let mut env = Txn { s: s };
 
         // generate new operations or overwrite existing
         for (producer, contexts) in producers.into_iter() {
-            producer.generate_op(&mut env, contexts)?;
+            producer.on_mutation(&mut env, contexts)?;
         }
 
         Ok(())
