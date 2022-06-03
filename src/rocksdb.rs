@@ -115,7 +115,7 @@ impl Memory for RocksDB {
         Ok(RocksDB {
             db: rf.clone(),
             dispatchers: Arc::new(Mutex::new(vec![])),
-            ops_manager: Arc::new(OpsManager { db: rf }),
+            ops_manager: Arc::new(OpsManager()),
         })
     }
 

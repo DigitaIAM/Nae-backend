@@ -19,6 +19,7 @@ mod memory;
 mod rocksdb;
 mod api;
 mod animo;
+mod warehouse;
 
 use crate::memory::Memory;
 use crate::rocksdb::RocksDB;

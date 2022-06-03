@@ -1,51 +1,16 @@
-mod primitives;
 mod ops_manager;
-mod warehouse;
 
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::Arc;
-use rocksdb::{AsColumnFamilyRef, Error, WriteBatch};
+use rocksdb::{AsColumnFamilyRef, WriteBatch};
 use rust_decimal::Decimal;
 use crate::error::DBError;
 use crate::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
 use crate::rocksdb::{Dispatcher, FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 
-pub use ops_manager::OpsManager;
-use crate::animo::ops_manager::{BetweenIterator, ItemsIterator};
-use crate::animo::warehouse::{WarehouseStockTopology, WarehouseTopology};
-
-
-// Report for dates
-//           | open       | in         | out        | close      |
-//           | qty | cost | qty | cost | qty | cost | qty | cost |
-// store     |  -  |  +   |  -  |  +   |  -  |  +   |  -  |  +   |
-//  goods    |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
-//   docs    |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
-//    rec?   |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
-
-// store     |  -  |  +   |  -  |  +   |  -  |  +   |  -  |  +   |
-//  docs     |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
-//   goods   |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
-//    rec?   |  +  |  +   |  +  |  +   |  +  |  +   |  +  |  +   |
-
-
-// расход1 storeB копыта 1
-// расход1 storeB рога   2
-// расход2 storeB копыта 3
-
-// отчет о движение
-// storeB    |     | =100 |     |      |     |  =80 |     |  =20 |
-//  копыта   |  5  |  100 |     |      | =4  |  =80 |  =1 |  =20 |
-//   расход1 |  5  |  100 |     |      |  1  |  =20 |  =4 |  =80 |
-//   расход2 |  4  |  80  |     |      |  3  |  =60 |  =1 |  =20 |
-
-//реестр документов
-// storeB    |     | =100 |     |      |     |  =80 |     |  =20 |
-//  расход1  |     |  100 |     |      |     |  =20 |     |  =80 |
-//   копыта  |  5  |  100 |     |      |  1  |  =20 |  =4 |  =80 |
-//  расход2  |     |  80  |     |      |     |  =60 |     |  =20 |
-//   копыта  |  4  |  80  |     |      | =3  |  =60 |  =1 |  =20 |
+pub use ops_manager::{OpsManager, BetweenIterator, ItemsIterator};
+use crate::warehouse::{WarehouseStockTopology, WarehouseTopology};
 
 pub(crate) trait Calculation {
     fn depends_on(&self) -> Vec<ID>;
@@ -111,14 +76,16 @@ pub(crate) trait OperationsTopology {
     fn on_mutation(&self, tx: &mut Txn, contexts: HashSet<Context>) -> Result<Vec<Self::TOp>, DBError>;
 }
 
-pub(crate) trait AggregationObject<O>: Sized + ToBytes + FromBytes<Self> {
+// Aggregation object
+pub(crate) trait AObject<O>: Sized + ToBytes + FromBytes<Self> {
     // same as apply operation
     // fn apply_delta(&self, delta: &Self) -> Self;
 
     fn apply_aggregation(&self, op: &O) -> Result<Self,DBError>;
 }
 
-pub(crate) trait AggregationOperation<TV>: Sized + ToBytes + FromBytes<Self> {
+// Aggregation operation
+pub(crate) trait AOperation<TV>: Sized + ToBytes + FromBytes<Self> {
     fn to_value(&self) -> TV;
 }
 
@@ -158,17 +125,17 @@ pub(crate) struct Memo<V> {
 }
 
 impl<V> Memo<V> {
-    fn new(object: V) -> Self {
+    pub(crate) fn new(object: V) -> Self {
         Memo { object }
     }
 
-    fn value(self) -> V {
+    pub(crate) fn value(self) -> V {
         self.object
     }
 }
 
 pub(crate) struct Txn<'a> {
-    s: &'a Snapshot<'a>,
+    pub(crate) s: &'a Snapshot<'a>,
     batch: WriteBatch,
 }
 
@@ -234,8 +201,8 @@ impl<'a> Txn<'a> {
         Ok(())
     }
 
-    pub(crate) fn memos_after<'b,O>(&'b self, position: &Vec<u8>) -> ItemsIterator<'b,O> {
-        self.s.rf.ops_manager.memos_after::<O>(self.s, position)
+    pub(crate) fn memos_after<O>(&self, position: &Vec<u8>) -> ItemsIterator<O> {
+        self.s.rf.ops_manager.memos_after::<O>(&self.s, position)
     }
 
     pub(crate) fn get_memo<O: FromBytes<O>>(&self, position: &Vec<u8>) -> Result<Option<O>, DBError> {
@@ -319,14 +286,14 @@ pub(crate) enum Topology {
     WarehouseStock(Arc<WarehouseStockTopology>),
 }
 
-impl Topology {
-    fn create() -> Vec<Topology> {
-        todo!()
-    }
-}
-
+#[derive(Default)]
 pub(crate) struct Animo {
     topologies: Vec<Topology>,
+
+    // HashMap<ID, ...>
+
+    // Vec<impl OperationInTopology>
+    // Vec<impl AggregationObjectInTopology>
 
     // list of node producers that depend on id
     what_to_topologies: HashMap<ID, HashSet<Topology>>,

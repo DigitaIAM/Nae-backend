@@ -1,17 +1,13 @@
-use std::collections::HashSet;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::sync::Arc;
-use rocksdb::{AsColumnFamilyRef, DB, DBIteratorWithThreadMode, DBWithThreadMode, Direction, Error, IteratorMode, MultiThreaded, ReadOptions};
-use crate::animo::{Txn, Object, Operation, AggregationOperation, ObjectInTopology, OperationInTopology, AggregationOperationInTopology, AggregationObjectInTopology, AggregationObject};
+use rocksdb::{AsColumnFamilyRef, DBIteratorWithThreadMode, DBWithThreadMode, Direction, IteratorMode, MultiThreaded, ReadOptions};
+use crate::animo::{Txn, Object, Operation, AOperation, ObjectInTopology, OperationInTopology, AggregationOperationInTopology, AggregationObjectInTopology, AObject};
 use crate::error::DBError;
-use crate::rocksdb::{FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
+use crate::rocksdb::{FromBytes, Snapshot};
 
-pub struct OpsManager {
-    pub(crate) db: Arc<DB>,
-}
+pub struct OpsManager();
 
-pub(crate) struct ItemsIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>,PhantomData<O>);
+pub struct ItemsIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>,PhantomData<O>);
 
 impl<'a,O> Iterator for ItemsIterator<'a,O> where O: FromBytes<O> {
     type Item = (Vec<u8>, O);
@@ -47,7 +43,7 @@ fn following<'a,O>(s: &'a Snapshot, cf_handle: &impl AsColumnFamilyRef, key: &Ve
     ItemsIterator(it, PhantomData)
 }
 
-pub(crate) struct BetweenIterator<'a,O>(ItemsIterator<'a,O>, Vec<u8>);
+pub struct BetweenIterator<'a,O>(ItemsIterator<'a,O>, Vec<u8>);
 
 impl<'a,O> Iterator for BetweenIterator<'a,O> where O: FromBytes<O> {
     type Item = (Vec<u8>, O);
@@ -96,6 +92,9 @@ impl OpsManager {
         TV: ObjectInTopology<BV,BO,TO>,
         TO: OperationInTopology<BV,BO,TV>,
     {
+        let s = tx.s;
+        let ops_manager = s.rf.ops_manager.clone();
+
         for op in ops {
             // calculate delta for propagation
             let delta_op: BO = if let Some(current) = tx.get_operation::<BV,BO,TV,TO>(&op)? {
@@ -108,13 +107,13 @@ impl OpsManager {
             tx.put_operation::<BV,BO,TV,TO>(&op)?;
 
             // propagation
-            for (position, value) in tx.memos_after::<BV>(&op.position()) {
+            for (position, value) in ops_manager.memos_after::<BV>(s, &op.position()) {
                 // TODO get dependents and notify them
 
-                value.apply(&delta_op);
+                value.apply(&delta_op)?;
 
                 // store updated memo
-                // TODO tx.update_value(&position, &value)?;
+                tx.update_value(&position, &value)?;
             }
         }
 
@@ -123,8 +122,8 @@ impl OpsManager {
 
     pub(crate) fn write_aggregation_delta<BV,BO,TV,TO>(&self, tx: &mut Txn, op: TO) -> Result<(), DBError>
         where
-            BV: AggregationObject<BO> + Debug,
-            BO: AggregationOperation<BV> + Debug,
+            BV: AObject<BO> + Debug,
+            BO: AOperation<BV> + Debug,
             TV: AggregationObjectInTopology<BV,BO,TO> + Debug,
             TO: AggregationOperationInTopology<BV,BO,TV> + Debug,
     {
