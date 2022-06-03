@@ -4,12 +4,18 @@ use std::sync::Arc;
 use actix_web::cookie::time::macros::time;
 use chrono::{Datelike, Timelike, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use crate::animo::{AggregationDelta, AggregationTopology, Txn, Memo, Object, Operation, OperationsTopology};
+use crate::animo::{AggregationTopology, Txn, Memo, Object, Operation, OperationsTopology, AggregationOperation, OperationInTopology, ObjectInTopology, AggregationOperationInTopology, AggregationObjectInTopology, AggregationObject};
+use crate::animo::ops_manager::{BetweenIterator, ItemsIterator};
 use crate::animo::primitives::{Qty, Money};
 use crate::error::DBError;
 use crate::memory::{Context, ID, ID_BYTES, Time};
-use crate::rocksdb::{FromBytes, Snapshot, ToBytes};
+use crate::RocksDB;
+use crate::rocksdb::{FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 use crate::shared::*;
+
+fn time_to_u64(time: Time) -> u64 {
+    time.timestamp().try_into().unwrap()
+}
 
 fn ts_to_bytes(ts: u64) -> [u8; 8] {
     ts.to_be_bytes()
@@ -27,54 +33,138 @@ fn time_to_bytes(time: Time) -> [u8; 8] {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WarehouseStock {
-    // stock + time + goods
-    // position: Vec<u8>,
-    stock: ID,
+    // [stock + time] + () + goods
+    store: ID,
     goods: ID,
-    time: Time,
+    date: Time,
 
     balance: Balance,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WarehouseStockDelta {
-    stock: ID,
+    store: ID,
     goods: ID,
-    date: Time,
 
-    delta: Balance,
+    from: Time,
+    till: Time,
+
+    op: BalanceOperationsAggregation,
 }
 
-impl From<WarehouseOperation> for WarehouseStockDelta {
-    fn from(op: WarehouseOperation) -> Self {
-        WarehouseStockDelta {
-            stock: op.store,
-            goods: op.goods,
-            date: op.date,
+impl ToKVBytes for WarehouseStockDelta {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+        todo!()
+    }
+}
 
-            delta: op.op.delta_after_operation(),
+impl FromKVBytes<WarehouseStockDelta> for WarehouseStockDelta {
+    fn from_kv_bytes(key: &[u8], value: &[u8]) -> Result<WarehouseStockDelta, DBError> {
+        todo!()
+    }
+}
+
+impl From<&WarehouseMovement> for WarehouseStockDelta {
+    fn from(op: &WarehouseMovement) -> Self {
+        WarehouseStockDelta {
+            store: op.store,
+            goods: op.goods,
+
+            from: op.date,
+            till: op.date,
+
+            op: op.op.clone().into(),
         }
     }
 }
 
-impl AggregationDelta<Balance> for WarehouseStockDelta {
+// impl AggregationOperationInTopology<Balance,BalanceOperation,WarehouseStock> for WarehouseStockDelta {
+//     fn resolve(env: &Txn, context: &Context) -> Result<Self, DBError> {
+//         todo!()
+//     }
+//
+//     fn position(&self) -> Vec<u8> {
+//         WarehouseStock::local_topology_position(self.store, self.goods, self.date)
+//     }
+//
+//     fn operation(self) -> BalanceOperation {
+//         self.delta
+//     }
+//
+//     fn delta_between(&self, other: &Self) -> Self {
+//         todo!()
+//     }
+//
+//     fn to_value(&self) -> WarehouseStock {
+//         WarehouseStock {
+//             store: self.store, goods: self.goods, date: self.date,
+//             balance: self.delta.to_value()
+//         }
+//     }
+// }
+
+// impl ToBytes for WarehouseStock {
+//     fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
+//         serde_json::to_vec(self)
+//             .map_err(|e| e.to_string().into())
+//     }
+// }
+//
+// impl FromBytes<WarehouseStock> for WarehouseStock {
+//     fn from_bytes(bs: &[u8]) -> Result<WarehouseStock, DBError> {
+//         serde_json::from_slice(bs)
+//             .map_err(|e| e.to_string().into())
+//     }
+// }
+
+impl AggregationOperationInTopology<Balance,BalanceOperationsAggregation,WarehouseStock> for WarehouseStockDelta {
     fn position(&self) -> Vec<u8> {
-        WarehouseStock::local_topology_position(self.store, self.goods, self.date)
+        WarehouseStock::local_topology_position(self.store, self.goods, self.till)
     }
 
     fn position_of_aggregation(&self) -> Result<Vec<u8>,DBError> {
-        WarehouseStock::local_topology_position_of_aggregation(self.store, self.goods, self.date)
+        WarehouseStock::local_topology_position_of_aggregation(self.store, self.goods, self.till)
     }
 
-    fn delta(&self) -> Balance {
-        self.delta.clone()
+    fn operation(&self) -> BalanceOperationsAggregation {
+        self.op.clone()
+    }
+
+    fn delta_between(&self, other: &Self) -> Self {
+        todo!()
+    }
+
+    fn to_value(&self) -> WarehouseStock {
+        WarehouseStock {
+            store: self.store, goods: self.goods, date: self.till,
+            balance: self.operation().to_value()
+        }
+    }
+}
+
+impl ToKVBytes for WarehouseStock {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+        todo!()
+    }
+}
+
+impl FromKVBytes<Self> for WarehouseStock {
+    fn from_kv_bytes(key: &[u8], value: &[u8]) -> Result<Self, DBError> {
+        todo!()
+    }
+}
+
+impl AggregationObjectInTopology<Balance,BalanceOperationsAggregation,WarehouseStockDelta> for WarehouseStock {
+    fn apply(&self, op: &WarehouseStockDelta) -> Result<Self, DBError> {
+        // TODO check self.stock == op.stock && self.goods == op.goods && self.date >= op.date
+        let balance = self.balance.apply_aggregation(&op.op)?;
+        Ok(WarehouseStock { store: self.store, goods: self.goods, date: self.date, balance })
     }
 }
 
 impl WarehouseStock {
-    fn load(k: Vec<u8>, v: Vec<u8>) -> Result<Self, DBError> {
-        // TODO: check by operation prefix?
-        Ok(WarehouseStock { position: k, balance: Balance::from_bytes(&v)? })
+    fn load(k: &Vec<u8>, v: Balance) -> Result<Self, DBError> {
+        todo!()
     }
 
     fn next_checkpoint(time: Time) -> Result<Time, DBError> {
@@ -105,7 +195,7 @@ impl WarehouseStock {
         bs.extend_from_slice(store.as_slice());
 
         // define order by time
-        bs.extend_from_slice(WarehouseBalance::time_to_bytes(time).as_slice());
+        bs.extend_from_slice(time_to_bytes(time).as_slice());
 
         // suffix
         bs.extend_from_slice(goods.as_slice());
@@ -113,66 +203,67 @@ impl WarehouseStock {
         bs
     }
 
-    pub(crate) fn get_memo(s: &Snapshot, store: ID, goods: ID, time: Time) -> Result<Balance, DBError> {
+    pub(crate) fn get_memo(tx: &mut Txn, store: ID, goods: ID, date: Time) -> Result<Memo<WarehouseStock>, DBError> {
         // TODO move method to Ops manager
-        let ops_manager = s.rf.ops_manager.clone();
+        let ops_manager = tx.s.rf.ops_manager.clone();
 
-        let position = WarehouseStock::local_topology_position(store, goods, time);
+        let position = WarehouseStock::local_topology_position(store, goods, date);
 
         debug!("pining memo at {:?}", position);
 
-        let balance = if let Some((r_position, mut balance)) = ops_manager.get_closest_memo::<Balance>(s, &position)? {
-            debug!("closest memo {:?} at {:?}", balance, r_position);
+        let stock = if let Some((r_position, mut balance)) = ops_manager.get_closest_memo::<Balance>(tx.s, position.clone())? {
+            let mut stock = WarehouseStock::load(&r_position, balance)?;
+
+            debug!("closest memo {:?}", stock);
             if r_position != position {
-                debug!("calculate from closest memo {:?}", r_position);
-                // TODO write test for this branch
-                // calculate on interval between memo position and requested position
-                for (_,op) in ops_manager.ops_between(s, &r_position, &position) {
-                    balance = balance.apply(&op);
+                debug!("calculate from closest memo");
+                for (_,op) in WarehouseTopology::get_ops(tx, stock.store, stock.goods, stock.date, date) {
+                    stock.balance = stock.balance.apply(&op)?;
                 }
 
                 // store memo
-                s.rf.db.put_cf(&s.cf_memos(), &position, balance.to_bytes()?)?;
+                tx.update_value(&position, &stock.balance)?;
             }
-            balance
+            stock
         } else {
-            debug!("calculate from zero position");
-            let zero_position = WarehouseBalance::local_topology_position_of_zero(store, goods);
-            let mut balance = Balance::default();
-
-            for (k,op) in ops_manager.ops_following::<BalanceOperation>(s, &zero_position)? {
-                let ordering = k.cmp(&position);
-                if ordering <= Ordering::Equal {
-                    balance = balance.apply(&op);
-                } else {
-                    break;
-                }
-            }
+            let balance_memo = WarehouseTopology::balance_tx(tx, store, goods, date)?;
 
             // store memo
-            s.rf.db.put_cf(&s.cf_memos(), position, balance.to_bytes()?)?;
+            tx.update_value(&position, &balance_memo.object.balance)?;
 
-            balance
+            WarehouseStock { store, goods, date, balance: balance_memo.object.balance }
         };
-        Ok(balance)
+        Ok(Memo::new(stock))
     }
 }
 
 #[derive(Debug, Default, Hash, Eq, PartialEq)]
-struct WarehouseStockTopology();
+pub(crate) struct WarehouseStockTopology();
 
-impl<T: OperationsTopology<Balance>> AggregationTopology<T, Balance> for WarehouseStockTopology {
-    fn depends_on(&self) -> T {
+impl AggregationTopology for WarehouseStockTopology {
+    type DependantOn = WarehouseTopology;
+
+    type InObj = Balance;
+    type InOp = BalanceOperation;
+
+    type InTObj = WarehouseBalance;
+    type InTOp = WarehouseMovement;
+
+    fn depends_on(&self) -> Self::DependantOn {
         todo!()
     }
 
-    fn on_operation(&self, env: &mut Txn, op: WarehouseOperation) -> Result<(), DBError> {
+    fn on_operation(&self, tx: &mut Txn, ops: &Vec<Self::InTOp>) -> Result<(), DBError> {
         // topology
         // [store + time] + goods = Balance,
 
-        let delta = WarehouseStockDelta::from(op);
+        for op in ops {
+            let delta = WarehouseStockDelta::from(op);
 
-        env.ops_manager().write_aggregation_delta(env, delta)
+            tx.ops_manager().write_aggregation_delta(tx, delta)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -206,33 +297,7 @@ impl WarehouseItemsMovements {
     }
 }
 
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WarehouseOperation {
-    store: ID,
-    goods: ID,
-    date: Time,
-
-    op: BalanceOperation,
-}
-
-impl WarehouseOperation {
-    fn resolve(env: &Txn, context: &Context) -> Result<Self, DBError> {
-        let instance_of = env.resolve_as_id(context, *SPECIFIC_OF)?;
-        let store = env.resolve_as_id(context, *STORE)?;
-        let goods = env.resolve_as_id(context, *GOODS)?;
-        let date = env.resolve_as_time(context, *DATE)?;
-
-        let qty = env.resolve_as_number(context, *QTY)?;
-        let cost = env.resolve_as_number(context, *COST)?;
-
-        let op = BalanceOperation::new(instance_of, Qty(qty), Money(cost))?;
-
-        Ok(WarehouseOperation { store, goods, date, op })
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BalanceOperation {
     In(Qty, Money),
     Out(Qty, Money),
@@ -265,22 +330,18 @@ impl FromBytes<BalanceOperation> for BalanceOperation {
 }
 
 impl Operation<Balance> for BalanceOperation {
-    fn delta_after_operation(&self) -> Balance {
-        Balance::default().apply(self)
-    }
-
-    fn delta_between_operations(&self, other: &Self) -> Balance {
+    fn delta_between(&self, other: &Self) -> BalanceOperation {
         match self {
             BalanceOperation::In(l_qty, l_cost) => {
                 match other {
                     BalanceOperation::In(r_qty, r_cost) => {
                         // 10 > 8 = -2 (8-10)
                         // 10 > 12 = 2 (12-10)
-                        Balance(r_qty - l_qty, r_cost - l_cost)
+                        BalanceOperation::In(r_qty - l_qty, r_cost - l_cost)
                     }
                     BalanceOperation::Out(r_qty, r_cost) => {
                         // 10 > -8 = -18 (-10-8)
-                        Balance(-(l_qty + r_qty), -(l_cost + r_cost))
+                        BalanceOperation::In(-(l_qty + r_qty), -(l_cost + r_cost))
                     }
                 }
             }
@@ -288,15 +349,22 @@ impl Operation<Balance> for BalanceOperation {
                 match other {
                     BalanceOperation::In(r_qty, r_cost) => {
                         // -10 > 8 = 18 (10+8)
-                        Balance(l_qty + r_qty, l_cost + r_cost)
+                        BalanceOperation::In(l_qty + r_qty, l_cost + r_cost)
                     }
                     BalanceOperation::Out(r_qty, r_cost) => {
                         // -10 > -8 = +2 (10-8)
                         // -10 > -12 = -2 (10-12)
-                        Balance(l_qty - r_qty, l_cost + r_cost)
+                        BalanceOperation::In(l_qty - r_qty, l_cost + r_cost)
                     }
                 }
             }
+        }
+    }
+
+    fn to_value(&self) -> Balance {
+        match self {
+            BalanceOperation::In(qty, cost) => Balance(qty.clone(), cost.clone()),
+            BalanceOperation::Out(qty, cost) => Balance(-qty.clone(), -cost.clone()),
         }
     }
 }
@@ -304,19 +372,30 @@ impl Operation<Balance> for BalanceOperation {
 #[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct Balance(pub Qty, pub Money);
 
-impl Object<Balance, BalanceOperation> for Balance {
-    fn apply_delta(&self, other: &Balance) -> Self {
-        self + other
-    }
+impl Object<BalanceOperation> for Balance {
+    // fn apply_delta(&self, other: &Balance) -> Self {
+    //     self + other
+    // }
 
-    fn apply(&self, op: &BalanceOperation) -> Self {
+    fn apply(&self, op: &BalanceOperation) -> Result<Self,DBError> {
         let (qty, cost) = match op {
             BalanceOperation::In(qty, cost) => (&self.0 + qty, &self.1 + cost),
             BalanceOperation::Out(qty, cost) => (&self.0 - qty, &self.1 - cost),
         };
         debug!("apply {:?} to {:?}", op, self);
 
-        Balance(qty, cost)
+        Ok(Balance(qty, cost))
+    }
+}
+
+impl AggregationObject<BalanceOperationsAggregation> for Balance {
+    fn apply_aggregation(&self, op: &BalanceOperationsAggregation) -> Result<Self,DBError> {
+        let qty = &(&self.0 + &op.incoming.0) - &op.outgoing.0;
+        let cost = &(&self.1 + &op.incoming.1) - &op.outgoing.1;
+
+        debug!("apply aggregation {:?} to {:?}", op, self);
+
+        Ok(Balance(qty, cost))
     }
 }
 
@@ -342,11 +421,51 @@ impl<'a, 'b> std::ops::Add<&'b Balance> for &'a Balance {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize)]
-struct WarehouseBalance {
-    // [store + goods] + (time)
-    // position: Vec<u8>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BalanceOperationsAggregation {
+    incoming: (Qty, Money),
+    outgoing: (Qty, Money),
+}
 
+impl AggregationOperation<Balance> for BalanceOperationsAggregation {
+    fn to_value(&self) -> Balance {
+        Balance(&self.incoming.0 - &self.outgoing.0, &self.incoming.1 - &self.outgoing.1)
+    }
+}
+
+impl From<BalanceOperation> for BalanceOperationsAggregation {
+    fn from(op: BalanceOperation) -> Self {
+        match op {
+            BalanceOperation::In(qty, cost) => {
+                BalanceOperationsAggregation {
+                    incoming: (qty, cost),
+                    outgoing: (Qty::default(), Money::default()),
+                }
+            }
+            BalanceOperation::Out(qty, cost) => {
+                BalanceOperationsAggregation {
+                    incoming: (Qty::default(), Money::default()),
+                    outgoing: (qty, cost),
+                }
+            }
+        }
+    }
+}
+
+impl FromBytes<Self> for BalanceOperationsAggregation {
+    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+        todo!()
+    }
+}
+
+impl ToBytes for BalanceOperationsAggregation {
+    fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct WarehouseBalance {
     store: ID,
     goods: ID,
     date: Time,
@@ -354,80 +473,164 @@ struct WarehouseBalance {
     balance: Balance,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize)]
-struct WarehouseMovement {
-    // [store + goods] + (time + op)
-    // position: Vec<u8>,
+impl ToKVBytes for WarehouseBalance {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+        let k = WarehouseTopology::position_at_end(self.store, self.goods, self.date);
+        let v = self.balance.to_bytes()?;
+        Ok((k,v))
+    }
+}
 
+impl FromKVBytes<Self> for WarehouseBalance {
+    fn from_kv_bytes(key: &[u8], value: &[u8]) -> Result<WarehouseBalance, DBError> {
+        todo!()
+    }
+}
+
+impl From<WarehouseBalance> for Balance {
+    fn from(v: WarehouseBalance) -> Self {
+        v.balance
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct WarehouseMovement {
     store: ID,
     goods: ID,
     date: Time,
 
-    op: Balance,
+    op: BalanceOperation,
 }
 
-impl Memo<WarehouseTopology, Balance> for WarehouseBalance {
-    fn position(&self) -> &[u8] {
-        // TODO self.position.as_slice()
+impl ToKVBytes for WarehouseMovement {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+        let k = WarehouseTopology::position_of_operation(self.store, self.goods, self.date, &self.op);
+        let v = self.op.to_bytes()?;
+        Ok((k,v))
+    }
+}
+
+impl FromKVBytes<WarehouseMovement> for WarehouseMovement {
+    fn from_kv_bytes(key: &[u8], value: &[u8]) -> Result<WarehouseMovement, DBError> {
+        todo!()
+    }
+}
+
+impl OperationInTopology<Balance,BalanceOperation,WarehouseBalance> for WarehouseMovement {
+    fn resolve(env: &Txn, context: &Context) -> Result<Self, DBError> {
+        let instance_of = env.resolve_as_id(context, *SPECIFIC_OF)?;
+        let store = env.resolve_as_id(context, *STORE)?;
+        let goods = env.resolve_as_id(context, *GOODS)?;
+        let date = env.resolve_as_time(context, *DATE)?;
+
+        let qty = env.resolve_as_number(context, *QTY)?;
+        let cost = env.resolve_as_number(context, *COST)?;
+
+        let op = BalanceOperation::new(instance_of, Qty(qty), Money(cost))?;
+
+        Ok(WarehouseMovement { store, goods, date, op })
+    }
+
+    fn position(&self) -> Vec<u8> {
+        WarehouseTopology::position_of_operation(self.store, self.goods, self.date, &self.op)
+    }
+
+    fn operation(&self) -> BalanceOperation {
+        self.op.clone()
+    }
+
+    fn delta_between(&self, other: &Self) -> WarehouseMovement {
         todo!()
     }
 
-    fn value(&self) -> Balance {
-        self.balance.clone()
+    fn to_value(&self) -> WarehouseBalance {
+        WarehouseBalance {
+            store: self.store, goods: self.goods, date: self.date,
+            balance: self.op.to_value()
+        }
     }
 }
 
-impl WarehouseBalance {
-    pub(crate) fn get_memo(s: &Snapshot, store: ID, goods: ID, time: Time) -> Result<Balance, DBError> {
-        // TODO move method to Ops manager
-        let ops_manager = s.rf.ops_manager.clone();
+impl ObjectInTopology<Balance,BalanceOperation,WarehouseMovement> for WarehouseBalance {
+    fn apply(&self, op: &WarehouseMovement) -> Result<Self, DBError> {
+        // TODO check self.store == op.store && self.goods == op.goods && self.date >= op.date
+        let balance = self.balance.apply(&op.op)?;
+        Ok(WarehouseBalance {
+            store: self.store, goods: self.goods, date: self.date,
+            balance
+        })
+    }
+}
 
-        let position = WarehouseBalance::local_topology_position_of_memo(store, goods, time);
+#[derive(Debug, Hash, Eq, PartialEq)]
+pub(crate) struct WarehouseTopology();
+
+impl WarehouseTopology {
+    fn get_ops_till<'a,O>(tx: &'a Txn, store: ID, goods: ID, till: Time) -> BetweenIterator<'a,O> {
+        let from_point = WarehouseTopology::position_of_zero(store, goods);
+        let till_point = WarehouseTopology::position_at_end(store, goods, till);
+
+        tx.operations(from_point, till_point)
+    }
+
+    fn get_ops<'a,O>(tx: &'a Txn, store: ID, goods: ID, from: Time, till: Time) -> BetweenIterator<'a,O> {
+        let from_point = WarehouseTopology::position_at_start(store, goods, from);
+        let till_point = WarehouseTopology::position_at_end(store, goods, till);
+
+        tx.operations(from_point, till_point)
+    }
+
+    fn balance(db: &RocksDB, store: ID, goods: ID, date: Time) -> Result<Memo<WarehouseBalance>,DBError> {
+        let s = db.snapshot();
+        let mut tx = Txn::new(&s);
+
+        let memo = WarehouseTopology::balance_tx(&mut tx, store, goods, date)?;
+
+        // TODO: unregister memo if case of error
+        tx.commit()?;
+
+        Ok(memo)
+    }
+
+    fn balance_tx(tx: &mut Txn, store: ID, goods: ID, date: Time) -> Result<Memo<WarehouseBalance>,DBError>{
+        // TODO move method to Ops manager
+        let ops_manager = tx.s.rf.ops_manager.clone();
+
+        let position = WarehouseTopology::position_at_end(store, goods, date);
 
         debug!("pining memo at {:?}", position);
 
-        let balance = if let Some((r_position, mut balance)) = ops_manager.get_closest_memo::<Balance>(s, &position)? {
+        let balance = if let Some((r_position, mut balance)) = ops_manager.get_closest_memo::<Balance>(tx.s, position.clone())? {
             debug!("closest memo {:?} at {:?}", balance, r_position);
             if r_position != position {
                 debug!("calculate from closest memo {:?}", r_position);
                 // TODO write test for this branch
                 // calculate on interval between memo position and requested position
-                for (_,op) in ops_manager.ops_between(s, &r_position, &position) {
-                    balance = balance.apply(&op);
+                for (_,op) in tx.operations(r_position, position.clone()) {
+                    balance = balance.apply(&op)?;
                 }
 
                 // store memo
-                s.rf.db.put_cf(&s.cf_memos(), &position, balance.to_bytes()?)?;
+                tx.update_value(&position, &balance)?;
             }
-            balance
+            WarehouseBalance { store, goods, date, balance }
         } else {
             debug!("calculate from zero position");
-            let zero_position = WarehouseBalance::local_topology_position_of_zero(store, goods);
             let mut balance = Balance::default();
-
-            for (k,op) in ops_manager.ops_following::<BalanceOperation>(s, &zero_position)? {
-                let ordering = k.cmp(&position);
-                if ordering <= Ordering::Equal {
-                    balance = balance.apply(&op);
-                } else {
-                    break;
-                }
+            for (_,op) in WarehouseTopology::get_ops_till(tx, store, goods, date) {
+                balance = balance.apply(&op)?;
             }
 
             // store memo
-            s.rf.db.put_cf(&s.cf_memos(), position, balance.to_bytes()?)?;
+            tx.update_value(&position, &balance)?;
 
-            balance
+            WarehouseBalance { store, goods, date, balance }
         };
-        Ok(balance)
+
+        Ok(Memo::new(balance))
     }
-}
 
-#[derive(Debug, Hash, Eq, PartialEq)]
-struct WarehouseTopology();
-
-impl WarehouseTopology {
-    fn position_of_operation(store: ID, goods: ID, time: Time, op: BalanceOperation) -> Vec<u8> {
+    fn position(store: ID, goods: ID, time: u64, op: u8) -> Vec<u8> {
         let mut bs = Vec::with_capacity((ID_BYTES * 2) + 8 + 1);
 
         // operation prefix
@@ -438,57 +641,42 @@ impl WarehouseTopology {
         bs.extend_from_slice(goods.as_slice());
 
         // define order by time
-        bs.extend_from_slice(WarehouseBalance::time_to_bytes(time).as_slice());
+        bs.extend_from_slice(ts_to_bytes(time).as_slice());
 
         // order by operations
-        let b: u8 = match op {
+        bs.extend([op].into_iter());
+
+        bs
+    }
+
+    fn position_of_operation(store: ID, goods: ID, time: Time, op: &BalanceOperation) -> Vec<u8> {
+        let op: u8 = match op {
             BalanceOperation::In(..) => u8::MAX,
             BalanceOperation::Out(..) => u8::MIN,
         };
 
-        bs.extend([b].into_iter());
-
-        bs
+        WarehouseTopology::position(store, goods, time_to_u64(time), op)
     }
 
-    fn topology_position_of_zero(store: ID, goods: ID) -> Vec<u8> {
-        let mut bs = Vec::with_capacity((ID_BYTES * 2) + 8 + 1);
-
-        // TODO operation prefix
-
-        // prefix define calculation context
-        bs.extend_from_slice(store.as_slice());
-        bs.extend_from_slice(goods.as_slice());
-
-        // define order by time
-        bs.extend_from_slice(WarehouseBalance::ts_to_bytes(u64::MIN).as_slice());
-
-        // order by operations
-        bs.extend([u8::MIN].into_iter());
-
-        bs
+    fn position_of_zero(store: ID, goods: ID) -> Vec<u8> {
+        WarehouseTopology::position(store, goods, u64::MIN, u8::MIN)
     }
 
-    fn local_topology_position_of_memo(store: ID, goods: ID, time: Time) -> Vec<u8> {
-        let mut bs = Vec::with_capacity((ID_BYTES * 2) + 8 + 1);
+    fn position_at_start(store: ID, goods: ID, time: Time) -> Vec<u8> {
+        WarehouseTopology::position(store, goods, time_to_u64(time), u8::MIN)
+    }
 
-        // TODO operation prefix
-
-        // prefix define calculation context
-        bs.extend_from_slice(store.as_slice());
-        bs.extend_from_slice(goods.as_slice());
-
-        // define order by time
-        bs.extend_from_slice(WarehouseBalance::time_to_bytes(time).as_slice());
-
-        // order by operations
-        bs.extend([u8::MAX].into_iter());
-
-        bs
+    fn position_at_end(store: ID, goods: ID, time: Time) -> Vec<u8> {
+        WarehouseTopology::position(store, goods, time_to_u64(time), u8::MAX)
     }
 }
 
-impl OperationsTopology<Balance, WarehouseOperation> for WarehouseTopology {
+impl OperationsTopology for WarehouseTopology {
+    type Obj = Balance;
+    type Op = BalanceOperation;
+
+    type TObj = WarehouseBalance;
+    type TOp = WarehouseMovement;
 
     fn depends_on(&self) -> Vec<ID> {
         vec![
@@ -498,7 +686,7 @@ impl OperationsTopology<Balance, WarehouseOperation> for WarehouseTopology {
         ]
     }
 
-    fn on_mutation(&self, env: &mut Txn, cs: HashSet<Context>) -> Result<(), DBError> {
+    fn on_mutation(&self, tx: &mut Txn, cs: HashSet<Context>) -> Result<Vec<Self::TOp>, DBError> {
         // GoodsReceive, GoodsIssue
 
         // TODO handle delete case
@@ -506,24 +694,24 @@ impl OperationsTopology<Balance, WarehouseOperation> for WarehouseTopology {
         // filter contexts by "object type"
         let mut contexts = HashSet::with_capacity(cs.len());
         for c in cs {
-            if let Some(instance_of) = env.resolve(&c, *SPECIFIC_OF)? {
+            if let Some(instance_of) = tx.resolve(&c, *SPECIFIC_OF)? {
                 if instance_of.into.one_of(vec![*GOODS_RECEIVE, *GOODS_ISSUE]) {
-                    contexts.push(c);
+                    contexts.insert(c);
                 }
             }
         }
 
         // TODO resolve up-dependent contexts
 
-        let mut ops = HashSet::with_capacity(contexts.len());
+        let mut ops = Vec::with_capacity(contexts.len());
         for context in contexts {
             ops.push(
-                WarehouseOperation::resolve(env, &context)?
+                WarehouseMovement::resolve(tx, &context)?
             );
         }
-        env.ops_manager().write_op(env, ops)?;
+        tx.ops_manager().write_ops(tx, ops.to_vec())?;
 
-        Ok(())
+        Ok(ops.to_vec())
     }
 }
 
@@ -537,7 +725,7 @@ mod tests {
     use std::sync::Arc;
     use chrono::DateTime;
     use crate::{Memory, RocksDB};
-    use crate::animo::Animo;
+    use crate::animo::{Animo, Topology};
     use crate::animo::primitives::{Money, Qty};
     use crate::animo::warehouse::Balance;
     use crate::memory::{ChangeTransformation, Transformation, Value};
@@ -571,8 +759,9 @@ mod tests {
         let mut animo = Animo {
             topologies: Vec::default(),
             what_to_topologies: HashMap::new(),
+            op_to_topologies: HashMap::new(),
         };
-        animo.register_topology(Arc::new(WarehouseTopology()));
+        animo.register_topology(Topology::Warehouse(Arc::new(WarehouseTopology())));
         db.register_dispatcher(Arc::new(animo)).unwrap();
 
         let time = |dt: &str| -> Time {
@@ -615,27 +804,23 @@ mod tests {
         // 													< 2022-05-31
 
         debug!("READING 2022-05-31");
-        let s = db.snapshot();
-        let g1_balance = WarehouseBalance::get_memo(&s, wh1, g1, time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance);
+        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-31")).expect("Ok");
+        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance.value().into());
 
         debug!("READING 2022-05-28");
-        let s = db.snapshot();
-        let g1_balance = WarehouseBalance::get_memo(&s, wh1, g1, time("2022-05-28")).expect("Ok");
-        assert_eq!(Balance(Qty(5.into()),Money(25.into())), g1_balance);
+        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-28")).expect("Ok");
+        assert_eq!(Balance(Qty(5.into()),Money(25.into())), g1_balance.value().into());
 
         debug!("READING 2022-05-31");
-        let s = db.snapshot();
-        let g1_balance = WarehouseBalance::get_memo(&s, wh1, g1, time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance);
+        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-31")).expect("Ok");
+        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance.value().into());
 
         debug!("MODIFY D");
         db.modify(event("D", "2022-05-31", *GOODS_ISSUE, g1, 1, Some(5))).expect("Ok");
 
         debug!("READING 2022-05-31");
-        let s = db.snapshot();
-        let g1_balance = WarehouseBalance::get_memo(&s, wh1, g1, time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(6.into()),Money(30.into())), g1_balance);
+        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-31")).expect("Ok");
+        assert_eq!(Balance(Qty(6.into()),Money(30.into())), g1_balance.value().into());
     }
 
     #[test]
@@ -648,9 +833,10 @@ mod tests {
         let mut animo = Animo {
             topologies: Vec::default(),
             what_to_topologies: HashMap::new(),
+            op_to_topologies: HashMap::new(),
         };
-        animo.register_topology(Arc::new(WarehouseTopology()));
-        animo.register_topology(Arc::new(WarehouseStockTopology()));
+        animo.register_topology(Topology::Warehouse(Arc::new(WarehouseTopology())));
+        animo.register_topology(Topology::WarehouseStock(Arc::new(WarehouseStockTopology())));
         db.register_dispatcher(Arc::new(animo)).unwrap();
 
         let time = |dt: &str| -> Time {
@@ -694,25 +880,25 @@ mod tests {
 
         debug!("READING 2022-05-31");
         let s = db.snapshot();
-        let g1_balance = WarehouseStock::get_memo(&s, wh1, g1, time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance);
+        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-31")).expect("Ok");
+        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance.value().into());
 
         debug!("READING 2022-05-28");
         let s = db.snapshot();
-        let g1_balance = WarehouseStock::get_memo(&s, wh1, g1, time("2022-05-28")).expect("Ok");
-        assert_eq!(Balance(Qty(5.into()),Money(25.into())), g1_balance);
+        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-28")).expect("Ok");
+        assert_eq!(Balance(Qty(5.into()),Money(25.into())), g1_balance.value().into());
 
         debug!("READING 2022-05-31");
         let s = db.snapshot();
-        let g1_balance = WarehouseStock::get_memo(&s, wh1, g1, time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance);
+        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-31")).expect("Ok");
+        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance.value().into());
 
         debug!("MODIFY D");
         db.modify(event("D", "2022-05-31", *GOODS_ISSUE, g1, 1, Some(5))).expect("Ok");
 
         debug!("READING 2022-05-31");
         let s = db.snapshot();
-        let g1_balance = WarehouseStock::get_memo(&s, wh1, g1, time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(6.into()),Money(30.into())), g1_balance);
+        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-31")).expect("Ok");
+        assert_eq!(Balance(Qty(6.into()),Money(30.into())), g1_balance.value().into());
     }
 }

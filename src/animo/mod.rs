@@ -5,15 +5,15 @@ mod warehouse;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::Arc;
-use rocksdb::{Error, WriteBatch};
+use rocksdb::{AsColumnFamilyRef, Error, WriteBatch};
 use rust_decimal::Decimal;
 use crate::error::DBError;
 use crate::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
-use crate::rocksdb::{Dispatcher, FromBytes, Snapshot, ToBytes};
+use crate::rocksdb::{Dispatcher, FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 
 pub use ops_manager::OpsManager;
-use crate::animo::ops_manager::ItemsIterator;
-use crate::animo::warehouse::WarehouseStock;
+use crate::animo::ops_manager::{BetweenIterator, ItemsIterator};
+use crate::animo::warehouse::{WarehouseStockTopology, WarehouseTopology};
 
 
 // Report for dates
@@ -53,15 +53,40 @@ pub(crate) trait Calculation {
 }
 
 // Objects and operations  at topology
-pub(crate) trait Object<V, O> where O: Operation<V> {
-    fn apply_delta(&self, delta: &Self) -> Self;
+pub(crate) trait Object<O>: Sized + ToBytes + FromBytes<Self> {
+    // same as apply operation
+    // fn apply_delta(&self, delta: &Self) -> Self;
 
-    fn apply(&self, op: &O) -> Self;
+    fn apply(&self, op: &O) -> Result<Self,DBError>;
 }
 
-pub(crate) trait Operation<V> {
-    fn delta_after_operation(&self) -> V;
-    fn delta_between_operations(&self, other: &Self) -> V;
+// TO - operation in topology
+// BV - base object
+pub(crate) trait ObjectInTopology<BV,BO,TO: OperationInTopology<BV,BO,Self>>: Sized + ToKVBytes + FromKVBytes<Self> {
+    fn apply(&self, op: &TO) -> Result<Self,DBError>;
+}
+
+pub(crate) trait DeltaOperation<V>: Sized {
+    fn position(&self) -> Vec<u8>;
+    fn delta_between(&self, other: &Self) -> Self;
+    fn to_value(&self) -> V;
+}
+
+pub(crate) trait Operation<V>: Sized + FromBytes<Self> + ToBytes {
+    fn delta_between(&self, other: &Self) -> Self;
+    fn to_value(&self) -> V;
+}
+
+// TV - object in topology
+// BV - base object
+pub(crate) trait OperationInTopology<BV,BO,TV: ObjectInTopology<BV,BO,Self>>: Sized + FromKVBytes<Self> + ToKVBytes {
+    fn resolve(env: &Txn, context: &Context) -> Result<Self, DBError>;
+
+    fn position(&self) -> Vec<u8>;
+    fn operation(&self) -> BO;
+
+    fn delta_between(&self, other: &Self) -> Self;
+    fn to_value(&self) -> TV;
 }
 
 // pub(crate) trait Topology {
@@ -73,37 +98,73 @@ pub(crate) trait Operation<V> {
 // }
 
 pub(crate) trait OperationsTopology {
-    type Obj: Object<Self::Obj, Self::Op>;
+    type Obj: Object<Self::Op>;
     type Op: Operation<Self::Obj>;
+
+    type TObj: ObjectInTopology<Self::Obj,Self::Op,Self::TOp>;
+    type TOp: OperationInTopology<Self::Obj,Self::Op,Self::TObj>;
 
     // TODO remove `&self`
     fn depends_on(&self) -> Vec<ID>;
 
     // TODO remove `&self`
-    fn on_mutation(&self, tx: &mut Txn, contexts: HashSet<Context>) -> Result<Vec<Op>, DBError>;
+    fn on_mutation(&self, tx: &mut Txn, contexts: HashSet<Context>) -> Result<Vec<Self::TOp>, DBError>;
 }
 
-pub(crate) trait AggregationTopology {
-    type DependOn: OperationsTopology;
-    type Op = <DependOn as OperationsTopology>::Op;
+pub(crate) trait AggregationObject<O>: Sized + ToBytes + FromBytes<Self> {
+    // same as apply operation
+    // fn apply_delta(&self, delta: &Self) -> Self;
 
-    // TODO remove `&self`
-    fn depends_on(&self) -> DependOn;
-
-    // TODO remove `&self`
-    fn on_operation(&self, env: &mut Txn, ops: Vec<DependOn::Op>) -> Result<(), DBError>;
+    fn apply_aggregation(&self, op: &O) -> Result<Self,DBError>;
 }
 
-trait Memo<T,V> {
-    fn position(&self) -> &[u8];
-
-    fn value(&self) -> V;
+pub(crate) trait AggregationOperation<TV>: Sized + ToBytes + FromBytes<Self> {
+    fn to_value(&self) -> TV;
 }
 
-trait AggregationDelta<V> {
+pub(crate) trait AggregationObjectInTopology<BV,BO,TO: AggregationOperationInTopology<BV,BO,Self>>: Sized + ToKVBytes + FromKVBytes<Self> {
+    fn apply(&self, op: &TO) -> Result<Self,DBError>;
+}
+
+pub(crate) trait AggregationOperationInTopology<BV,BO,TV: AggregationObjectInTopology<BV,BO,Self>>: Sized + FromKVBytes<Self> + ToKVBytes {
     fn position(&self) -> Vec<u8>;
     fn position_of_aggregation(&self) -> Result<Vec<u8>, DBError>;
-    fn delta(&self) -> V;
+
+    fn operation(&self) -> BO;
+
+    fn delta_between(&self, other: &Self) -> Self;
+    fn to_value(&self) -> TV;
+}
+
+// TODO Self::DependantOn::Obj;
+pub(crate) trait AggregationTopology {
+    type DependantOn: OperationsTopology;
+
+    type InObj: Object<Self::InOp>;
+    type InOp: Operation<Self::InObj>;
+
+    type InTObj: ObjectInTopology<Self::InObj,Self::InOp,Self::InTOp>;
+    type InTOp: OperationInTopology<Self::InObj,Self::InOp,Self::InTObj>;
+
+    // TODO remove `&self`
+    fn depends_on(&self) -> Self::DependantOn;
+
+    // TODO remove `&self`
+    fn on_operation(&self, env: &mut Txn, ops: &Vec<Self::InTOp>) -> Result<(), DBError>;
+}
+
+pub(crate) struct Memo<V> {
+    object: V,
+}
+
+impl<V> Memo<V> {
+    fn new(object: V) -> Self {
+        Memo { object }
+    }
+
+    fn value(self) -> V {
+        self.object
+    }
 }
 
 pub(crate) struct Txn<'a> {
@@ -113,36 +174,88 @@ pub(crate) struct Txn<'a> {
 
 impl<'a> Txn<'a> {
 
-    pub(crate) fn get_operation<V, O: Operation<V> + FromBytes<O>>(&self, op: &O) -> Result<Option<O>, DBError> {
-        match self.s.pit.get_cf(&s.cf_operations(), op.position().as_slice()) {
+    pub(crate) fn new(s: &'a Snapshot) -> Txn<'a> {
+        Txn { s, batch: WriteBatch::default(), }
+    }
+
+    fn get_light<O: FromBytes<O>>(&self, cf: &impl AsColumnFamilyRef, position: &[u8]) -> Result<Option<O>, DBError> {
+        match self.s.pit.get_cf(cf, position) {
             Ok(bs) => {
                 match bs {
                     None => Ok(None),
-                    Some(_) => Ok(O::from_bytes(bs.as_slice())?)
+                    Some(bs) => Ok(Some(O::from_bytes(bs.as_slice())?))
                 }
             }
             Err(e) => Err(e.to_string().into())
         }
     }
 
-    pub(crate) fn put_operation<V, O: Operation<V> + ToBytes>(&mut self, op: &O) -> Result<(), DBError> {
-        self.batch.put_cf(&s.cf_operations(), op.position().as_slice(), op.to_bytes()?);
+    fn get<O: FromKVBytes<O>>(&self, cf: &impl AsColumnFamilyRef, position: &[u8]) -> Result<Option<O>, DBError> {
+        match self.s.pit.get_cf(cf, position) {
+            Ok(bs) => {
+                match bs {
+                    None => Ok(None),
+                    Some(bs) => Ok(Some(O::from_kv_bytes(position, bs.as_slice())?))
+                }
+            }
+            Err(e) => Err(e.to_string().into())
+        }
+    }
+
+    pub(crate) fn operations<O>(&self, from: Vec<u8>, till: Vec<u8>) -> BetweenIterator<'a,O> {
+        self.s.rf.ops_manager.ops_between::<O>(self.s, from, till)
+    }
+
+    pub(crate) fn get_operation<BV,BO,TV,TO>(&self, op: &TO) -> Result<Option<BO>, DBError>
+    where
+        BV: Object<BO>,
+        BO: Operation<BV>,
+        TV: ObjectInTopology<BV,BO,TO>,
+        TO: OperationInTopology<BV,BO,TV>
+    {
+        self.get_light(&self.s.cf_operations(), op.position().as_slice())
+    }
+
+    pub(crate) fn put_operation<BV,BO,TV,TO>(&mut self, op: &TO) -> Result<(), DBError>
+    where
+        BV: Object<BO>,
+        BO: Operation<BV>,
+        TV: ObjectInTopology<BV,BO,TO>,
+        TO: OperationInTopology<BV,BO,TV>
+    {
+        let (k,v) = op.to_kv_bytes()?;
+        self.batch.put_cf(&self.s.cf_operations(), k.as_slice(), v);
         Ok(())
     }
 
-    pub(crate) fn memos_after<'a,O>(&self, position: &Vec<u8>) -> Result<ItemsIterator<'a,O>, DBError> {
-        self.s.rf.ops_manager.memos_after(self.s, position)
-    }
-
-    pub(crate) fn put_memo<T,V: ToBytes>(&mut self, memo: &impl Memo<T,V>) -> Result<(), DBError> {
-        self.batch.put_cf(&s.cf_memos(), &memo.position(), memo.value().to_bytes()?);
+    pub(crate) fn put_operation_at<V, O: Operation<V> + ToBytes>(&mut self, position: Vec<u8>, op: &O) -> Result<(), DBError> {
+        let v = op.to_bytes()?;
+        self.batch.put_cf(&self.s.cf_operations(), position.as_slice(), v);
         Ok(())
     }
 
-    pub(crate) fn commit(self) -> Result<Self,DBError> {
+    pub(crate) fn memos_after<'b,O>(&'b self, position: &Vec<u8>) -> ItemsIterator<'b,O> {
+        self.s.rf.ops_manager.memos_after::<O>(self.s, position)
+    }
+
+    pub(crate) fn get_memo<O: FromBytes<O>>(&self, position: &Vec<u8>) -> Result<Option<O>, DBError> {
+        self.get_light(&self.s.cf_memos(), position.as_slice())
+    }
+
+    pub(crate) fn put_value<V: ToKVBytes>(&mut self, v: &V) -> Result<(), DBError> {
+        let (k,v) = v.to_kv_bytes()?;
+        self.batch.put_cf(&self.s.cf_memos(), k.as_slice(), v.as_slice());
+        Ok(())
+    }
+
+    pub(crate) fn update_value<V: ToBytes>(&mut self, position: &Vec<u8>, value: &V) -> Result<(), DBError> {
+        self.batch.put_cf(&self.s.cf_memos(), position, value.to_bytes()?);
+        Ok(())
+    }
+
+    pub(crate) fn commit(self) -> Result<(),DBError> {
         self.s.rf.db.write(self.batch)
             .map_err(|e| e.to_string().into())
-            .map(|_| self)
     }
 
     pub(crate) fn ops_manager(&mut self) -> Arc<OpsManager> {
@@ -200,24 +313,33 @@ impl<'a> Txn<'a> {
     }
 }
 
-enum Topologies {
-    Operation(Box<dyn OperationsTopology>),
-    Aggregation(Box<dyn AggregationTopology>),
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub(crate) enum Topology {
+    Warehouse(Arc<WarehouseTopology>),
+    WarehouseStock(Arc<WarehouseStockTopology>),
+}
+
+impl Topology {
+    fn create() -> Vec<Topology> {
+        todo!()
+    }
 }
 
 pub(crate) struct Animo {
-    topologies: Vec<Topologies>,
+    topologies: Vec<Topology>,
 
     // list of node producers that depend on id
-    what_to_topologies: HashMap<ID, HashSet<Topologies>>
+    what_to_topologies: HashMap<ID, HashSet<Topology>>,
+
+    op_to_topologies: HashMap<Topology, HashSet<Topology>>
 }
 
 impl Animo {
-    pub fn register_topology(&mut self, topology: Topologies) {
+    pub fn register_topology(&mut self, topology: Topology) {
         match &topology {
-            Topologies::Operation(t) => {
+            Topology::Warehouse(top) => {
                 // update helper map for fast resolve of dependants on given mutation
-                for id in topology.depends_on() {
+                for id in top.depends_on() {
                     match self.what_to_topologies.get_mut(&id) {
                         None => {
                             let mut set = HashSet::new();
@@ -238,25 +360,22 @@ impl Animo {
     }
 }
 
-impl<T,V,O> Dispatcher for Animo<T,V,O> where
-    V: Object<V, O>,
-    T: OperationsTopology<V> + Eq + Hash
-{
+impl Dispatcher for Animo {
     // push propagation of mutations
     fn on_mutation(&self, s: &Snapshot, mutations: &[ChangeTransformation]) -> Result<(), DBError> {
         // calculate node_producers that affected by mutations
-        let mut producers: HashMap<Arc<T>, HashSet<Context>> = HashMap::new();
+        let mut topologies: HashMap<Topology, HashSet<Context>> = HashMap::new();
         for mutation in mutations {
             if let Some(set) = self.what_to_topologies.get(&mutation.what) {
                 for item in set {
-                    match producers.get_mut(item) {
+                    match topologies.get_mut(item) {
                         Some(contexts) => {
                             contexts.insert(mutation.context.clone());
                         },
                         None => {
                             let mut contexts = HashSet::new();
                             contexts.insert(mutation.context.clone());
-                            producers.insert(item.clone(), contexts);
+                            topologies.insert(item.clone(), contexts);
                         }
                     }
                 }
@@ -265,11 +384,30 @@ impl<T,V,O> Dispatcher for Animo<T,V,O> where
 
         // TODO calculate up-dependant contexts here or at producer?
 
-        let mut env = Txn { s: s };
+        let mut tx = Txn::new(s);
 
         // generate new operations or overwrite existing
-        for (producer, contexts) in producers.into_iter() {
-            producer.on_mutation(&mut env, contexts)?;
+        for (topology, contexts) in topologies.into_iter() {
+            match topology {
+                Topology::Warehouse(top) => {
+                    let ops = top.on_mutation(&mut tx, contexts)?;
+
+                    match self.op_to_topologies.get(&Topology::Warehouse(top)) {
+                        None => {}
+                        Some(set) => {
+                            for dependant in set {
+                                match dependant {
+                                    Topology::Warehouse(_) => {}
+                                    Topology::WarehouseStock(top) => {
+                                        top.on_operation(&mut tx, &ops)?;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                Topology::WarehouseStock(_) => {}
+            }
         }
 
         Ok(())

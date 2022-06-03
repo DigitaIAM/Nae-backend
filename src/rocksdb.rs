@@ -17,6 +17,14 @@ pub(crate) trait FromBytes<V> {
     fn from_bytes(bs: &[u8]) -> Result<V, DBError>;
 }
 
+pub(crate) trait ToKVBytes {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>,Vec<u8>), DBError>;
+}
+
+pub(crate) trait FromKVBytes<V> {
+    fn from_kv_bytes(key: &[u8], value: &[u8]) -> Result<V, DBError>;
+}
+
 #[derive(Clone)]
 pub struct RocksDB {
     pub(crate) db: Arc<DB>,
