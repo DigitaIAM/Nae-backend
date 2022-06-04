@@ -1,6 +1,7 @@
 mod ops_manager;
 
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 use rocksdb::{AsColumnFamilyRef, WriteBatch};
@@ -9,7 +10,8 @@ use crate::error::DBError;
 use crate::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
 use crate::rocksdb::{Dispatcher, FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 
-pub use ops_manager::{OpsManager, BetweenIterator, ItemsIterator};
+pub use ops_manager::{OpsManager, BetweenLightIterator, LightIterator, following_light};
+use crate::animo::ops_manager::BetweenHeavyIterator;
 use crate::warehouse::{WarehouseStockTopology, WarehouseTopology};
 
 pub(crate) trait Calculation {
@@ -18,7 +20,7 @@ pub(crate) trait Calculation {
 }
 
 // Objects and operations  at topology
-pub(crate) trait Object<O>: Sized + ToBytes + FromBytes<Self> {
+pub(crate) trait Object<O>: Sized + Debug + ToBytes + FromBytes<Self> {
     // same as apply operation
     // fn apply_delta(&self, delta: &Self) -> Self;
 
@@ -28,13 +30,10 @@ pub(crate) trait Object<O>: Sized + ToBytes + FromBytes<Self> {
 // TO - operation in topology
 // BV - base object
 pub(crate) trait ObjectInTopology<BV,BO,TO: OperationInTopology<BV,BO,Self>>: Sized + ToKVBytes + FromKVBytes<Self> {
-    fn apply(&self, op: &TO) -> Result<Self,DBError>;
-}
-
-pub(crate) trait DeltaOperation<V>: Sized {
     fn position(&self) -> Vec<u8>;
-    fn delta_between(&self, other: &Self) -> Self;
-    fn to_value(&self) -> V;
+    fn value(&self) -> BV;
+
+    fn apply(&self, op: &TO) -> Result<Self,DBError>;
 }
 
 pub(crate) trait Operation<V>: Sized + FromBytes<Self> + ToBytes {
@@ -44,13 +43,12 @@ pub(crate) trait Operation<V>: Sized + FromBytes<Self> + ToBytes {
 
 // TV - object in topology
 // BV - base object
-pub(crate) trait OperationInTopology<BV,BO,TV: ObjectInTopology<BV,BO,Self>>: Sized + FromKVBytes<Self> + ToKVBytes {
+pub(crate) trait OperationInTopology<BV,BO,TV: ObjectInTopology<BV,BO,Self>>: Sized + Debug + FromKVBytes<Self> + ToKVBytes {
     fn resolve(env: &Txn, context: &Context) -> Result<Self, DBError>;
 
     fn position(&self) -> Vec<u8>;
     fn operation(&self) -> BO;
 
-    fn delta_between(&self, other: &Self) -> Self;
     fn to_value(&self) -> TV;
 }
 
@@ -89,17 +87,21 @@ pub(crate) trait AOperation<TV>: Sized + ToBytes + FromBytes<Self> {
     fn to_value(&self) -> TV;
 }
 
-pub(crate) trait AggregationObjectInTopology<BV,BO,TO: AggregationOperationInTopology<BV,BO,Self>>: Sized + ToKVBytes + FromKVBytes<Self> {
+// Aggregation object in topology
+pub(crate) trait AObjectInTopology<BV,BO,TO: AOperationInTopology<BV,BO,Self>>: Sized + ToKVBytes + FromKVBytes<Self> {
+    fn position(&self) -> Vec<u8>;
+    fn value(&self) -> BV;
+
     fn apply(&self, op: &TO) -> Result<Self,DBError>;
 }
 
-pub(crate) trait AggregationOperationInTopology<BV,BO,TV: AggregationObjectInTopology<BV,BO,Self>>: Sized + FromKVBytes<Self> + ToKVBytes {
+// Aggregation operation in topology
+pub(crate) trait AOperationInTopology<BV,BO,TV: AObjectInTopology<BV,BO,Self>>: Sized {
     fn position(&self) -> Vec<u8>;
     fn position_of_aggregation(&self) -> Result<Vec<u8>, DBError>;
 
     fn operation(&self) -> BO;
 
-    fn delta_between(&self, other: &Self) -> Self;
     fn to_value(&self) -> TV;
 }
 
@@ -157,7 +159,7 @@ impl<'a> Txn<'a> {
         }
     }
 
-    fn get<O: FromKVBytes<O>>(&self, cf: &impl AsColumnFamilyRef, position: &[u8]) -> Result<Option<O>, DBError> {
+    fn get_heavy<O: FromKVBytes<O>>(&self, cf: &impl AsColumnFamilyRef, position: &[u8]) -> Result<Option<O>, DBError> {
         match self.s.pit.get_cf(cf, position) {
             Ok(bs) => {
                 match bs {
@@ -169,8 +171,8 @@ impl<'a> Txn<'a> {
         }
     }
 
-    pub(crate) fn operations<O>(&self, from: Vec<u8>, till: Vec<u8>) -> BetweenIterator<'a,O> {
-        self.s.rf.ops_manager.ops_between::<O>(self.s, from, till)
+    pub(crate) fn operations<O>(&self, from: Vec<u8>, till: Vec<u8>) -> BetweenLightIterator<'a,O> {
+        self.s.rf.ops_manager.ops_between_light::<O>(self.s, from, till)
     }
 
     pub(crate) fn get_operation<BV,BO,TV,TO>(&self, op: &TO) -> Result<Option<BO>, DBError>
@@ -191,6 +193,9 @@ impl<'a> Txn<'a> {
         TO: OperationInTopology<BV,BO,TV>
     {
         let (k,v) = op.to_kv_bytes()?;
+
+        debug!("write op {:?} at {:?}", op, k);
+
         self.batch.put_cf(&self.s.cf_operations(), k.as_slice(), v);
         Ok(())
     }
@@ -201,26 +206,28 @@ impl<'a> Txn<'a> {
         Ok(())
     }
 
-    pub(crate) fn memos_after<O>(&self, position: &Vec<u8>) -> ItemsIterator<O> {
-        self.s.rf.ops_manager.memos_after::<O>(&self.s, position)
+    pub(crate) fn values<O: FromKVBytes<O>>(&self, from: Vec<u8>, till:  Vec<u8>) -> BetweenHeavyIterator<'a,O> {
+        self.s.rf.ops_manager.ops_between_heavy::<O>(self.s, from, till)
     }
 
-    pub(crate) fn get_memo<O: FromBytes<O>>(&self, position: &Vec<u8>) -> Result<Option<O>, DBError> {
-        self.get_light(&self.s.cf_memos(), position.as_slice())
+    pub(crate) fn value<O: FromBytes<O>>(&self, position: &Vec<u8>) -> Result<Option<O>, DBError> {
+        self.get_light(&self.s.cf_values(), position.as_slice())
     }
 
     pub(crate) fn put_value<V: ToKVBytes>(&mut self, v: &V) -> Result<(), DBError> {
         let (k,v) = v.to_kv_bytes()?;
-        self.batch.put_cf(&self.s.cf_memos(), k.as_slice(), v.as_slice());
+        self.batch.put_cf(&self.s.cf_values(), k.as_slice(), v.as_slice());
         Ok(())
     }
 
-    pub(crate) fn update_value<V: ToBytes>(&mut self, position: &Vec<u8>, value: &V) -> Result<(), DBError> {
-        self.batch.put_cf(&self.s.cf_memos(), position, value.to_bytes()?);
+    pub(crate) fn update_value<V: ToBytes + Debug>(&mut self, position: &Vec<u8>, value: &V) -> Result<(), DBError> {
+        debug!("update value {:?} {:?}", value, position);
+        self.batch.put_cf(&self.s.cf_values(), position, value.to_bytes()?);
         Ok(())
     }
 
     pub(crate) fn commit(self) -> Result<(),DBError> {
+        debug!("commit");
         self.s.rf.db.write(self.batch)
             .map_err(|e| e.to_string().into())
     }
@@ -376,6 +383,8 @@ impl Dispatcher for Animo {
                 Topology::WarehouseStock(_) => {}
             }
         }
+
+        tx.commit()?;
 
         Ok(())
     }

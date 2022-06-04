@@ -51,3 +51,46 @@ pub(crate) fn time_to_bytes(time: Time) -> [u8; 8] {
 //   копыта  |  5  |  100 |     |      |  1  |  =20 |  =4 |  =80 |
 //  расход2  |     |  80  |     |      |     |  =60 |     |  =20 |
 //   копыта  |  4  |  80  |     |      | =3  |  =60 |  =1 |  =20 |
+
+#[cfg(test)]
+pub mod test_util {
+    use chrono::DateTime;
+    use crate::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
+    use crate::shared::*;
+
+    pub fn time(dt: &str) -> Time {
+        DateTime::parse_from_rfc3339(format!("{}T00:00:00Z", dt).as_str()).unwrap().into()
+    }
+
+    pub fn time_end(dt: &str) -> Time {
+        DateTime::parse_from_rfc3339(format!("{}T23:59:59Z", dt).as_str()).unwrap().into()
+    }
+
+    fn event(doc: &str, date: &str, class: ID, store: ID, goods: ID, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {
+        let context: Context = vec![doc.into()].into();
+        let mut records = vec![
+            Transformation::new(&context, *SPECIFIC_OF, class.into()),
+            Transformation::new(&context, *DATE, time(date).into()),
+            Transformation::new(&context, *STORE, store.into()),
+            Transformation::new(&context, *GOODS, goods.into()),
+            Transformation::new(&context, *QTY, qty.into()),
+        ];
+        if let Some(cost) = cost {
+            records.push(Transformation::new(&context, *COST, cost.into()));
+        }
+        records.iter().map(|t| ChangeTransformation {
+            context: t.context.clone(),
+            what: t.what.clone(),
+            into_before: Value::Nothing,
+            into_after: t.into.clone()
+        }).collect::<Vec<_>>()
+    }
+
+    pub fn incoming(doc: &str, date: &str, store: ID, goods: ID, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {
+        event(doc, date, *GOODS_RECEIVE, store, goods, qty, cost)
+    }
+
+    pub fn outgoing(doc: &str, date: &str, store: ID, goods: ID, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {
+        event(doc, date, *GOODS_ISSUE, store, goods, qty, cost)
+    }
+}

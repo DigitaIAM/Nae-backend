@@ -1,3 +1,4 @@
+use std::array::TryFromSliceError;
 use serde::{Deserialize, Serialize};
 use blake2::{Digest, Blake2s256};
 use chrono::{DateTime, Utc};
@@ -10,6 +11,9 @@ pub type Time = DateTime<Utc>;
 
 type Hasher = Blake2s256;
 pub(crate) const ID_BYTES: usize = 32;
+
+pub const ID_MIN: ID = ID([u8::MIN;ID_BYTES]);
+pub const ID_MAX: ID = ID([u8::MAX;ID_BYTES]);
 
 #[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq, Copy)]
 pub struct ID([u8; ID_BYTES]);
@@ -67,6 +71,16 @@ impl From<&str> for ID {
         let mut bs = [0; 32];
         bs.copy_from_slice(Hasher::digest(data).as_slice());
         ID(bs)
+    }
+}
+
+impl TryFrom<&[u8]> for ID {
+    type Error = DBError;
+
+    fn try_from(bs: &[u8]) -> Result<Self,DBError> {
+        let bs = bs.try_into()
+            .map_err(|e: TryFromSliceError| DBError::from(e.to_string()))?;
+        Ok(ID(bs))
     }
 }
 

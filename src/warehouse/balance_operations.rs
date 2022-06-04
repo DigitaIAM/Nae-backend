@@ -32,19 +32,19 @@ impl AObject<BalanceOps> for Balance {
     }
 }
 
-impl From<BalanceOperation> for BalanceOps {
-    fn from(op: BalanceOperation) -> Self {
+impl From<&BalanceOperation> for BalanceOps {
+    fn from(op: &BalanceOperation) -> Self {
         match op {
             BalanceOperation::In(qty, cost) => {
                 BalanceOps {
-                    incoming: (qty, cost),
+                    incoming: (qty.clone(), cost.clone()),
                     outgoing: (Qty::default(), Money::default()),
                 }
             }
             BalanceOperation::Out(qty, cost) => {
                 BalanceOps {
                     incoming: (Qty::default(), Money::default()),
-                    outgoing: (qty, cost),
+                    outgoing: (qty.clone(), cost.clone()),
                 }
             }
         }

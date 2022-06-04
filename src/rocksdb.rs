@@ -7,7 +7,7 @@ use crate::memory::{ChangeTransformation, Context, ID, Transformation, Transform
 
 const CF_CORE: &str = "cf_core";
 const CF_OPERATIONS: &str = "cf_operations";
-const CF_MEMOS: &str = "cf_memos";
+const CF_VALUES: &str = "cf_memos";
 
 pub(crate) trait ToBytes {
     fn to_bytes(&self) -> Result<Vec<u8>, DBError>;
@@ -63,8 +63,8 @@ impl<'a> Snapshot<'a> {
         self.rf.db.cf_handle(CF_OPERATIONS).expect("operations cf")
     }
 
-    pub fn cf_memos(&self) -> Arc<BoundColumnFamily> {
-        self.rf.db.cf_handle(CF_MEMOS).expect("memos cf")
+    pub fn cf_values(&self) -> Arc<BoundColumnFamily> {
+        self.rf.db.cf_handle(CF_VALUES).expect("values cf")
     }
 
     pub(crate) fn load_by(&self, context: &Context, what: &ID) -> Result<Value, DBError> {
@@ -109,7 +109,7 @@ impl Memory for RocksDB {
         // create ColumnFamilies if not exist
         create_cf(&mut db, &cfs, CF_CORE);
         create_cf(&mut db, &cfs, CF_OPERATIONS);
-        create_cf(&mut db, &cfs, CF_MEMOS);
+        create_cf(&mut db, &cfs, CF_VALUES);
 
         let rf = Arc::new(db);
         Ok(RocksDB {
@@ -122,20 +122,23 @@ impl Memory for RocksDB {
     fn modify(&self, mutations: Vec<ChangeTransformation>) -> Result<(), DBError> {
         let cf = self.db.cf_handle(CF_CORE).unwrap();
 
-        let mut batch = WriteBatch::default();
-        for change in &mutations {
-            let k = ID::bytes(&change.context, &change.what);
-            // TODO let b = change.into_before.to_bytes()?;
-            let v = change.into_after.to_bytes()?;
+        // write to core storage
+        {
+            let mut batch = WriteBatch::default();
+            for change in &mutations {
+                let k = ID::bytes(&change.context, &change.what);
+                // TODO let b = change.into_before.to_bytes()?;
+                let v = change.into_after.to_bytes()?;
 
-            debug!("put {:?} = {:?}", k, v);
+                debug!("put {:?} = {:?}", k, v);
 
-            batch.put_cf(&cf, k, v);
+                batch.put_cf(&cf, k, v);
+            }
+
+            let wr: Result<(), DBError> = self.db.write(batch)
+                .map_err(|e| e.to_string().into());
+            wr?;
         }
-
-        let wr: Result<(), DBError> = self.db.write(batch)
-            .map_err(|e| e.to_string().into());
-        wr?;
 
         // TODO require snapshot with modification
         let s = self.snapshot();

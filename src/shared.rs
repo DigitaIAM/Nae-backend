@@ -3,7 +3,8 @@ use crate::memory::ID;
 // TODO pub(crate) static STORE: ID = ID::for_constant("store"); ...
 
 lazy_static! {
-    pub(crate) static ref WH_TOPOLOGY: ID = ID::for_constant("warehouse_topology");
+    pub(crate) static ref WH_BASE_TOPOLOGY: ID = ID::for_constant("warehouse_base_topology");
+    pub(crate) static ref WH_STOCK_TOPOLOGY: ID = ID::for_constant("warehouse_stock_topology");
 
     pub(crate) static ref SPECIFIC_OF: ID = ID::for_constant("specific-of");
     pub(crate) static ref GOODS_RECEIVE: ID = ID::for_constant("GoodsReceive");
