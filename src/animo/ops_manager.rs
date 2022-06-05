@@ -33,7 +33,7 @@ impl<'a,O: FromKVBytes<O>> Iterator for HeavyIterator<'a,O> {
         match self.0.next() {
             None => None,
             Some((k, v)) => {
-                // debug!("next {:?} {:?}", v, k);
+                debug!("next {:?} {:?}", v, k);
                 let record = O::from_kv_bytes(&*k, &*v).unwrap();
                 Some((k.to_vec(),record))
             }
@@ -131,7 +131,7 @@ impl OpsManager {
         }
     }
 
-    pub(crate) fn memos_after<'a,O>(&self, s: &'a Snapshot, position: &Vec<u8>) -> LightIterator<'a,O> {
+    pub(crate) fn values_after<'a,O>(&self, s: &'a Snapshot, position: &Vec<u8>) -> LightIterator<'a,O> {
         following_light(s, &s.cf_values(), position)
     }
 
@@ -143,6 +143,13 @@ impl OpsManager {
     pub(crate) fn ops_between_heavy<'a,O>(&self, s: &'a Snapshot, from: Vec<u8>, till: Vec<u8>) -> BetweenHeavyIterator<'a,O> {
         BetweenHeavyIterator(
             following_heavy(s, &s.cf_operations(), &from),
+            till
+        )
+    }
+
+    pub(crate) fn values_between_heavy<'a,O>(&self, s: &'a Snapshot, from: Vec<u8>, till: Vec<u8>) -> BetweenHeavyIterator<'a,O> {
+        BetweenHeavyIterator(
+            following_heavy(s, &s.cf_values(), &from),
             till
         )
     }
@@ -170,7 +177,7 @@ impl OpsManager {
             tx.put_operation::<BV,BO,TV,TO>(&op)?;
 
             // propagation
-            for (position, value) in ops_manager.memos_after::<BV>(s, &op.position()) {
+            for (position, value) in ops_manager.values_after::<BV>(s, &op.position()) {
                 // TODO get dependents and notify them
 
                 debug!("update value {:?} {:?}", value, position);
@@ -195,16 +202,17 @@ impl OpsManager {
         let s = tx.s;
         let ops_manager = s.rf.ops_manager.clone();
 
-        let local_topology_position = op.position();
-        let local_topology_checkpoint = op.position_of_aggregation()?;
+        let position = op.position();
+        let checkpoint = op.position_of_aggregation()?;
 
-        debug!("propagate delta {:?} at {:?}", op, local_topology_position);
+        debug!("propagate delta {:?} at {:?}", op, position);
+        debug!("checkpoint {:?}", checkpoint);
 
         // propagation
-        for (position, value) in ops_manager.memos_after::<BV>(s, &local_topology_position) {
+        for (position, value) in ops_manager.values_after::<BV>(s, &position) {
             // TODO get dependents and notify them
 
-            debug!("next memo {:?} at {:?}", value, position);
+            debug!("next value {:?} at {:?}", value, position);
 
             let value = value.apply_aggregation(&op.operation())?;
 
@@ -213,11 +221,11 @@ impl OpsManager {
         }
 
         // make sure checkpoint exist
-        match tx.value::<BO>(&local_topology_checkpoint)? {
+        match tx.value::<BV>(&checkpoint)? {
             None => {
-                let value = op.to_value();
+                let tv = op.to_value();
                 // store checkpoint
-                tx.put_value(&value)?;
+                tx.update_value(&checkpoint, tv.value())?;
             }
             Some(_) => {} // exist, updated above
         }

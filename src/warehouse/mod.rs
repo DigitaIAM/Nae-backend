@@ -54,9 +54,31 @@ pub(crate) fn time_to_bytes(time: Time) -> [u8; 8] {
 
 #[cfg(test)]
 pub mod test_util {
+    use std::sync::Arc;
     use chrono::DateTime;
     use crate::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
+    use crate::{Memory, RocksDB};
+    use crate::animo::{Animo, Topology};
     use crate::shared::*;
+    use crate::warehouse::{WarehouseStockTopology, WarehouseTopology};
+
+    pub fn init() -> RocksDB {
+        std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let tmp_path = tmp_dir.path().to_str().unwrap();
+
+        let mut db: RocksDB = Memory::init(tmp_path).unwrap();
+        let mut animo = Animo::default();
+
+        let wh_topology = Arc::new(WarehouseTopology());
+
+        animo.register_topology(Topology::Warehouse(wh_topology.clone()));
+        animo.register_topology(Topology::WarehouseStock(Arc::new(WarehouseStockTopology(wh_topology.clone()))));
+        db.register_dispatcher(Arc::new(animo)).unwrap();
+        db
+    }
 
     pub fn time(dt: &str) -> Time {
         DateTime::parse_from_rfc3339(format!("{}T00:00:00Z", dt).as_str()).unwrap().into()

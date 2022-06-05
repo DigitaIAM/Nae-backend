@@ -1,18 +1,20 @@
+use std::sync::Arc;
 use chrono::{Datelike, Timelike, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use crate::animo::{AObject, AObjectInTopology, AOperation, AOperationInTopology, AggregationTopology, Memo, Txn};
+use crate::animo::{AObject, AObjectInTopology, AOperation, AOperationInTopology, AggregationTopology, Memo, Txn, MemoOfList};
 use crate::error::DBError;
 use crate::memory::{ID, ID_BYTES, ID_MAX, ID_MIN, Time};
-use crate::rocksdb::{FromKVBytes, ToKVBytes};
-use crate::shared::WH_STOCK_TOPOLOGY;
+use crate::RocksDB;
+use crate::rocksdb::{FromBytes, FromKVBytes, ToBytes, ToKVBytes};
+use crate::shared::*;
 use crate::warehouse::balance::Balance;
 use crate::warehouse::balance_operation::BalanceOperation;
 use crate::warehouse::balance_operations::BalanceOps;
 use crate::warehouse::base_topology::{WarehouseBalance, WarehouseMovement};
 use crate::warehouse::{time_to_u64, ts_to_bytes, WarehouseTopology};
 
-#[derive(Debug, Default, Hash, Eq, PartialEq)]
-pub struct WarehouseStockTopology();
+#[derive(Debug, Hash, Eq, PartialEq)]
+pub struct WarehouseStockTopology(pub Arc<WarehouseTopology>);
 
 impl AggregationTopology for WarehouseStockTopology {
     type DependantOn = WarehouseTopology;
@@ -23,8 +25,8 @@ impl AggregationTopology for WarehouseStockTopology {
     type InTObj = WarehouseBalance;
     type InTOp = WarehouseMovement;
 
-    fn depends_on(&self) -> Self::DependantOn {
-        todo!()
+    fn depends_on(&self) -> Arc<Self::DependantOn> {
+        self.0.clone()
     }
 
     fn on_operation(&self, tx: &mut Txn, ops: &Vec<Self::InTOp>) -> Result<(), DBError> {
@@ -41,112 +43,43 @@ impl AggregationTopology for WarehouseStockTopology {
     }
 }
 
-// two solutions:
-//  - helper topology of goods existed at point in time (aka balance at time)
-//    (point of trust because of force to keep list of all goods with balance)
-//
-//  - operations topology: store, time, goods = op (untrusted list of goods for given time)
+// [stock + time] + () + goods..
+impl WarehouseStockTopology {
+    pub(crate) fn goods(db: &RocksDB, store: ID, date: Time) -> Result<MemoOfList<WarehouseStock>,DBError> {
+        let s = db.snapshot();
+        let mut tx = Txn::new(&s);
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct WarehouseStock {
-    // [stock + time] + () + goods..
-    balance: Balance,
+        let memo = WarehouseStockTopology::goods_tx(&mut tx, store, date)?;
 
-    goods: ID,
+        // TODO: unregister memo if case of error
+        tx.commit()?;
 
-    date: Time,
-    store: ID,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WarehouseStockDelta {
-    pub(crate) op: BalanceOps,
-
-    pub(crate) from: Time,
-    pub(crate) till: Time,
-
-    pub(crate) store: ID,
-    pub(crate) goods: ID,
-}
-
-impl From<&WarehouseMovement> for WarehouseStockDelta {
-    fn from(op: &WarehouseMovement) -> Self {
-        WarehouseStockDelta {
-            store: op.store,
-            goods: op.goods,
-
-            from: op.date,
-            till: op.date,
-
-            op: BalanceOps::from(&op.op),
-        }
-    }
-}
-
-impl AOperationInTopology<Balance, BalanceOps,WarehouseStock> for WarehouseStockDelta {
-    fn position(&self) -> Vec<u8> {
-        WarehouseStock::position_of_value(self.store, self.goods, self.till)
+        Ok(memo)
     }
 
-    fn position_of_aggregation(&self) -> Result<Vec<u8>,DBError> {
-        WarehouseStock::position_of_aggregation(self.store, self.goods, self.till)
-    }
-
-    fn operation(&self) -> BalanceOps {
-        self.op.clone()
-    }
-
-    fn to_value(&self) -> WarehouseStock {
-        WarehouseStock {
-            store: self.store, goods: self.goods, date: self.till,
-            balance: self.operation().to_value()
-        }
-    }
-}
-
-impl ToKVBytes for WarehouseStock {
-    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
-        todo!()
-    }
-}
-
-impl FromKVBytes<Self> for WarehouseStock {
-    fn from_kv_bytes(key: &[u8], value: &[u8]) -> Result<Self, DBError> {
-        todo!()
-    }
-}
-
-impl AObjectInTopology<Balance, BalanceOps,WarehouseStockDelta> for WarehouseStock {
-    fn position(&self) -> Vec<u8> {
-        WarehouseStock::position_of_value(self.store, self.goods, self.date)
-    }
-
-    fn value(&self) -> Balance {
-        self.balance.clone()
-    }
-
-    fn apply(&self, op: &WarehouseStockDelta) -> Result<Self, DBError> {
-        // TODO check self.stock == op.stock && self.goods == op.goods && self.date >= op.date
-        let balance = self.balance.apply_aggregation(&op.op)?;
-        Ok(WarehouseStock { store: self.store, goods: self.goods, date: self.date, balance })
-    }
-}
-
-impl WarehouseStock {
-    pub(crate) fn goods(tx: &mut Txn, store: ID, date: Time) -> Result<Memo<Vec<Memo<WarehouseStock>>>, DBError> {
+    fn goods_tx(tx: &mut Txn, store: ID, date: Time) -> Result<MemoOfList<WarehouseStock>, DBError> {
         debug!("listing memo at {:?} for {:?}", date, store);
 
-        let from = WarehouseStock::position_at_start(store, date);
-        let till = WarehouseStock::position_at_start(store, date);
+        let checkpoint = WarehouseStockTopology::next_checkpoint(date)?;
+
+        debug!("checkpoint {:?} > {:?}", date, checkpoint);
+
+        let from = WarehouseStockTopology::position_at_start(store, checkpoint);
+        let till = WarehouseStockTopology::position_at_end(store, checkpoint);
+
+        debug!("goods_tx");
+        debug!("from {:?}", from);
+        debug!("till {:?}", till);
 
         let mut items = Vec::new();
         for (_,value) in tx.values(from, till) {
             items.push(Memo::new(value))
         }
 
-        Ok(Memo::new(items))
+        Ok(MemoOfList::new(items))
     }
 
+    // beginning of next month
     fn next_checkpoint(time: Time) -> Result<Time, DBError> {
         if time.day() == 1 && time.num_seconds_from_midnight() == 0 && time.nanosecond() == 0 {
             Ok(time)
@@ -161,20 +94,21 @@ impl WarehouseStock {
     }
 
     fn position_of_aggregation(store: ID, goods: ID, time: Time) -> Result<Vec<u8>, DBError> {
-        let checkpoint = WarehouseStock::next_checkpoint(time)?;
-        Ok(WarehouseStock::position_of_value(store, goods, checkpoint))
+        let checkpoint = WarehouseStockTopology::next_checkpoint(time)?;
+        debug!("position_of_aggregation {:?} > {:?}", time, checkpoint);
+        Ok(WarehouseStockTopology::position_of_value(store, goods, checkpoint))
     }
 
     fn position_of_value(store: ID, goods: ID, time: Time) -> Vec<u8> {
-        WarehouseStock::position(store, goods, time_to_u64(time))
+        WarehouseStockTopology::position(store, goods, time_to_u64(time))
     }
 
     fn position_at_start(store: ID, time: Time) -> Vec<u8> {
-        WarehouseStock::position(store, ID_MIN, time_to_u64(time))
+        WarehouseStockTopology::position(store, ID_MIN, time_to_u64(time))
     }
 
     fn position_at_end(store: ID, time: Time) -> Vec<u8> {
-        WarehouseStock::position(store, ID_MAX, time_to_u64(time))
+        WarehouseStockTopology::position(store, ID_MAX, time_to_u64(time))
     }
 
     fn position(store: ID, goods: ID, ts: u64) -> Vec<u8> {
@@ -194,30 +128,135 @@ impl WarehouseStock {
 
         bs
     }
+
+    fn decode_position_from_bytes(bs: &[u8]) -> Result<(ID,ID,Time), DBError> {
+        debug!("decode_position_from_bytes: {:?}",bs);
+        let expected = (ID_BYTES * 3) + 8;
+        if bs.len() != expected {
+            Err(format!("Warehouse stock topology: incorrect number ({}) of bytes, expected {}", bs.len(), expected).into())
+        } else {
+            let prefix: ID = bs[0..ID_BYTES].try_into()?;
+            if prefix != *WH_STOCK_TOPOLOGY {
+                Err(format!("incorrect prefix id ({:?}), expected {:?}", prefix, *WH_STOCK_TOPOLOGY).into())
+            } else {
+                let convert = |bs: &[u8]| -> [u8; 8] {
+                    bs.try_into().expect("slice with incorrect length")
+                };
+                let store = bs[1*ID_BYTES..2*ID_BYTES].try_into()?;
+                let ts = u64::from_be_bytes(convert(&bs[2*ID_BYTES..(2*ID_BYTES+8)]));
+                let goods = bs[(2*ID_BYTES+8)..(3*ID_BYTES+8)].try_into()?;
+
+                Ok((store, goods, Utc.timestamp_millis(ts as i64)))
+            }
+        }
+    }
+}
+
+// two solutions:
+//  - helper topology of goods existed at point in time (aka balance at time)
+//    (point of trust because of force to keep list of all goods with balance)
+//
+//  - operations topology: store, time, goods = op (untrusted list of goods for given time)
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct WarehouseStock {
+    balance: Balance,
+
+    goods: ID,
+
+    date: Time,
+    store: ID,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WarehouseStockDelta {
+    pub(crate) op: BalanceOps,
+
+    pub(crate) date: Time,
+
+    pub(crate) store: ID,
+    pub(crate) goods: ID,
+}
+
+impl From<&WarehouseMovement> for WarehouseStockDelta {
+    fn from(op: &WarehouseMovement) -> Self {
+        WarehouseStockDelta {
+            store: op.store,
+            goods: op.goods,
+
+            date: op.date,
+
+            op: BalanceOps::from(&op.op),
+        }
+    }
+}
+
+impl AOperationInTopology<Balance, BalanceOps,WarehouseStock> for WarehouseStockDelta {
+    fn position(&self) -> Vec<u8> {
+        WarehouseStockTopology::position_of_value(self.store, self.goods, self.date)
+    }
+
+    fn position_of_aggregation(&self) -> Result<Vec<u8>,DBError> {
+        WarehouseStockTopology::position_of_aggregation(self.store, self.goods, self.date)
+    }
+
+    fn operation(&self) -> BalanceOps {
+        self.op.clone()
+    }
+
+    fn to_value(&self) -> WarehouseStock {
+        WarehouseStock {
+            store: self.store, goods: self.goods, date: self.date,
+            balance: self.operation().to_value()
+        }
+    }
+}
+
+impl ToKVBytes for WarehouseStock {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+        let k = WarehouseStockTopology::position_of_value(self.store, self.goods, self.date);
+        let v = self.balance.to_bytes()?;
+        Ok((k,v))
+    }
+}
+
+impl FromKVBytes<Self> for WarehouseStock {
+    fn from_kv_bytes(key: &[u8], value: &[u8]) -> Result<WarehouseStock, DBError> {
+        let (store, goods, date) = WarehouseStockTopology::decode_position_from_bytes(key)?;
+        let balance = Balance::from_bytes(value)?;
+        Ok(WarehouseStock { store, goods, date, balance })
+    }
+}
+
+impl AObjectInTopology<Balance, BalanceOps,WarehouseStockDelta> for WarehouseStock {
+    fn position(&self) -> Vec<u8> {
+        WarehouseStockTopology::position_of_value(self.store, self.goods, self.date)
+    }
+
+    fn value(&self) -> &Balance {
+        &self.balance
+    }
+
+    fn apply(&self, op: &WarehouseStockDelta) -> Result<Self, DBError> {
+        // TODO check self.stock == op.stock && self.goods == op.goods && self.date >= op.date
+        let balance = self.balance.apply_aggregation(&op.op)?;
+        Ok(WarehouseStock { store: self.store, goods: self.goods, date: self.date, balance })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cmp::Ordering;
-    use std::sync::Arc;
-    use chrono::DateTime;
-    use crate::{Memory, RocksDB};
-    use crate::animo::{Animo, Topology};
-    use crate::warehouse::primitives::{Money, Qty};
-    use crate::warehouse::test_util::{incoming, outgoing};
-
-    fn init() {
-        std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
+    use crate::Memory;
+    use crate::warehouse::test_util::{init, incoming, outgoing, time_end};
 
     #[test]
-    fn test_bytes_order() {
-        println!("testing order");
-        let mut bs1 = 0_u64.to_ne_bytes();
-        for num in 1_u64..100_000_000_u64 {
-            if num % 10_000_000_u64 == 0 {
+    fn test_bytes_order_of_u64() {
+        let min = 0_u64;
+        let mut bs1 = min.to_be_bytes();
+        for num in (min+1)..10_000_000_u64 {
+            if num % 1_000_000_u64 == 0 {
                 print!(".");
             }
             let bs2 = num.to_be_bytes();
@@ -227,23 +266,30 @@ mod tests {
     }
 
     #[test]
+    fn test_bytes_order_of_i64() {
+        let min = -10_000_000_i64;
+        let mut bs1 = min.to_be_bytes();
+        for num in (min+1)..10_000_000_i64 {
+            if num % 1_000_000_i64 == 0 {
+                print!(".");
+            }
+            let bs2 = num.to_be_bytes();
+            assert_eq!(
+                Ordering::Less,
+                bs1.as_slice().cmp(bs2.as_slice()),
+                "Number: {}\nprev:{:?}\nnext:{:?}", num, bs1.as_slice(), bs2.as_slice()
+            );
+            bs1 = bs2;
+        }
+    }
+
+    #[test]
     fn test_warehouse_stock() {
-        init();
-
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let tmp_path = tmp_dir.path().to_str().unwrap();
-        let mut db: RocksDB = Memory::init(tmp_path).unwrap();
-        let mut animo = Animo::default();
-        animo.register_topology(Topology::Warehouse(Arc::new(WarehouseTopology())));
-        animo.register_topology(Topology::WarehouseStock(Arc::new(WarehouseStockTopology())));
-        db.register_dispatcher(Arc::new(animo)).unwrap();
-
-        let time = |dt: &str| -> Time {
-            DateTime::parse_from_rfc3339(format!("{}T00:00:00Z", dt).as_str()).unwrap().into()
-        };
+        let db = init();
 
         let wh1: ID = "wh1".into();
         let g1: ID = "g1".into();
+        let g2: ID = "g2".into();
 
         debug!("MODIFY A");
         db.modify(incoming("A", "2022-05-27", wh1, g1, 10, Some(50))).expect("Ok");
@@ -258,22 +304,14 @@ mod tests {
         // 													< 2022-05-31
 
         debug!("READING 2022-05-31");
-        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance.value().into());
-
-        debug!("READING 2022-05-28");
-        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-28")).expect("Ok");
-        assert_eq!(Balance(Qty(5.into()),Money(25.into())), g1_balance.value().into());
-
-        debug!("READING 2022-05-31");
-        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(7.into()),Money(35.into())), g1_balance.value().into());
+        let goods = WarehouseStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
+        assert_eq!(1, goods.len());
 
         debug!("MODIFY D");
-        db.modify(outgoing("D", "2022-05-31", wh1, g1, 1, Some(5))).expect("Ok");
+        db.modify(incoming("D", "2022-05-15", wh1, g2, 7, Some(11))).expect("Ok");
 
         debug!("READING 2022-05-31");
-        let g1_balance = WarehouseTopology::balance(&db, wh1, g1, time("2022-05-31")).expect("Ok");
-        assert_eq!(Balance(Qty(6.into()),Money(30.into())), g1_balance.value().into());
+        let goods = WarehouseStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
+        assert_eq!(2, goods.len());
     }
 }

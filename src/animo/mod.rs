@@ -3,6 +3,7 @@ mod ops_manager;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::slice::Iter;
 use std::sync::Arc;
 use rocksdb::{AsColumnFamilyRef, WriteBatch};
 use rust_decimal::Decimal;
@@ -90,7 +91,7 @@ pub(crate) trait AOperation<TV>: Sized + ToBytes + FromBytes<Self> {
 // Aggregation object in topology
 pub(crate) trait AObjectInTopology<BV,BO,TO: AOperationInTopology<BV,BO,Self>>: Sized + ToKVBytes + FromKVBytes<Self> {
     fn position(&self) -> Vec<u8>;
-    fn value(&self) -> BV;
+    fn value(&self) -> &BV;
 
     fn apply(&self, op: &TO) -> Result<Self,DBError>;
 }
@@ -116,7 +117,7 @@ pub(crate) trait AggregationTopology {
     type InTOp: OperationInTopology<Self::InObj,Self::InOp,Self::InTObj>;
 
     // TODO remove `&self`
-    fn depends_on(&self) -> Self::DependantOn;
+    fn depends_on(&self) -> Arc<Self::DependantOn>;
 
     // TODO remove `&self`
     fn on_operation(&self, env: &mut Txn, ops: &Vec<Self::InTOp>) -> Result<(), DBError>;
@@ -127,12 +128,34 @@ pub(crate) struct Memo<V> {
 }
 
 impl<V> Memo<V> {
-    pub(crate) fn new(object: V) -> Self {
+    pub fn new(object: V) -> Self {
         Memo { object }
     }
 
-    pub(crate) fn value(self) -> V {
+    pub fn value(self) -> V {
         self.object
+    }
+}
+
+pub(crate) struct MemoOfList<V> {
+    list: Vec<Memo<V>>,
+}
+
+impl<V> MemoOfList<V> {
+    pub fn new(list: Vec<Memo<V>>) -> Self {
+        MemoOfList { list }
+    }
+
+    pub fn iter(&self) -> Iter<'_, Memo<V>> {
+        self.list.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.list.len()
+    }
+
+    pub fn get(&self, index: usize) -> Option<&Memo<V>> {
+        self.list.get(index)
     }
 }
 
@@ -207,7 +230,7 @@ impl<'a> Txn<'a> {
     }
 
     pub(crate) fn values<O: FromKVBytes<O>>(&self, from: Vec<u8>, till:  Vec<u8>) -> BetweenHeavyIterator<'a,O> {
-        self.s.rf.ops_manager.ops_between_heavy::<O>(self.s, from, till)
+        self.s.rf.ops_manager.values_between_heavy::<O>(self.s, from, till)
     }
 
     pub(crate) fn value<O: FromBytes<O>>(&self, position: &Vec<u8>) -> Result<Option<O>, DBError> {
@@ -216,6 +239,9 @@ impl<'a> Txn<'a> {
 
     pub(crate) fn put_value<V: ToKVBytes>(&mut self, v: &V) -> Result<(), DBError> {
         let (k,v) = v.to_kv_bytes()?;
+
+        debug!("put value {:?} {:?}", k, v);
+
         self.batch.put_cf(&self.s.cf_values(), k.as_slice(), v.as_slice());
         Ok(())
     }
@@ -326,7 +352,12 @@ impl Animo {
                     }
                 }
             }
-            _ => {}
+            Topology::WarehouseStock(top) => {
+                // TODO fix it
+                let mut set = HashSet::new();
+                set.insert(Topology::WarehouseStock(top.clone()));
+                self.op_to_topologies.insert(self.topologies[0].clone(), set);
+            }
         }
 
         // add to list of op-producers

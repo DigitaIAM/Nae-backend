@@ -93,7 +93,7 @@ impl WarehouseTopology {
     fn decode_position_from_bytes(bs: &[u8]) -> Result<(ID,ID,Time), DBError> {
         let expected = (ID_BYTES * 3) + 8 + 1;
         if bs.len() != expected {
-            Err(format!("incorrect number ({}) of bytes, expected {}", bs.len(), expected).into())
+            Err(format!("Warehouse topology: incorrect number ({}) of bytes, expected {}", bs.len(), expected).into())
         } else {
             let prefix: ID = bs[0..ID_BYTES].try_into()?;
             if prefix != *WH_BASE_TOPOLOGY {
@@ -307,26 +307,13 @@ impl ObjectInTopology<Balance,BalanceOperation,WarehouseMovement> for WarehouseB
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use crate::{Memory, RocksDB};
-    use crate::animo::{Animo, Topology};
-    use crate::warehouse::test_util::{incoming, outgoing, time_end};
-
-    fn init() {
-        std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
+    use crate::Memory;
+    use crate::warehouse::test_util::{init, incoming, outgoing, time_end};
 
     #[test]
     fn test_store_operations() {
-        init();
-
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let tmp_path = tmp_dir.path().to_str().unwrap();
-        let mut db: RocksDB = Memory::init(tmp_path).unwrap();
-        let mut animo = Animo::default();
-        animo.register_topology(Topology::Warehouse(Arc::new(WarehouseTopology())));
-        db.register_dispatcher(Arc::new(animo)).unwrap();
+        // animo.register_topology(Topology::Warehouse(Arc::new(WarehouseTopology())));
+        let db = init();
 
         let wh1: ID = "wh1".into();
         let g1: ID = "g1".into();
