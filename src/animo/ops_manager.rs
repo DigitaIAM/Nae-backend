@@ -7,7 +7,25 @@ use crate::rocksdb::{FromBytes, FromKVBytes, Snapshot};
 
 pub struct OpsManager();
 
-pub struct LightIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>, PhantomData<O>);
+pub trait PositionInTopology {
+    fn prefix(&self) -> &Vec<u8>;
+    fn position(&self) -> &Vec<u8>;
+}
+
+pub trait QueryValue<BV>: PositionInTopology {
+    fn closest_before(&self, s: &Snapshot) -> Option<(Vec<u8>,BV)>;
+
+    fn values_after<'a>(&'a self, s: &'a Snapshot<'a>) -> LightIterator<'a,BV>;
+}
+
+pub struct LightIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>, &'a Vec<u8>, PhantomData<O>);
+
+impl<'a,O> LightIterator<'a,O> {
+    pub fn preceding_values(s: &'a Snapshot, query: &'a impl QueryValue<O>) -> Self {
+        let it = preceding(s, &s.cf_values(), query.position().clone());
+        LightIterator(it,query.prefix(),PhantomData)
+    }
+}
 
 impl<'a,O: FromBytes<O>> Iterator for LightIterator<'a,O> {
     type Item = (Vec<u8>, O);
@@ -16,9 +34,12 @@ impl<'a,O: FromBytes<O>> Iterator for LightIterator<'a,O> {
         match self.0.next() {
             None => None,
             Some((k, v)) => {
-                // debug!("next {:?} {:?}", v, k);
-                let record = O::from_bytes(&*v).unwrap();
-                Some((k.to_vec(), record))
+                if self.1.len() <= k.len() && self.1 == &k[0..self.1.len()] {
+                    let record = O::from_bytes(&*v).unwrap();
+                    Some((k.to_vec(), record))
+                } else {
+                    None
+                }
             }
         }
     }
@@ -49,13 +70,17 @@ pub fn preceding<'a>(s: &'a Snapshot, cf_handle: &impl AsColumnFamilyRef, key: V
     )
 }
 
-pub fn following_light<'a,O>(s: &'a Snapshot, cf_handle: &impl AsColumnFamilyRef, key: &Vec<u8>) -> LightIterator<'a,O> {
+// workaround for https://github.com/rust-lang/rust/issues/83701
+pub fn following_light<'a,O,PIT>(s: &'a Snapshot<'a>, cf_handle: &impl AsColumnFamilyRef, pit: &'a PIT) -> LightIterator<'a,O>
+where
+    PIT: PositionInTopology
+{
     let it = s.pit.iterator_cf_opt(
         cf_handle,
         ReadOptions::default(),
-        IteratorMode::From(key.as_slice(), Direction::Forward)
+        IteratorMode::From(pit.position().as_slice(), Direction::Forward)
     );
-    LightIterator(it, PhantomData)
+    LightIterator(it, pit.prefix(), PhantomData)
 }
 
 fn following_heavy<'a,O>(s: &'a Snapshot, cf_handle: &impl AsColumnFamilyRef, key: &Vec<u8>) -> HeavyIterator<'a,O> {
@@ -67,7 +92,7 @@ fn following_heavy<'a,O>(s: &'a Snapshot, cf_handle: &impl AsColumnFamilyRef, ke
     HeavyIterator(it, PhantomData)
 }
 
-pub struct BetweenLightIterator<'a,O>(LightIterator<'a,O>, Vec<u8>);
+pub struct BetweenLightIterator<'a,O>(LightIterator<'a,O>, &'a Vec<u8>);
 
 impl<'a,O:FromBytes<O>> Iterator for BetweenLightIterator<'a,O> {
     type Item = (Vec<u8>, O);
@@ -76,7 +101,7 @@ impl<'a,O:FromBytes<O>> Iterator for BetweenLightIterator<'a,O> {
         match self.0.next() {
             None => None,
             Some((k, v)) => {
-                if &k <= &self.1 {
+                if &k <= self.1 {
                     Some((k, v))
                 } else {
                     None
@@ -111,33 +136,20 @@ impl OpsManager {
     //     Ok(preceding(s, &s.cf_operations(), position))
     // }
 
-    pub(crate) fn ops_following<'a, O:FromBytes<O>>(&self, s: &'a Snapshot, position: &Vec<u8>) -> LightIterator<'a,O> {
-        following_light(s, &s.cf_operations(), position)
+    pub(crate) fn ops_following<'a, O:FromBytes<O>>(&self, s: &'a Snapshot, pit: &'a impl PositionInTopology) -> LightIterator<'a,O> {
+        following_light(s, &s.cf_operations(), pit)
     }
 
-    pub(crate) fn get_closest_light_value<'a,O: FromBytes<O>>(&self, s: &'a Snapshot, position: Vec<u8>) -> Option<(Vec<u8>, O)> {
-        LightIterator(
-            preceding(s, &s.cf_values(), position),
-            PhantomData
-        ).next()
-    }
-
-    pub(crate) fn get_closest_memo<'a,O:FromKVBytes<O>>(&self, s: &'a Snapshot, position: Vec<u8>) -> Option<O> {
-        let mut it = HeavyIterator(preceding(s, &s.cf_values(), position), PhantomData);
-        if let Some((_,value)) = it.next() {
-            Some(value)
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn values_after<'a,O>(&self, s: &'a Snapshot, position: &Vec<u8>) -> LightIterator<'a,O> {
-        following_light(s, &s.cf_values(), position)
-    }
-
-    pub(crate) fn ops_between_light<'a,O>(&self, s: &'a Snapshot, from: Vec<u8>, till: Vec<u8>) -> BetweenLightIterator<'a,O> {
-        let it = following_light(s, &s.cf_operations(), &from);
-        BetweenLightIterator(it, till)
+    pub(crate) fn ops_between_light<'a,O,F,T>(
+        &self, s: &'a Snapshot, from: &'a F, till: &'a T
+    ) -> BetweenLightIterator<'a,O>
+    where
+        F: PositionInTopology,
+        T: PositionInTopology,
+    {
+        // TODO from.prefix() == till.prefix()
+        let it = following_light(s, &s.cf_operations(), from);
+        BetweenLightIterator(it, till.position())
     }
 
     pub(crate) fn ops_between_heavy<'a,O>(&self, s: &'a Snapshot, from: Vec<u8>, till: Vec<u8>) -> BetweenHeavyIterator<'a,O> {
@@ -145,6 +157,10 @@ impl OpsManager {
             following_heavy(s, &s.cf_operations(), &from),
             till
         )
+    }
+
+    pub(crate) fn values_after<'a,O: FromBytes<O>>(&self, s: &'a Snapshot, pit: &'a impl PositionInTopology) -> LightIterator<'a,O> {
+        following_light(s, &s.cf_values(), pit)
     }
 
     pub(crate) fn values_between_heavy<'a,O>(&self, s: &'a Snapshot, from: Vec<u8>, till: Vec<u8>) -> BetweenHeavyIterator<'a,O> {
@@ -177,7 +193,10 @@ impl OpsManager {
             tx.put_operation::<BV,BO,TV,TO>(&op)?;
 
             // propagation
-            for (position, value) in ops_manager.values_after::<BV>(s, &op.position()) {
+            for v in ops_manager.values_after(s, &op) {
+                // workaround for rust issue: https://github.com/rust-lang/rust/issues/83701
+                let (position, value): (_, BV) = v;
+
                 // TODO get dependents and notify them
 
                 debug!("update value {:?} {:?}", value, position);
@@ -209,7 +228,10 @@ impl OpsManager {
         debug!("checkpoint {:?}", checkpoint);
 
         // propagation
-        for (position, value) in ops_manager.values_after::<BV>(s, &position) {
+        for v in ops_manager.values_after(s, &op) {
+            // workaround for rust issue: https://github.com/rust-lang/rust/issues/83701
+            let (position, value): (_, BV) = v;
+
             // TODO get dependents and notify them
 
             debug!("next value {:?} at {:?}", value, position);

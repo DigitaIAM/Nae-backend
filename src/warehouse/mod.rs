@@ -115,4 +115,13 @@ pub mod test_util {
     pub fn outgoing(doc: &str, date: &str, store: ID, goods: ID, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {
         event(doc, date, *GOODS_ISSUE, store, goods, qty, cost)
     }
+
+    pub fn delete(changes: Vec<ChangeTransformation>) -> Vec<ChangeTransformation> {
+        changes.iter().map(|t| ChangeTransformation {
+            context: t.context.clone(),
+            what: t.what.clone(),
+            into_before: t.into_after.clone(),
+            into_after: Value::Nothing,
+        }).collect::<Vec<_>>()
+    }
 }

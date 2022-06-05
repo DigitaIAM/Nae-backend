@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use chrono::{Datelike, Timelike, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use crate::animo::{AObject, AObjectInTopology, AOperation, AOperationInTopology, AggregationTopology, Memo, Txn, MemoOfList};
+use crate::animo::{AObject, AObjectInTopology, AOperation, AOperationInTopology, AggregationTopology, Memo, Txn, MemoOfList, PositionInTopology};
 use crate::error::DBError;
 use crate::memory::{ID, ID_BYTES, ID_MAX, ID_MIN, Time};
 use crate::RocksDB;
@@ -111,6 +111,18 @@ impl WarehouseStockTopology {
         WarehouseStockTopology::position(store, ID_MAX, time_to_u64(time))
     }
 
+    fn position_prefix(store: ID) -> Vec<u8> {
+        let mut bs = Vec::with_capacity(ID_BYTES * 2);
+
+        // operation prefix
+        bs.extend_from_slice((*WH_STOCK_TOPOLOGY).as_slice());
+
+        // prefix define calculation context
+        bs.extend_from_slice(store.as_slice());
+
+        bs
+    }
+
     fn position(store: ID, goods: ID, ts: u64) -> Vec<u8> {
         let mut bs = Vec::with_capacity((ID_BYTES * 3) + 8);
 
@@ -172,29 +184,41 @@ pub struct WarehouseStock {
 pub struct WarehouseStockDelta {
     pub(crate) op: BalanceOps,
 
+    // TODO avoid serialization & deserialize of prefix & position
+    prefix: Vec<u8>,
+    position: Vec<u8>,
+
     pub(crate) date: Time,
 
     pub(crate) store: ID,
     pub(crate) goods: ID,
 }
 
+impl WarehouseStockDelta {
+    fn new(store: ID, goods: ID, date: Time, op: BalanceOps) -> Self {
+        let prefix = WarehouseStockTopology::position_prefix(store);
+        let position = WarehouseStockTopology::position_of_value(store, goods, date);
+        WarehouseStockDelta { store, goods, date, op, prefix, position }
+    }
+}
+
 impl From<&WarehouseMovement> for WarehouseStockDelta {
     fn from(op: &WarehouseMovement) -> Self {
-        WarehouseStockDelta {
-            store: op.store,
-            goods: op.goods,
+        WarehouseStockDelta::new(op.store, op.goods, op.date, BalanceOps::from(&op.op))
+    }
+}
 
-            date: op.date,
+impl PositionInTopology for WarehouseStockDelta {
+    fn prefix(&self) -> &Vec<u8> {
+        &self.prefix
+    }
 
-            op: BalanceOps::from(&op.op),
-        }
+    fn position(&self) -> &Vec<u8> {
+        &self.position
     }
 }
 
 impl AOperationInTopology<Balance, BalanceOps,WarehouseStock> for WarehouseStockDelta {
-    fn position(&self) -> Vec<u8> {
-        WarehouseStockTopology::position_of_value(self.store, self.goods, self.date)
-    }
 
     fn position_of_aggregation(&self) -> Result<Vec<u8>,DBError> {
         WarehouseStockTopology::position_of_aggregation(self.store, self.goods, self.date)

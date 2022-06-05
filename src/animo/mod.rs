@@ -11,8 +11,10 @@ use crate::error::DBError;
 use crate::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
 use crate::rocksdb::{Dispatcher, FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 
-pub use ops_manager::{OpsManager, BetweenLightIterator, LightIterator, following_light};
-use crate::animo::ops_manager::BetweenHeavyIterator;
+pub use ops_manager::{
+    OpsManager, PositionInTopology, QueryValue, BetweenLightIterator, BetweenHeavyIterator, LightIterator,
+    following_light
+};
 use crate::warehouse::{WarehouseStockTopology, WarehouseTopology};
 
 pub(crate) trait Calculation {
@@ -44,10 +46,9 @@ pub(crate) trait Operation<V>: Sized + FromBytes<Self> + ToBytes {
 
 // TV - object in topology
 // BV - base object
-pub(crate) trait OperationInTopology<BV,BO,TV: ObjectInTopology<BV,BO,Self>>: Sized + Debug + FromKVBytes<Self> + ToKVBytes {
+pub(crate) trait OperationInTopology<BV,BO,TV: ObjectInTopology<BV,BO,Self>>: PositionInTopology + Sized + Debug + FromKVBytes<Self> + ToKVBytes {
     fn resolve(env: &Txn, context: &Context) -> Result<Self, DBError>;
 
-    fn position(&self) -> Vec<u8>;
     fn operation(&self) -> BO;
 
     fn to_value(&self) -> TV;
@@ -97,8 +98,8 @@ pub(crate) trait AObjectInTopology<BV,BO,TO: AOperationInTopology<BV,BO,Self>>: 
 }
 
 // Aggregation operation in topology
-pub(crate) trait AOperationInTopology<BV,BO,TV: AObjectInTopology<BV,BO,Self>>: Sized {
-    fn position(&self) -> Vec<u8>;
+pub(crate) trait AOperationInTopology<BV,BO,TV: AObjectInTopology<BV,BO,Self>>: Sized + PositionInTopology {
+
     fn position_of_aggregation(&self) -> Result<Vec<u8>, DBError>;
 
     fn operation(&self) -> BO;
@@ -194,8 +195,11 @@ impl<'a> Txn<'a> {
         }
     }
 
-    pub(crate) fn operations<O>(&self, from: Vec<u8>, till: Vec<u8>) -> BetweenLightIterator<'a,O> {
-        self.s.rf.ops_manager.ops_between_light::<O>(self.s, from, till)
+    pub(crate) fn operations<'b,O,PIT>(&'b self, from: &'b PIT, till: &'b PIT) -> BetweenLightIterator<'b,O>
+    where
+        PIT: PositionInTopology
+    {
+        self.s.rf.ops_manager.ops_between_light(self.s, from, till)
     }
 
     pub(crate) fn get_operation<BV,BO,TV,TO>(&self, op: &TO) -> Result<Option<BO>, DBError>
