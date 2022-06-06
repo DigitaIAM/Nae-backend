@@ -157,8 +157,7 @@ pub(crate) trait OperationsTopology {
 
 // Aggregation object
 pub(crate) trait AObject<O>: Sized + ToBytes + FromBytes<Self> {
-    // same as apply operation
-    // fn apply_delta(&self, delta: &Self) -> Self;
+    fn is_zero(&self) -> bool;
 
     fn apply_aggregation(&self, op: &O) -> Result<Self,DBError>;
 }
@@ -363,6 +362,12 @@ impl<'a> Txn<'a> {
     pub(crate) fn update_value<V: ToBytes + Debug>(&mut self, position: &Vec<u8>, value: &V) -> Result<(), DBError> {
         debug!("update value {:?} {:?}", value, position);
         self.batch.put_cf(&self.s.cf_values(), position, value.to_bytes()?);
+        Ok(())
+    }
+
+    pub(crate) fn delete_value(&mut self, position: &Vec<u8>) -> Result<(), DBError> {
+        debug!("delete value {:?}", position);
+        self.batch.delete_cf(&self.s.cf_values(), position);
         Ok(())
     }
 

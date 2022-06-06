@@ -6,7 +6,7 @@ use crate::warehouse::balance::Balance;
 use crate::warehouse::balance_operation::BalanceOperation;
 use crate::warehouse::primitives::{Money, Qty};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BalanceOps {
     incoming: (Qty, Money),
     outgoing: (Qty, Money),
@@ -55,6 +55,10 @@ impl AOperation<Balance> for BalanceOps {
 }
 
 impl AObject<BalanceOps> for Balance {
+    fn is_zero(&self) -> bool {
+        self.0.0.is_zero() && self.1.0.is_zero()
+    }
+
     fn apply_aggregation(&self, op: &BalanceOps) -> Result<Self,DBError> {
         let qty = &(&self.0 + &op.incoming.0) - &op.outgoing.0;
         let cost = &(&self.1 + &op.incoming.1) - &op.outgoing.1;

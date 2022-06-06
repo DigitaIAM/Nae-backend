@@ -224,8 +224,12 @@ impl OpsManager {
 
             let value = value.apply_aggregation(&op.operation())?;
 
-            // store updated memo
-            tx.update_value(&position, &value)?;
+            // update value
+            if value.is_zero() {
+                tx.delete_value(&position)?;
+            } else {
+                tx.update_value(&position, &value)?;
+            }
         }
 
         // make sure checkpoint exist
