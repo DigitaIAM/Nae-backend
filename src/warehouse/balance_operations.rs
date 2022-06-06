@@ -12,6 +12,39 @@ pub struct BalanceOps {
     outgoing: (Qty, Money),
 }
 
+impl std::ops::Add<BalanceOps> for BalanceOps {
+    type Output = BalanceOps;
+
+    fn add(self, rhs: BalanceOps) -> Self::Output {
+        BalanceOps {
+            incoming: (self.incoming.0 + rhs.incoming.0, self.incoming.1 + rhs.incoming.1),
+            outgoing: (self.outgoing.0 + rhs.outgoing.0, self.outgoing.1 + rhs.outgoing.1)
+        }
+    }
+}
+
+impl std::ops::Sub<BalanceOps> for BalanceOps {
+    type Output = BalanceOps;
+
+    fn sub(self, rhs: BalanceOps) -> Self::Output {
+        BalanceOps {
+            incoming: (self.incoming.0 - rhs.incoming.0, self.incoming.1 - rhs.incoming.1),
+            outgoing: (self.outgoing.0 - rhs.outgoing.0, self.outgoing.1 - rhs.outgoing.1)
+        }
+    }
+}
+
+impl std::ops::Neg for BalanceOps {
+    type Output = BalanceOps;
+
+    fn neg(self) -> Self::Output {
+        BalanceOps {
+            incoming: (-self.incoming.0, -self.incoming.1),
+            outgoing: (-self.outgoing.0, -self.outgoing.1)
+        }
+    }
+}
+
 impl AOperation<Balance> for BalanceOps {
     fn to_value(&self) -> Balance {
         Balance(

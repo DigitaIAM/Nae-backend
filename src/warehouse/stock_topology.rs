@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use chrono::{Datelike, Timelike, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use crate::animo::{AObject, AObjectInTopology, AOperation, AOperationInTopology, AggregationTopology, Memo, Txn, MemoOfList, PositionInTopology};
+use crate::animo::{AObject, AObjectInTopology, AOperation, AOperationInTopology, AggregationTopology, Memo, Txn, MemoOfList, PositionInTopology, DeltaOp};
 use crate::error::DBError;
 use crate::memory::{ID, ID_BYTES, ID_MAX, ID_MIN, Time};
 use crate::RocksDB;
@@ -29,7 +29,7 @@ impl AggregationTopology for WarehouseStockTopology {
         self.0.clone()
     }
 
-    fn on_operation(&self, tx: &mut Txn, ops: &Vec<Self::InTOp>) -> Result<(), DBError> {
+    fn on_operation(&self, tx: &mut Txn, ops: &Vec<DeltaOp<Self::InObj,Self::InOp,Self::InTObj,Self::InTOp>>) -> Result<(), DBError> {
         // topology
         // [store + time] + goods = Balance,
 
@@ -182,6 +182,7 @@ pub struct WarehouseStock {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WarehouseStockDelta {
+    number_of_ops: i8,
     pub(crate) op: BalanceOps,
 
     // TODO avoid serialization & deserialize of prefix & position
@@ -195,16 +196,38 @@ pub struct WarehouseStockDelta {
 }
 
 impl WarehouseStockDelta {
-    fn new(store: ID, goods: ID, date: Time, op: BalanceOps) -> Self {
+    fn new(number_of_ops: i8, store: ID, goods: ID, date: Time, op: BalanceOps) -> Self {
         let prefix = WarehouseStockTopology::position_prefix(store);
         let position = WarehouseStockTopology::position_of_value(store, goods, date);
-        WarehouseStockDelta { store, goods, date, op, prefix, position }
+        WarehouseStockDelta { number_of_ops, store, goods, date, op, prefix, position }
     }
 }
 
-impl From<&WarehouseMovement> for WarehouseStockDelta {
-    fn from(op: &WarehouseMovement) -> Self {
-        WarehouseStockDelta::new(op.store, op.goods, op.date, BalanceOps::from(&op.op))
+impl From<&DeltaOp<Balance,BalanceOperation,WarehouseBalance,WarehouseMovement>> for WarehouseStockDelta {
+    fn from(delta: &DeltaOp<Balance,BalanceOperation,WarehouseBalance,WarehouseMovement>) -> Self {
+        if let Some(before) = delta.before.as_ref() {
+            if let Some(after) = delta.after.as_ref() {
+                WarehouseStockDelta::new(
+                    0,
+                    after.store, after.goods, after.date,
+                    BalanceOps::from(&after.op) - BalanceOps::from(&before.op)
+                )
+            } else {
+                WarehouseStockDelta::new(
+                    -1,
+                    before.store, before.goods, before.date,
+                    -BalanceOps::from(&before.op)
+                )
+            }
+        } else if let Some(after) = delta.after.as_ref() {
+            WarehouseStockDelta::new(
+                1,
+                after.store, after.goods, after.date,
+                BalanceOps::from(&after.op)
+            )
+        } else {
+            unreachable!("internal error")
+        }
     }
 }
 

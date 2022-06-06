@@ -17,10 +17,6 @@ pub(crate) fn ts_to_bytes(ts: u64) -> [u8; 8] {
     ts.to_be_bytes()
 }
 
-pub(crate) fn time_to_bytes(time: Time) -> [u8; 8] {
-    ts_to_bytes(time.timestamp().try_into().unwrap())
-}
-
 // Report for dates
 //           | open       | in         | out        | close      |
 //           | qty | cost | qty | cost | qty | cost | qty | cost |

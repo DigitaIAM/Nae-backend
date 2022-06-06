@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use crate::animo::{following_light, LightIterator, Memo, Object, ObjectInTopology, Operation, OperationInTopology, OperationsTopology, PositionInTopology, QueryValue, Txn};
+use crate::animo::{DeltaOp, following_light, LightIterator, Memo, Object, ObjectInTopology, Operation, OperationInTopology, OperationsTopology, PositionInTopology, QueryValue, Txn};
 use crate::error::DBError;
 use crate::memory::{Context, ID, ID_BYTES, Time};
 use crate::RocksDB;
@@ -55,11 +55,6 @@ impl QueryValue<Balance> for WHQueryBalance {
 pub(crate) struct WHQueryOperation {
     prefix: Vec<u8>,
     position: Vec<u8>,
-
-    date: Option<Time>,
-
-    store: ID,
-    goods: ID,
 }
 
 impl WHQueryOperation {
@@ -67,21 +62,21 @@ impl WHQueryOperation {
         let prefix = WarehouseTopology::position_prefix(store, goods);
         let position = WarehouseTopology::position_of_zero(store, goods);
 
-        WHQueryOperation { store, goods, date: None, prefix, position }
+        WHQueryOperation { prefix, position }
     }
 
     fn start(store: ID, goods: ID, date: Time) -> Self {
         let prefix = WarehouseTopology::position_prefix(store, goods);
         let position = WarehouseTopology::position_at_start(store, goods, date);
 
-        WHQueryOperation { store, goods, date: Some(date), prefix, position }
+        WHQueryOperation { prefix, position }
     }
 
     fn end(store: ID, goods: ID, date: Time) -> Self {
         let prefix = WarehouseTopology::position_prefix(store, goods);
         let position = WarehouseTopology::position_at_end(store, goods, date);
 
-        WHQueryOperation { store, goods, date: Some(date), prefix, position }
+        WHQueryOperation { prefix, position }
     }
 }
 
@@ -255,7 +250,7 @@ impl OperationsTopology for WarehouseTopology {
         ]
     }
 
-    fn on_mutation(&self, tx: &mut Txn, cs: HashSet<Context>) -> Result<Vec<Self::TOp>, DBError> {
+    fn on_mutation(&self, tx: &mut Txn, cs: HashSet<Context>) -> Result<Vec<DeltaOp<Self::Obj,Self::Op,Self::TObj,Self::TOp>>, DBError> {
         // GoodsReceive, GoodsIssue
 
         // TODO handle delete case
@@ -264,7 +259,8 @@ impl OperationsTopology for WarehouseTopology {
         let mut contexts = HashSet::with_capacity(cs.len());
         for c in cs {
             if let Some(instance_of) = tx.resolve(&c, *SPECIFIC_OF)? {
-                if instance_of.into.one_of(vec![*GOODS_RECEIVE, *GOODS_ISSUE]) {
+                if instance_of.into_before.one_of(&[*GOODS_RECEIVE, *GOODS_ISSUE])
+                    || instance_of.into_after.one_of(&[*GOODS_RECEIVE, *GOODS_ISSUE]){
                     contexts.insert(c);
                 }
             }
@@ -274,13 +270,15 @@ impl OperationsTopology for WarehouseTopology {
 
         let mut ops = Vec::with_capacity(contexts.len());
         for context in contexts {
-            ops.push(
-                WarehouseMovement::resolve(tx, &context)?
-            );
-        }
-        tx.ops_manager().write_ops(tx, ops.to_vec())?;
+            let (before,after) = WarehouseMovement::resolve(tx, &context)?;
 
-        Ok(ops.to_vec())
+            if before.is_some() || after.is_some() {
+                ops.push(DeltaOp::new(context, before, after));
+            }
+        }
+        tx.ops_manager().write_ops(tx, &ops)?;
+
+        Ok(ops)
     }
 }
 
@@ -366,18 +364,141 @@ impl PositionInTopology for WarehouseMovement {
 }
 
 impl OperationInTopology<Balance,BalanceOperation,WarehouseBalance> for WarehouseMovement {
-    fn resolve(env: &Txn, context: &Context) -> Result<Self, DBError> {
-        let instance_of = env.resolve_as_id(context, *SPECIFIC_OF)?;
-        let store = env.resolve_as_id(context, *STORE)?;
-        let goods = env.resolve_as_id(context, *GOODS)?;
-        let date = env.resolve_as_time(context, *DATE)?;
+    fn resolve(env: &Txn, context: &Context) -> Result<(Option<Self>,Option<Self>), DBError> {
 
-        let qty = env.resolve_as_number(context, *QTY)?;
-        let cost = env.resolve_as_number(context, *COST)?;
+        let change_instance_of = if let Some(change) = env.resolve(context, *SPECIFIC_OF)? {
+            change
+        } else {
+            return Ok((None,None));
+        };
+        let change_store = if let Some(change) = env.resolve(context, *STORE)? {
+            change
+        } else {
+            return Ok((None,None));
+        };
+        let change_goods = if let Some(change) = env.resolve(context, *GOODS)? {
+            change
+        } else {
+            return Ok((None,None));
+        };
+        let change_date = if let Some(change) = env.resolve(context, *DATE)? {
+            change
+        } else {
+            return Ok((None,None));
+        };
 
-        let op = BalanceOperation::new(instance_of, Qty(qty), Money(cost))?;
+        let change_qty = if let Some(change) = env.resolve(context, *QTY)? {
+            change
+        } else {
+            return Ok((None,None));
+        };
+        let change_cost = if let Some(change) = env.resolve(context, *COST)? {
+            change
+        } else {
+            return Ok((None,None));
+        };
 
-        Ok(WarehouseMovement::new(store, goods, date, op))
+        let op_before = loop {
+            let instance_of = if let Some(before) = change_instance_of.into_before.as_id() {
+                before
+            } else {
+                break None;
+            };
+
+            let qty = if let Some(before) = change_qty.into_before.as_number() {
+                before
+            } else {
+                break None;
+            };
+
+            let cost = if let Some(before) = change_cost.into_before.as_number() {
+                before
+            } else {
+                break None;
+            };
+
+            break BalanceOperation::resolve(instance_of, Qty(qty), Money(cost));
+        };
+
+        let op_after = loop {
+            let instance_of = if let Some(before) = change_instance_of.into_after.as_id() {
+                before
+            } else {
+                break None;
+            };
+
+            let qty = if let Some(before) = change_qty.into_after.as_number() {
+                before
+            } else {
+                break None;
+            };
+
+            let cost = if let Some(before) = change_cost.into_after.as_number() {
+                before
+            } else {
+                break None;
+            };
+
+            break BalanceOperation::resolve(instance_of, Qty(qty), Money(cost));
+        };
+
+        let before = loop {
+            let op = if let Some(op) = op_before {
+                op
+            } else {
+                break None;
+            };
+
+            let store = if let Some(before) = change_store.into_before.as_id() {
+                before
+            } else {
+                break None;
+            };
+
+            let goods = if let Some(before) = change_goods.into_before.as_id() {
+                before
+            } else {
+                break None;
+            };
+
+            let date = if let Some(before) = change_date.into_before.as_time() {
+                before
+            } else {
+                break None;
+            };
+
+            break Some(WarehouseMovement::new(store, goods, date, op));
+        };
+
+        let after = loop {
+            let op = if let Some(op) = op_after {
+                op
+            } else {
+                break None;
+            };
+
+            let store = if let Some(before) = change_store.into_after.as_id() {
+                before
+            } else {
+                break None;
+            };
+
+            let goods = if let Some(before) = change_goods.into_after.as_id() {
+                before
+            } else {
+                break None;
+            };
+
+            let date = if let Some(before) = change_date.into_after.as_time() {
+                before
+            } else {
+                break None;
+            };
+
+            break Some(WarehouseMovement::new(store, goods, date, op));
+        };
+
+        Ok((before,after))
     }
 
     fn operation(&self) -> BalanceOperation {

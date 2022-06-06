@@ -3,12 +3,12 @@ mod ops_manager;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::slice::Iter;
 use std::sync::Arc;
 use rocksdb::{AsColumnFamilyRef, WriteBatch};
-use rust_decimal::Decimal;
 use crate::error::DBError;
-use crate::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
+use crate::memory::{ChangeTransformation, Context, ID, Value};
 use crate::rocksdb::{Dispatcher, FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 
 pub use ops_manager::{
@@ -23,7 +23,12 @@ pub(crate) trait Calculation {
 }
 
 // Objects and operations  at topology
-pub(crate) trait Object<O>: Sized + Debug + ToBytes + FromBytes<Self> {
+pub(crate) trait Object<O>: Sized + Clone + Debug
+    + ToBytes + FromBytes<Self>
+    + std::ops::Add<Self, Output = Self>
+    + std::ops::Sub<Self, Output = Self>
+    + std::ops::Neg<Output = Self>
+{
     // same as apply operation
     // fn apply_delta(&self, delta: &Self) -> Self;
 
@@ -41,13 +46,18 @@ pub(crate) trait ObjectInTopology<BV,BO,TO: OperationInTopology<BV,BO,Self>>: Si
 
 pub(crate) trait Operation<V>: Sized + FromBytes<Self> + ToBytes {
     fn delta_between(&self, other: &Self) -> Self;
+
+    fn to_value(&self) -> V;
+}
+
+pub(crate) trait Delta<V> {
     fn to_value(&self) -> V;
 }
 
 // TV - object in topology
 // BV - base object
 pub(crate) trait OperationInTopology<BV,BO,TV: ObjectInTopology<BV,BO,Self>>: PositionInTopology + Sized + Debug + FromKVBytes<Self> + ToKVBytes {
-    fn resolve(env: &Txn, context: &Context) -> Result<Self, DBError>;
+    fn resolve(env: &Txn, context: &Context) -> Result<(Option<Self>,Option<Self>), DBError>;
 
     fn operation(&self) -> BO;
 
@@ -62,6 +72,75 @@ pub(crate) trait OperationInTopology<BV,BO,TV: ObjectInTopology<BV,BO,Self>>: Po
 //     fn as_aggregation_topology<T,O,V,VV>(&self) -> Arc<dyn AggregationTopology<T,O,V,V>>;
 // }
 
+pub(crate) struct DeltaOp<
+    BV: Object<BO>,
+    BO: Operation<BV>,
+
+    TV: ObjectInTopology<BV,BO,TO>,
+    TO: OperationInTopology<BV,BO,TV>,
+> {
+    context: Context,
+    pub(crate) before: Option<TO>,
+    pub(crate) after: Option<TO>,
+    phantom: PhantomData<(BV,BO,TV)>,
+}
+
+impl<BV,BO,TV,TO> DeltaOp<BV,BO,TV,TO>
+where
+    BV: Object<BO> + std::ops::Sub<Output = BV> + std::ops::Neg<Output = BV>,
+    BO: Operation<BV>,
+
+    TV: ObjectInTopology<BV,BO,TO>,
+    TO: OperationInTopology<BV,BO,TV>,
+{
+    pub(crate) fn new(context: Context, before: Option<TO>, after: Option<TO>) -> Self {
+        DeltaOp { context, before, after, phantom: PhantomData }
+    }
+
+    pub(crate) fn delta(&self) -> BV {
+        if let Some(before) = self.before.as_ref() {
+            if let Some(after) = self.after.as_ref() {
+                after.operation().to_value() - before.operation().to_value()
+            } else {
+                -before.operation().to_value()
+            }
+        } else if let Some(after) = self.after.as_ref() {
+            after.operation().to_value()
+        } else {
+            unreachable!("internal error")
+        }
+   }
+}
+
+impl<BV,BO,TV,TO> PositionInTopology for DeltaOp<BV,BO,TV,TO>
+where
+    BV: Object<BO>,
+    BO: Operation<BV>,
+
+    TV: ObjectInTopology<BV,BO,TO>,
+    TO: OperationInTopology<BV,BO,TV>,
+{
+    fn prefix(&self) -> &Vec<u8> {
+        if let Some(after) = self.after.as_ref() {
+            after.prefix()
+        } else if let Some(before) = self.before.as_ref() {
+            before.prefix()
+        } else {
+            unreachable!("internal error")
+        }
+    }
+
+    fn position(&self) -> &Vec<u8> {
+        if let Some(after) = self.after.as_ref() {
+            after.position()
+        } else if let Some(before) = self.before.as_ref() {
+            before.position()
+        } else {
+            unreachable!("internal error")
+        }
+    }
+}
+
 pub(crate) trait OperationsTopology {
     type Obj: Object<Self::Op>;
     type Op: Operation<Self::Obj>;
@@ -73,7 +152,7 @@ pub(crate) trait OperationsTopology {
     fn depends_on(&self) -> Vec<ID>;
 
     // TODO remove `&self`
-    fn on_mutation(&self, tx: &mut Txn, contexts: HashSet<Context>) -> Result<Vec<Self::TOp>, DBError>;
+    fn on_mutation(&self, tx: &mut Txn, contexts: HashSet<Context>) -> Result<Vec<DeltaOp<Self::Obj,Self::Op,Self::TObj,Self::TOp>>, DBError>;
 }
 
 // Aggregation object
@@ -121,7 +200,7 @@ pub(crate) trait AggregationTopology {
     fn depends_on(&self) -> Arc<Self::DependantOn>;
 
     // TODO remove `&self`
-    fn on_operation(&self, env: &mut Txn, ops: &Vec<Self::InTOp>) -> Result<(), DBError>;
+    fn on_operation(&self, env: &mut Txn, ops: &Vec<DeltaOp<Self::InObj,Self::InOp,Self::InTObj,Self::InTOp>>) -> Result<(), DBError>;
 }
 
 pub(crate) struct Memo<V> {
@@ -163,12 +242,28 @@ impl<V> MemoOfList<V> {
 pub(crate) struct Txn<'a> {
     pub(crate) s: &'a Snapshot<'a>,
     batch: WriteBatch,
+    changes: Option<HashMap<&'a Context, HashMap<&'a ID, &'a ChangeTransformation>>>
 }
 
 impl<'a> Txn<'a> {
 
     pub(crate) fn new(s: &'a Snapshot) -> Txn<'a> {
-        Txn { s, batch: WriteBatch::default(), }
+        Txn { s, batch: WriteBatch::default(), changes: None}
+    }
+
+    pub(crate) fn new_with(s: &'a Snapshot, mutations: &'a[ChangeTransformation]) -> Txn<'a> {
+        let mut changes = HashMap::with_capacity(mutations.len());
+
+        for change in mutations {
+            if !changes.contains_key(&change.context) {
+                changes.insert(&change.context, HashMap::new());
+            }
+            let map = changes.get_mut(&change.context).unwrap();
+
+            map.insert(&change.what, change);
+        }
+
+        Txn { s, batch: WriteBatch::default(), changes: Some(changes) }
     }
 
     fn get_light<O: FromBytes<O>>(&self, cf: &impl AsColumnFamilyRef, position: &[u8]) -> Result<Option<O>, DBError> {
@@ -227,6 +322,21 @@ impl<'a> Txn<'a> {
         Ok(())
     }
 
+    pub(crate) fn del_operation<BV,BO,TV,TO>(&mut self, op: &TO) -> Result<(), DBError>
+        where
+            BV: Object<BO>,
+            BO: Operation<BV>,
+            TV: ObjectInTopology<BV,BO,TO>,
+            TO: OperationInTopology<BV,BO,TV>
+    {
+        let (k,_) = op.to_kv_bytes()?;
+
+        debug!("delete op {:?} at {:?}", op, k);
+
+        self.batch.delete_cf(&self.s.cf_operations(), k.as_slice());
+        Ok(())
+    }
+
     pub(crate) fn put_operation_at<V, O: Operation<V> + ToBytes>(&mut self, position: Vec<u8>, op: &O) -> Result<(), DBError> {
         let v = op.to_bytes()?;
         self.batch.put_cf(&self.s.cf_operations(), position.as_slice(), v);
@@ -266,54 +376,48 @@ impl<'a> Txn<'a> {
         self.s.rf.ops_manager.clone()
     }
 
-    pub(crate) fn resolve(&self, context: &Context, what: ID) -> Result<Option<Transformation>, DBError> {
+    fn load_by(&self, context: &Context, what: &ID) -> Result<Option<ChangeTransformation>, DBError> {
+        if let Some(changes) = self.changes.as_ref() {
+            if let Some(map) = changes.get(context) {
+                if let Some(tr) = map.get(what) {
+                    return Ok(Some((**tr).clone()));
+                }
+            }
+        }
+
+        let memory = self.s.load_by(context, &what)?;
+        if memory != Value::Nothing {
+            return Ok(Some(ChangeTransformation {
+                context: context.clone(),
+                what: what.clone(),
+                into_before: memory.clone(),
+                into_after: memory
+            }));
+        }
+        Ok(None)
+    }
+
+    pub(crate) fn resolve(&self, context: &Context, what: ID) -> Result<Option<ChangeTransformation>, DBError> {
         // TODO calculate
 
-        // let what = ID::from(what);
-
         // read value for give `context` and `what`. In case it's not exist, repeat on "above" context
-        let mut memory = self.s.load_by(context, &what)?;
-        if memory != Value::Nothing {
-            Ok(Some(Transformation { context: context.clone(), what, into: memory }))
+        if let Some(tr) = self.load_by(context, &what)? {
+            Ok(Some(tr))
         } else {
             let mut context = context.clone();
             loop {
                 match context.0.split_last() {
                     Some((_, ids)) => {
                         context = Context(ids.to_vec());
-                        memory = self.s.load_by(&context, &what)?;
-                        if memory != Value::Nothing {
-                            break Ok(Some(Transformation { context, what, into: memory }))
+
+                        if let Some(tr) = self.load_by(&context, &what)? {
+                            break Ok(Some(tr))
                         }
                     }
                     None => break Ok(None),
                 }
             }
         }
-    }
-
-    pub(crate) fn resolve_as_id(&self, context: &Context, what: ID) -> Result<ID, DBError> {
-        self.resolve(context, what)?
-            .ok_or_else(|| format!("{:?} is not exist", what).into())
-            .and_then(|t| t.into.as_id()
-                .map_err(|_| format!("{:?} is not ID", what).into())
-            )
-    }
-
-    pub(crate) fn resolve_as_time(&self, context: &Context, what: ID) -> Result<Time, DBError> {
-        self.resolve(context, what)?
-            .ok_or_else(|| format!("{:?} is not exist", what).into())
-            .and_then(|t| t.into.as_time()
-                .map_err(|_| format!("{:?} is not Time", what).into())
-            )
-    }
-
-    pub(crate) fn resolve_as_number(&self, context: &Context, what: ID) -> Result<Decimal, DBError> {
-        self.resolve(context, what)?
-            .ok_or_else(|| format!("{:?} is not exist", what).into())
-            .and_then(|t| t.into.as_number()
-                .map_err(|_| format!("{:?} is not Number", what).into())
-            )
     }
 }
 
@@ -393,7 +497,7 @@ impl Dispatcher for Animo {
 
         // TODO calculate up-dependant contexts here or at producer?
 
-        let mut tx = Txn::new(s);
+        let mut tx = Txn::new_with(s, mutations);
 
         // generate new operations or overwrite existing
         for (topology, contexts) in topologies.into_iter() {

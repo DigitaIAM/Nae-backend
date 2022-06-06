@@ -14,13 +14,13 @@ pub enum BalanceOperation {
 }
 
 impl BalanceOperation {
-    pub(crate) fn new(instance_of: ID, qty: Qty, cost: Money) -> Result<BalanceOperation, DBError> {
+    pub(crate) fn resolve(instance_of: ID, qty: Qty, cost: Money) -> Option<BalanceOperation> {
         if instance_of == *GOODS_RECEIVE {
-            Ok(BalanceOperation::In(qty, cost))
+            Some(BalanceOperation::In(qty, cost))
         } else if instance_of == *GOODS_ISSUE {
-            Ok(BalanceOperation::Out(qty, cost))
+            Some(BalanceOperation::Out(qty, cost))
         } else {
-            Err(format!("unknown type {:?}", instance_of).into())
+            None
         }
     }
 }

@@ -8,6 +8,30 @@ use crate::warehouse::primitives::{Money, Qty};
 #[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct Balance(pub Qty, pub Money);
 
+impl std::ops::Add<Balance> for Balance {
+    type Output = Balance;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Balance(self.0 + rhs.0, self.1 + rhs.1)
+    }
+}
+
+impl std::ops::Sub<Balance> for Balance {
+    type Output = Balance;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Balance(self.0 - rhs.0, self.1 - rhs.1)
+    }
+}
+
+impl std::ops::Neg for Balance {
+    type Output = Balance;
+
+    fn neg(self) -> Self::Output {
+        Balance(-self.0, -self.1)
+    }
+}
+
 impl Object<BalanceOperation> for Balance {
     // fn apply_delta(&self, other: &Balance) -> Self {
     //     self + other

@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use rocksdb::{AsColumnFamilyRef, DBIteratorWithThreadMode, DBWithThreadMode, Direction, IteratorMode, MultiThreaded, ReadOptions};
-use crate::animo::{Txn, Object, Operation, AOperation, ObjectInTopology, OperationInTopology, AOperationInTopology, AObjectInTopology, AObject};
+use crate::animo::{Txn, Object, Operation, AOperation, ObjectInTopology, OperationInTopology, AOperationInTopology, AObjectInTopology, AObject, DeltaOp};
 use crate::error::DBError;
 use crate::rocksdb::{FromBytes, FromKVBytes, Snapshot};
 
@@ -132,14 +132,6 @@ impl<'a,O:FromKVBytes<O>> Iterator for BetweenHeavyIterator<'a,O> {
 
 impl OpsManager {
 
-    // pub(crate) fn ops_preceding<'a, O: FromBytes<O>>(&self, s: &'a Snapshot, position: &Vec<u8>) -> Result<ItemsIterator<'a,O>, DBError> {
-    //     Ok(preceding(s, &s.cf_operations(), position))
-    // }
-
-    pub(crate) fn ops_following<'a, O:FromBytes<O>>(&self, s: &'a Snapshot, pit: &'a impl PositionInTopology) -> LightIterator<'a,O> {
-        following_light(s, &s.cf_operations(), pit)
-    }
-
     pub(crate) fn ops_between_light<'a,O,F,T>(
         &self, s: &'a Snapshot, from: &'a F, till: &'a T
     ) -> BetweenLightIterator<'a,O>
@@ -150,13 +142,6 @@ impl OpsManager {
         // TODO from.prefix() == till.prefix()
         let it = following_light(s, &s.cf_operations(), from);
         BetweenLightIterator(it, till.position())
-    }
-
-    pub(crate) fn ops_between_heavy<'a,O>(&self, s: &'a Snapshot, from: Vec<u8>, till: Vec<u8>) -> BetweenHeavyIterator<'a,O> {
-        BetweenHeavyIterator(
-            following_heavy(s, &s.cf_operations(), &from),
-            till
-        )
     }
 
     pub(crate) fn values_after<'a,O: FromBytes<O>>(&self, s: &'a Snapshot, pit: &'a impl PositionInTopology) -> LightIterator<'a,O> {
@@ -170,7 +155,7 @@ impl OpsManager {
         )
     }
 
-    pub(crate) fn write_ops<BO,BV,TO,TV>(&self, tx: &mut Txn, ops: Vec<TO>) -> Result<(), DBError>
+    pub(crate) fn write_ops<BV,BO,TV,TO>(&self, tx: &mut Txn, deltas: &Vec<DeltaOp<BV,BO,TV,TO>>) -> Result<(), DBError>
     where
         BV: Object<BO>,
         BO: Operation<BV>,
@@ -181,19 +166,19 @@ impl OpsManager {
         let s = tx.s;
         let ops_manager = s.rf.ops_manager.clone();
 
-        for op in ops {
+        for ops in deltas {
             // calculate delta for propagation
-            let delta_op: BO = if let Some(current) = tx.get_operation::<BV,BO,TV,TO>(&op)? {
-                current.delta_between(&op.operation())
-            } else {
-                op.operation()
-            };
+            let delta = ops.delta();
 
             // store
-            tx.put_operation::<BV,BO,TV,TO>(&op)?;
+            if let Some(after) = ops.after.as_ref() {
+                tx.put_operation::<BV,BO,TV,TO>(&after)?;
+            } else if let Some(before) = ops.before.as_ref() {
+                tx.del_operation::<BV,BO,TV,TO>(&before)?;
+            }
 
             // propagation
-            for v in ops_manager.values_after(s, &op) {
+            for v in ops_manager.values_after(s, ops) {
                 // workaround for rust issue: https://github.com/rust-lang/rust/issues/83701
                 let (position, value): (_, BV) = v;
 
@@ -201,7 +186,8 @@ impl OpsManager {
 
                 debug!("update value {:?} {:?}", value, position);
 
-                let value = value.apply(&delta_op)?;
+                // TODO: remove `.clone()`?
+                let value = value + delta.clone();
 
                 // store updated memo
                 tx.update_value(&position, &value)?;

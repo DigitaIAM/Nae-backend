@@ -35,7 +35,7 @@ pub enum Value {
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Context(pub Vec<ID>);
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChangeTransformation {
     pub context: Context,
     pub what: ID,
@@ -136,28 +136,28 @@ impl FromBytes<Value> for Value {
 }
 
 impl Value {
-    pub(crate) fn as_number(&self) -> Result<Decimal, DBError> {
+    pub(crate) fn as_number(&self) -> Option<Decimal> {
         match self {
-            Value::Number(number) => Ok(*number),
-            _ => Err("value is not a number".into())
+            Value::Number(number) => Some(*number),
+            _ => None,
         }
     }
 
-    pub(crate) fn as_id(&self) -> Result<ID, DBError> {
+    pub(crate) fn as_id(&self) -> Option<ID> {
         match self {
-            Value::ID(id) => Ok(*id),
-            _ => Err("value is not an id".into())
+            Value::ID(id) => Some(*id),
+            _ => None,
         }
     }
 
-    pub(crate) fn as_time(&self) -> Result<Time, DBError> {
+    pub(crate) fn as_time(&self) -> Option<Time> {
         match self {
-            Value::DateTime(time) => Ok(*time),
-            _ => Err("value is not an time".into())
+            Value::DateTime(time) => Some(*time),
+            _ => None,
         }
     }
 
-    pub(crate) fn one_of(&self, ids: Vec<ID>) -> bool {
+    pub(crate) fn one_of(&self, ids: &[ID]) -> bool {
         match self {
             Value::ID(id) => ids.contains(id),
             _ => false,
