@@ -6,10 +6,12 @@ extern crate lazy_static;
 
 extern crate core;
 
+use actix::Actor;
 use actix_web::{web, middleware, App, HttpServer};
+use crate::commutator::Commutator;
 
-// mod websocket;
-// use crate::websocket::websocket;
+mod websocket;
+mod commutator;
 
 mod error;
 mod shared;
@@ -30,13 +32,16 @@ async fn main() -> std::io::Result<()> {
     info!("starting up 127.0.0.1:8080");
 
     let db: RocksDB = Memory::init("./data/memory").unwrap();
+    let communicator = Commutator::new(db.clone()).start();
 
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(db.clone()))
+            .app_data(communicator.clone())
             .wrap(middleware::Logger::default())
             .service(
                 web::scope("/v1")
+                    .service(websocket::start_connection_route)
                     .service(api::memory_query)
                     .service(api::memory_modify)
             )

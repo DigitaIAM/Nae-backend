@@ -10,7 +10,9 @@ linked_hash_set = "0.1.4"
 #bigdecimal = "0.3.0"
 rust_decimal = "1.23"
 chrono = { version = "0.4.19", features = ["serde"] }
+uuid = { version = "1.1.1", features = ["v4", "serde"] }
 
+actix = "0.13"
 actix-web = "4"
 actix-web-actors = "4.1.0"
 
