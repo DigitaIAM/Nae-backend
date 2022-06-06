@@ -312,6 +312,7 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[test]
     fn test_bytes_order_of_i64() {
         let min = -10_000_000_i64;

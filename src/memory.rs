@@ -269,6 +269,7 @@ mod tests {
         assert_eq!(value, restored);
     }
 
+    #[ignore]
     #[test]
     fn test_value_number_bincode() {
         let value = Value::Number(10.into());
