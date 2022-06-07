@@ -1,3 +1,5 @@
+#![allow(dead_code, unused)]
+
 #[macro_use]
 extern crate log;
 
