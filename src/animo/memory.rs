@@ -269,17 +269,17 @@ mod tests {
         assert_eq!(value, restored);
     }
 
-    #[ignore]
-    #[test]
-    fn test_value_number_bincode() {
-        let value = Value::Number(10.into());
-
-        let bs = bincode::serialize(&value).unwrap();
-
-        assert_eq!(bs, vec![4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 49, 48]);
-
-        let restored: Value = bincode::deserialize(&bs).unwrap();
-
-        assert_eq!(value, restored);
-    }
+    // #[ignore]
+    // #[test]
+    // fn test_value_number_bincode() {
+    //     let value = Value::Number(10.into());
+    //
+    //     let bs = bincode::serialize(&value).unwrap();
+    //
+    //     assert_eq!(bs, vec![4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 49, 48]);
+    //
+    //     let restored: Value = bincode::deserialize(&bs).unwrap();
+    //
+    //     assert_eq!(value, restored);
+    // }
 }
