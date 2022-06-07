@@ -76,7 +76,7 @@ impl<'a> Snapshot<'a> {
             Some(bs) => Value::from_bytes(bs.as_slice())?
         };
 
-        debug!("load {:?} by {:?}", value, k);
+        log::debug!("load {:?} by {:?}", value, k);
 
         Ok(value)
     }
@@ -130,7 +130,7 @@ impl Memory for AnimoDB {
                 // TODO let b = change.into_before.to_bytes()?;
                 let v = change.into_after.to_bytes()?;
 
-                debug!("put {:?} = {:?}", k, v);
+                log::debug!("put {:?} = {:?}", k, v);
 
                 batch.put_cf(&cf, k, v);
             }

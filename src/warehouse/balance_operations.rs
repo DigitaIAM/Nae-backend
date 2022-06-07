@@ -63,7 +63,7 @@ impl AObject<BalanceOps> for Balance {
         let qty = &(&self.0 + &op.incoming.0) - &op.outgoing.0;
         let cost = &(&self.1 + &op.incoming.1) - &op.outgoing.1;
 
-        debug!("apply aggregation {:?} to {:?}", op, self);
+        log::debug!("apply aggregation {:?} to {:?}", op, self);
 
         Ok(Balance(qty, cost))
     }

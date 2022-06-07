@@ -54,7 +54,7 @@ impl<'a,O: FromKVBytes<O>> Iterator for HeavyIterator<'a,O> {
         match self.0.next() {
             None => None,
             Some((k, v)) => {
-                debug!("next {:?} {:?}", v, k);
+                log::debug!("next {:?} {:?}", v, k);
                 let record = O::from_kv_bytes(&*k, &*v).unwrap();
                 Some((k.to_vec(),record))
             }
@@ -184,7 +184,7 @@ impl OpsManager {
 
                 // TODO get dependents and notify them
 
-                debug!("update value {:?} {:?}", value, position);
+                log::debug!("update value {:?} {:?}", value, position);
 
                 // TODO: remove `.clone()`?
                 let value = value + delta.clone();
@@ -210,8 +210,8 @@ impl OpsManager {
         let position = op.position();
         let checkpoint = op.position_of_aggregation()?;
 
-        debug!("propagate delta {:?} at {:?}", op, position);
-        debug!("checkpoint {:?}", checkpoint);
+        log::debug!("propagate delta {:?} at {:?}", op, position);
+        log::debug!("checkpoint {:?}", checkpoint);
 
         // propagation
         for v in ops_manager.values_after(s, &op) {
@@ -220,7 +220,7 @@ impl OpsManager {
 
             // TODO get dependents and notify them
 
-            debug!("next value {:?} at {:?}", value, position);
+            log::debug!("next value {:?} at {:?}", value, position);
 
             let value = value.apply_aggregation(&op.operation())?;
 

@@ -1,11 +1,4 @@
 #![allow(dead_code, unused)]
-
-#[macro_use]
-extern crate log;
-
-#[macro_use]
-extern crate lazy_static;
-
 extern crate core;
 
 use actix::Actor;
@@ -27,7 +20,7 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=debug,actix_server=debug");
     env_logger::init();
 
-    info!("starting up 127.0.0.1:8080");
+    log::info!("starting up 127.0.0.1:8080");
 
     let db: AnimoDB = Memory::init("./data/memory").unwrap();
     let communicator = Commutator::new(db.clone()).start();

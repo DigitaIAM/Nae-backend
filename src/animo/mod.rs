@@ -316,7 +316,7 @@ impl<'a> Txn<'a> {
     {
         let (k,v) = op.to_kv_bytes()?;
 
-        debug!("write op {:?} at {:?}", op, k);
+        log::debug!("write op {:?} at {:?}", op, k);
 
         self.batch.put_cf(&self.s.cf_operations(), k.as_slice(), v);
         Ok(())
@@ -331,7 +331,7 @@ impl<'a> Txn<'a> {
     {
         let (k,_) = op.to_kv_bytes()?;
 
-        debug!("delete op {:?} at {:?}", op, k);
+        log::debug!("delete op {:?} at {:?}", op, k);
 
         self.batch.delete_cf(&self.s.cf_operations(), k.as_slice());
         Ok(())
@@ -354,26 +354,28 @@ impl<'a> Txn<'a> {
     pub(crate) fn put_value<V: ToKVBytes>(&mut self, v: &V) -> Result<(), DBError> {
         let (k,v) = v.to_kv_bytes()?;
 
-        debug!("put value {:?} {:?}", k, v);
+        log::debug!("put value {:?} {:?}", k, v);
 
         self.batch.put_cf(&self.s.cf_values(), k.as_slice(), v.as_slice());
         Ok(())
     }
 
     pub(crate) fn update_value<V: ToBytes + Debug>(&mut self, position: &Vec<u8>, value: &V) -> Result<(), DBError> {
-        debug!("update value {:?} {:?}", value, position);
+
+        log::debug!("update value {:?} {:?}", value, position);
+
         self.batch.put_cf(&self.s.cf_values(), position, value.to_bytes()?);
         Ok(())
     }
 
     pub(crate) fn delete_value(&mut self, position: &Vec<u8>) -> Result<(), DBError> {
-        debug!("delete value {:?}", position);
+        log::debug!("delete value {:?}", position);
         self.batch.delete_cf(&self.s.cf_values(), position);
         Ok(())
     }
 
     pub(crate) fn commit(self) -> Result<(),DBError> {
-        debug!("commit");
+        log::debug!("commit");
         self.s.rf.db.write(self.batch)
             .map_err(|e| e.to_string().into())
     }

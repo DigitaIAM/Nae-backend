@@ -125,13 +125,13 @@ impl WHTopology {
         // TODO move method to Ops manager
         let query = WHQueryBalance::new(store, goods, date);
 
-        debug!("pining memo at {:?}", query);
+        log::debug!("pining memo at {:?}", query);
 
         let balance = if let Some((position, mut balance)) = query.closest_before(tx.s) {
-            debug!("closest memo {:?} at {:?}", balance, position);
+            log::debug!("closest memo {:?} at {:?}", balance, position);
             let loaded = WHQueryBalance::bytes(query.prefix().clone(), position);
             if loaded.position() != query.position() {
-                debug!("calculate from closest value");
+                log::debug!("calculate from closest value");
                 // TODO write test for this branch
                 // calculate on interval between memo position and requested position
                 for (_,op) in tx.operations(&loaded, &query) {
@@ -143,7 +143,7 @@ impl WHTopology {
             }
             WarehouseBalance { store, goods, date, balance }
         } else {
-            debug!("calculate from zero position");
+            log::debug!("calculate from zero position");
             let mut balance = Balance::default();
 
             let (from, till) = WHTopology::get_ops_till(store, goods, date);
@@ -547,11 +547,11 @@ mod tests {
         let wh1: ID = "wh1".into();
         let g1: ID = "g1".into();
 
-        debug!("MODIFY A");
+        log::debug!("MODIFY A");
         db.modify(incoming("A", "2022-05-27", wh1, g1, 10, Some(50))).expect("Ok");
-        debug!("MODIFY B");
+        log::debug!("MODIFY B");
         db.modify(incoming("B", "2022-05-30", wh1, g1, 2, Some(10))).expect("Ok");
-        debug!("MODIFY C");
+        log::debug!("MODIFY C");
         db.modify(outgoing("C", "2022-05-28", wh1, g1, 5, Some(25))).expect("Ok");
 
         // 2022-05-27	qty	10	cost	50	=	10	50
@@ -559,31 +559,31 @@ mod tests {
         // 2022-05-30	qty	2	cost	10	=	7 	35
         // 													< 2022-05-31
 
-        debug!("READING 2022-05-31 [1]");
+        log::debug!("READING 2022-05-31 [1]");
         let g1_balance = WHTopology::balance(&db, wh1, g1, time_end("2022-05-31")).expect("Ok");
         assert_eq!(Balance(Qty(7.into()), Money(35.into())), g1_balance.value().into());
 
-        debug!("READING 2022-05-28");
+        log::debug!("READING 2022-05-28");
         let g1_balance = WHTopology::balance(&db, wh1, g1, time_end("2022-05-28")).expect("Ok");
         assert_eq!(Balance(Qty(5.into()), Money(25.into())), g1_balance.value().into());
 
-        debug!("READING 2022-05-31 [2]");
+        log::debug!("READING 2022-05-31 [2]");
         let g1_balance = WHTopology::balance(&db, wh1, g1, time_end("2022-05-31")).expect("Ok");
         assert_eq!(Balance(Qty(7.into()), Money(35.into())), g1_balance.value().into());
 
-        debug!("MODIFY D");
+        log::debug!("MODIFY D");
         db.modify(outgoing("D", "2022-05-31", wh1, g1, 1, Some(5))).expect("Ok");
 
-        debug!("READING 2022-05-31 [3]");
+        log::debug!("READING 2022-05-31 [3]");
         let g1_balance = WHTopology::balance(&db, wh1, g1, time_end("2022-05-31")).expect("Ok");
         assert_eq!(Balance(Qty(6.into()), Money(30.into())), g1_balance.value().into());
 
-        debug!("DELETE B");
+        log::debug!("DELETE B");
         db.modify(delete(
             incoming("B", "2022-05-30", wh1, g1, 2, Some(10))
         )).expect("Ok");
 
-        debug!("READING 2022-05-31 [4]");
+        log::debug!("READING 2022-05-31 [4]");
         let g1_balance = WHTopology::balance(&db, wh1, g1, time_end("2022-05-31")).expect("Ok");
         assert_eq!(Balance(Qty(4.into()), Money(20.into())), g1_balance.value().into());
     }

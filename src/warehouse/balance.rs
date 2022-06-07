@@ -42,7 +42,7 @@ impl Object<BalanceOperation> for Balance {
             BalanceOperation::In(qty, cost) => (&self.0 + qty, &self.1 + cost),
             BalanceOperation::Out(qty, cost) => (&self.0 - qty, &self.1 - cost),
         };
-        debug!("apply {:?} to {:?}", op, self);
+        log::debug!("apply {:?} to {:?}", op, self);
 
         Ok(Balance(qty, cost))
     }

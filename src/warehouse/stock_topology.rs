@@ -58,11 +58,11 @@ impl WHStockTopology {
     }
 
     fn goods_tx(tx: &mut Txn, store: ID, date: Time) -> Result<MemoOfList<WarehouseStock>, DBError> {
-        debug!("listing memo at {:?} for {:?}", date, store);
+        log::debug!("listing memo at {:?} for {:?}", date, store);
 
         let checkpoint = WHStockTopology::next_checkpoint(date)?;
 
-        debug!("checkpoint {:?} > {:?}", date, checkpoint);
+        log::debug!("checkpoint {:?} > {:?}", date, checkpoint);
 
         let from = WHStockTopology::position_at_start(store, checkpoint);
         let till = WHStockTopology::position_at_end(store, checkpoint);
@@ -430,11 +430,11 @@ mod tests {
         let g1: ID = "g1".into();
         let g2: ID = "g2".into();
 
-        debug!("MODIFY A");
+        log::debug!("MODIFY A");
         db.modify(incoming("A", "2022-05-27", wh1, g1, 10, Some(50))).expect("Ok");
-        debug!("MODIFY B");
+        log::debug!("MODIFY B");
         db.modify(incoming("B", "2022-05-30", wh1, g1, 2, Some(10))).expect("Ok");
-        debug!("MODIFY C");
+        log::debug!("MODIFY C");
         db.modify(outgoing("C", "2022-05-28", wh1, g1, 5, Some(25))).expect("Ok");
 
         // 2022-05-27	qty	10	cost	50	=	10	50
@@ -442,21 +442,21 @@ mod tests {
         // 2022-05-30	qty	2	cost	10	=	7 	35
         // 													< 2022-05-31
 
-        debug!("READING 2022-05-31");
+        log::debug!("READING 2022-05-31");
         let goods = WHStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
         assert_eq!(1, goods.len());
 
-        debug!("MODIFY D");
+        log::debug!("MODIFY D");
         db.modify(incoming("D", "2022-05-15", wh1, g2, 7, Some(11))).expect("Ok");
 
-        debug!("READING 2022-05-31");
+        log::debug!("READING 2022-05-31");
         let goods = WHStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
         assert_eq!(2, goods.len());
 
-        debug!("DELETE D");
+        log::debug!("DELETE D");
         db.modify(delete(incoming("D", "2022-05-15", wh1, g2, 7, Some(11)))).expect("Ok");
 
-        debug!("READING 2022-05-31");
+        log::debug!("READING 2022-05-31");
         let goods = WHStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
         assert_eq!(1, goods.len());
     }

@@ -2,7 +2,7 @@ use crate::animo::memory::ID;
 
 // TODO pub(crate) static STORE: ID = ID::for_constant("store"); ...
 
-lazy_static! {
+lazy_static::lazy_static! {
     pub(crate) static ref WH_BASE_TOPOLOGY: ID = ID::for_constant("warehouse_base_topology");
     pub(crate) static ref WH_STOCK_TOPOLOGY: ID = ID::for_constant("warehouse_stock_topology");
 
