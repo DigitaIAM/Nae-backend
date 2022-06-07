@@ -1,4 +1,8 @@
-mod ops_manager;
+pub mod ops_manager;
+pub mod db;
+pub mod memory;
+pub mod shared;
+pub mod error;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -7,15 +11,12 @@ use std::marker::PhantomData;
 use std::slice::Iter;
 use std::sync::Arc;
 use rocksdb::{AsColumnFamilyRef, WriteBatch};
-use crate::error::DBError;
-use crate::memory::{ChangeTransformation, Context, ID, Value};
-use crate::rocksdb::{Dispatcher, FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
+use error::DBError;
 
-pub use ops_manager::{
-    OpsManager, PositionInTopology, QueryValue, BetweenLightIterator, BetweenHeavyIterator, LightIterator,
-    following_light
-};
-use crate::warehouse::{WarehouseStockTopology, WarehouseTopology};
+use crate::animo::db::*;
+use crate::animo::memory::*;
+use crate::animo::ops_manager::*;
+use crate::warehouse::{WHStockTopology, WHTopology};
 
 pub(crate) trait Calculation {
     fn depends_on(&self) -> Vec<ID>;
@@ -428,8 +429,8 @@ impl<'a> Txn<'a> {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub(crate) enum Topology {
-    Warehouse(Arc<WarehouseTopology>),
-    WarehouseStock(Arc<WarehouseStockTopology>),
+    Warehouse(Arc<WHTopology>),
+    WarehouseStock(Arc<WHStockTopology>),
 }
 
 #[derive(Default)]

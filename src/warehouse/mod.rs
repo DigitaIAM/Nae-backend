@@ -5,9 +5,9 @@ pub(crate) mod balance_operations;
 pub(crate) mod base_topology;
 pub(crate) mod stock_topology;
 
-pub use base_topology::WarehouseTopology;
-pub use stock_topology::WarehouseStockTopology;
-use crate::memory::Time;
+pub use base_topology::WHTopology;
+pub use stock_topology::WHStockTopology;
+use crate::animo::memory::Time;
 
 pub(crate) fn time_to_u64(time: Time) -> u64 {
     time.timestamp().try_into().unwrap()
@@ -52,26 +52,26 @@ pub(crate) fn ts_to_bytes(ts: u64) -> [u8; 8] {
 pub mod test_util {
     use std::sync::Arc;
     use chrono::DateTime;
-    use crate::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
-    use crate::{Memory, RocksDB};
+    use crate::animo::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
+    use crate::{Memory, AnimoDB};
     use crate::animo::{Animo, Topology};
-    use crate::shared::*;
-    use crate::warehouse::{WarehouseStockTopology, WarehouseTopology};
+    use crate::animo::shared::*;
+    use crate::warehouse::{WHStockTopology, WHTopology};
 
-    pub fn init() -> RocksDB {
+    pub fn init() -> AnimoDB {
         std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
         let _ = env_logger::builder().is_test(true).try_init();
 
         let tmp_dir = tempfile::tempdir().unwrap();
         let tmp_path = tmp_dir.path().to_str().unwrap();
 
-        let mut db: RocksDB = Memory::init(tmp_path).unwrap();
+        let mut db: AnimoDB = Memory::init(tmp_path).unwrap();
         let mut animo = Animo::default();
 
-        let wh_topology = Arc::new(WarehouseTopology());
+        let wh_topology = Arc::new(WHTopology());
 
         animo.register_topology(Topology::Warehouse(wh_topology.clone()));
-        animo.register_topology(Topology::WarehouseStock(Arc::new(WarehouseStockTopology(wh_topology.clone()))));
+        animo.register_topology(Topology::WarehouseStock(Arc::new(WHStockTopology(wh_topology.clone()))));
         db.register_dispatcher(Arc::new(animo)).unwrap();
         db
     }

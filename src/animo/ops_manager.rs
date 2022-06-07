@@ -2,8 +2,8 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use rocksdb::{AsColumnFamilyRef, DBIteratorWithThreadMode, DBWithThreadMode, Direction, IteratorMode, MultiThreaded, ReadOptions};
 use crate::animo::{Txn, Object, Operation, AOperation, ObjectInTopology, OperationInTopology, AOperationInTopology, AObjectInTopology, AObject, DeltaOp};
-use crate::error::DBError;
-use crate::rocksdb::{FromBytes, FromKVBytes, Snapshot};
+use crate::animo::error::DBError;
+use crate::animo::db::{FromBytes, FromKVBytes, Snapshot};
 
 pub struct OpsManager();
 

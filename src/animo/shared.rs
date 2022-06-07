@@ -1,4 +1,4 @@
-use crate::memory::ID;
+use crate::animo::memory::ID;
 
 // TODO pub(crate) static STORE: ID = ID::for_constant("store"); ...
 

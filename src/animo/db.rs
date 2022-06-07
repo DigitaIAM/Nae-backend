@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 use rocksdb::{BoundColumnFamily, DB, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch};
-use crate::error::DBError;
+use crate::animo::error::DBError;
 use crate::Memory;
 use crate::animo::OpsManager;
-use crate::memory::{ChangeTransformation, Context, ID, Transformation, TransformationKey, Value};
+use crate::animo::memory::{ChangeTransformation, Context, ID, Transformation, TransformationKey, Value};
 
 const CF_CORE: &str = "cf_core";
 const CF_OPERATIONS: &str = "cf_operations";
@@ -26,14 +26,14 @@ pub(crate) trait FromKVBytes<V> {
 }
 
 #[derive(Clone)]
-pub struct RocksDB {
+pub struct AnimoDB {
     pub(crate) db: Arc<DB>,
     pub(crate) dispatchers: Arc<Mutex<Vec<Arc<dyn Dispatcher>>>>,
     pub(crate) ops_manager: Arc<OpsManager>,
 }
 
-impl RocksDB {
-    pub(crate) fn register_dispatcher(&mut self, dispatcher: Arc<dyn Dispatcher>) -> Result<(), DBError> {
+impl AnimoDB {
+    pub fn register_dispatcher(&mut self, dispatcher: Arc<dyn Dispatcher>) -> Result<(), DBError> {
         match self.dispatchers.lock() {
             Ok(mut v) => {
                 v.push(dispatcher);
@@ -49,7 +49,7 @@ impl RocksDB {
 }
 
 pub struct Snapshot<'a> {
-    pub(crate) rf: &'a RocksDB,
+    pub(crate) rf: &'a AnimoDB,
     pub(crate) pit: SnapshotWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>,
     // pub mutations: Vec<ChangeTransformation>,
 }
@@ -86,7 +86,7 @@ pub trait Dispatcher: Sync + Send {
     fn on_mutation(&self, s: &Snapshot, mutations: &[ChangeTransformation]) -> Result<(), DBError>;
 }
 
-impl Memory for RocksDB {
+impl Memory for AnimoDB {
     fn init(path: &str) -> Result<Self, DBError> {
         let mut options = Options::default();
         options.set_error_if_exists(false);
@@ -112,7 +112,7 @@ impl Memory for RocksDB {
         create_cf(&mut db, &cfs, CF_VALUES);
 
         let rf = Arc::new(db);
-        Ok(RocksDB {
+        Ok(AnimoDB {
             db: rf.clone(),
             dispatchers: Arc::new(Mutex::new(vec![])),
             ops_manager: Arc::new(OpsManager()),

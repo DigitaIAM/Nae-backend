@@ -1,13 +1,13 @@
 use actix::prelude::*;
-use crate::memory::ChangeTransformation;
-use crate::RocksDB;
+use crate::animo::memory::ChangeTransformation;
+use crate::AnimoDB;
 
 pub(crate) struct Commutator {
-    db: RocksDB,
+    db: AnimoDB,
 }
 
 impl Commutator {
-    pub(crate) fn new(db: RocksDB) -> Commutator {
+    pub(crate) fn new(db: AnimoDB) -> Commutator {
         Commutator {
             db,
             // sessions: HashMap::new(),

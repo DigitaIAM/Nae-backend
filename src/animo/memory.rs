@@ -4,8 +4,8 @@ use blake2::{Digest, Blake2s256};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use chrono::serde::ts_milliseconds;
-use crate::error::DBError;
-use crate::rocksdb::{FromBytes, ToBytes};
+use crate::animo::error::DBError;
+use crate::animo::db::{FromBytes, ToBytes};
 
 pub type Time = DateTime<Utc>;
 

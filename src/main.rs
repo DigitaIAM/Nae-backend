@@ -7,22 +7,18 @@ extern crate lazy_static;
 extern crate core;
 
 use actix::Actor;
-use actix_web::{web, middleware, App, HttpServer};
+use actix_web::{App, HttpServer, middleware, web};
 use crate::commutator::Commutator;
 
 mod websocket;
 mod commutator;
 
-mod error;
-mod shared;
-mod memory;
-mod rocksdb;
 mod api;
 mod animo;
 mod warehouse;
 
-use crate::memory::Memory;
-use crate::rocksdb::RocksDB;
+use animo::memory::Memory;
+use animo::db::AnimoDB;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -31,7 +27,7 @@ async fn main() -> std::io::Result<()> {
 
     info!("starting up 127.0.0.1:8080");
 
-    let db: RocksDB = Memory::init("./data/memory").unwrap();
+    let db: AnimoDB = Memory::init("./data/memory").unwrap();
     let communicator = Commutator::new(db.clone()).start();
 
     HttpServer::new(move || {
@@ -56,9 +52,9 @@ async fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{test, web, App};
+    use actix_web::{App, test, web};
     use actix_web::web::Bytes;
-    use crate::memory::{ChangeTransformation, Transformation, TransformationKey, Value};
+    use crate::animo::memory::{ChangeTransformation, Transformation, TransformationKey, Value};
 
     fn init() {
         std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
@@ -69,7 +65,7 @@ mod tests {
     async fn test_put_get() {
         init();
 
-        let db: RocksDB = Memory::init("./data/tests").unwrap();
+        let db: AnimoDB = Memory::init("./data/tests").unwrap();
 
         let app = test::init_service(
             App::new()

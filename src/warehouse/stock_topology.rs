@@ -2,25 +2,26 @@ use std::ops::{Add, Neg, Sub};
 use std::sync::Arc;
 use chrono::{Datelike, Timelike, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use crate::animo::{AObject, AObjectInTopology, AOperation, AOperationInTopology, AggregationTopology, Memo, Txn, MemoOfList, PositionInTopology, DeltaOp};
-use crate::error::DBError;
-use crate::memory::{ID, ID_BYTES, ID_MAX, ID_MIN, Time};
-use crate::RocksDB;
-use crate::rocksdb::{FromBytes, FromKVBytes, ToBytes, ToKVBytes};
-use crate::shared::*;
+use crate::animo::*;
+use crate::animo::error::DBError;
+use crate::animo::memory::{ID, ID_BYTES, ID_MAX, ID_MIN, Time};
+use crate::AnimoDB;
+use crate::animo::db::{FromBytes, FromKVBytes, ToBytes, ToKVBytes};
+use crate::animo::ops_manager::*;
+use crate::animo::shared::*;
 use crate::warehouse::balance::Balance;
 use crate::warehouse::balance_operation::BalanceOperation;
 use crate::warehouse::balance_operations::BalanceOps;
 use crate::warehouse::base_topology::{WarehouseBalance, WarehouseMovement};
-use crate::warehouse::{time_to_u64, ts_to_bytes, WarehouseTopology};
+use crate::warehouse::{time_to_u64, ts_to_bytes, WHTopology};
 
 // [store + time] + goods = (number_of_ops, Balance)
 
 #[derive(Debug, Hash, Eq, PartialEq)]
-pub struct WarehouseStockTopology(pub Arc<WarehouseTopology>);
+pub struct WHStockTopology(pub Arc<WHTopology>);
 
-impl AggregationTopology for WarehouseStockTopology {
-    type DependantOn = WarehouseTopology;
+impl AggregationTopology for WHStockTopology {
+    type DependantOn = WHTopology;
 
     type InObj = Balance;
     type InOp = BalanceOperation;
@@ -43,12 +44,12 @@ impl AggregationTopology for WarehouseStockTopology {
     }
 }
 
-impl WarehouseStockTopology {
-    pub(crate) fn goods(db: &RocksDB, store: ID, date: Time) -> Result<MemoOfList<WarehouseStock>,DBError> {
+impl WHStockTopology {
+    pub(crate) fn goods(db: &AnimoDB, store: ID, date: Time) -> Result<MemoOfList<WarehouseStock>,DBError> {
         let s = db.snapshot();
         let mut tx = Txn::new(&s);
 
-        let memo = WarehouseStockTopology::goods_tx(&mut tx, store, date)?;
+        let memo = WHStockTopology::goods_tx(&mut tx, store, date)?;
 
         // TODO: unregister memo if case of error
         tx.commit()?;
@@ -59,12 +60,12 @@ impl WarehouseStockTopology {
     fn goods_tx(tx: &mut Txn, store: ID, date: Time) -> Result<MemoOfList<WarehouseStock>, DBError> {
         debug!("listing memo at {:?} for {:?}", date, store);
 
-        let checkpoint = WarehouseStockTopology::next_checkpoint(date)?;
+        let checkpoint = WHStockTopology::next_checkpoint(date)?;
 
         debug!("checkpoint {:?} > {:?}", date, checkpoint);
 
-        let from = WarehouseStockTopology::position_at_start(store, checkpoint);
-        let till = WarehouseStockTopology::position_at_end(store, checkpoint);
+        let from = WHStockTopology::position_at_start(store, checkpoint);
+        let till = WHStockTopology::position_at_end(store, checkpoint);
 
         let mut items = Vec::new();
         for (_,value) in tx.values(from, till) {
@@ -89,20 +90,20 @@ impl WarehouseStockTopology {
     }
 
     fn position_of_aggregation(store: ID, goods: ID, time: Time) -> Result<Vec<u8>, DBError> {
-        let checkpoint = WarehouseStockTopology::next_checkpoint(time)?;
-        Ok(WarehouseStockTopology::position_of_value(store, goods, checkpoint))
+        let checkpoint = WHStockTopology::next_checkpoint(time)?;
+        Ok(WHStockTopology::position_of_value(store, goods, checkpoint))
     }
 
     fn position_of_value(store: ID, goods: ID, time: Time) -> Vec<u8> {
-        WarehouseStockTopology::position(store, goods, time_to_u64(time))
+        WHStockTopology::position(store, goods, time_to_u64(time))
     }
 
     fn position_at_start(store: ID, time: Time) -> Vec<u8> {
-        WarehouseStockTopology::position(store, ID_MIN, time_to_u64(time))
+        WHStockTopology::position(store, ID_MIN, time_to_u64(time))
     }
 
     fn position_at_end(store: ID, time: Time) -> Vec<u8> {
-        WarehouseStockTopology::position(store, ID_MAX, time_to_u64(time))
+        WHStockTopology::position(store, ID_MAX, time_to_u64(time))
     }
 
     fn position_prefix(store: ID) -> Vec<u8> {
@@ -284,8 +285,8 @@ pub struct StockDelta {
 
 impl StockDelta {
     fn new(number_of_ops: i8, store: ID, goods: ID, date: Time, op: BalanceOps) -> Self {
-        let prefix = WarehouseStockTopology::position_prefix(store);
-        let position = WarehouseStockTopology::position_of_value(store, goods, date);
+        let prefix = WHStockTopology::position_prefix(store);
+        let position = WHStockTopology::position_of_value(store, goods, date);
 
         let op = CheckpointOp { number_of_ops, op };
         StockDelta { op, store, goods, date, prefix, position }
@@ -333,7 +334,7 @@ impl PositionInTopology for StockDelta {
 impl AOperationInTopology<BalanceCheckpoint,CheckpointOp,WarehouseStock> for StockDelta {
 
     fn position_of_aggregation(&self) -> Result<Vec<u8>,DBError> {
-        WarehouseStockTopology::position_of_aggregation(self.store, self.goods, self.date)
+        WHStockTopology::position_of_aggregation(self.store, self.goods, self.date)
     }
 
     fn operation(&self) -> CheckpointOp {
@@ -351,7 +352,7 @@ impl AOperationInTopology<BalanceCheckpoint,CheckpointOp,WarehouseStock> for Sto
 
 impl ToKVBytes for WarehouseStock {
     fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
-        let k = WarehouseStockTopology::position_of_value(self.store, self.goods, self.date);
+        let k = WHStockTopology::position_of_value(self.store, self.goods, self.date);
         let v = self.value.to_bytes()?;
         Ok((k,v))
     }
@@ -359,7 +360,7 @@ impl ToKVBytes for WarehouseStock {
 
 impl FromKVBytes<Self> for WarehouseStock {
     fn from_kv_bytes(k: &[u8], v: &[u8]) -> Result<WarehouseStock, DBError> {
-        let (store, goods, date) = WarehouseStockTopology::decode_position_from_bytes(k)?;
+        let (store, goods, date) = WHStockTopology::decode_position_from_bytes(k)?;
         let value = BalanceCheckpoint::from_bytes(v)?;
         Ok(WarehouseStock { store, goods, date, value })
     }
@@ -367,7 +368,7 @@ impl FromKVBytes<Self> for WarehouseStock {
 
 impl AObjectInTopology<BalanceCheckpoint,CheckpointOp,StockDelta> for WarehouseStock {
     fn position(&self) -> Vec<u8> {
-        WarehouseStockTopology::position_of_value(self.store, self.goods, self.date)
+        WHStockTopology::position_of_value(self.store, self.goods, self.date)
     }
 
     fn value(&self) -> &BalanceCheckpoint {
@@ -442,21 +443,21 @@ mod tests {
         // 													< 2022-05-31
 
         debug!("READING 2022-05-31");
-        let goods = WarehouseStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
+        let goods = WHStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
         assert_eq!(1, goods.len());
 
         debug!("MODIFY D");
         db.modify(incoming("D", "2022-05-15", wh1, g2, 7, Some(11))).expect("Ok");
 
         debug!("READING 2022-05-31");
-        let goods = WarehouseStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
+        let goods = WHStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
         assert_eq!(2, goods.len());
 
         debug!("DELETE D");
         db.modify(delete(incoming("D", "2022-05-15", wh1, g2, 7, Some(11)))).expect("Ok");
 
         debug!("READING 2022-05-31");
-        let goods = WarehouseStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
+        let goods = WHStockTopology::goods(&db, wh1, time_end("2022-05-31")).expect("Ok");
         assert_eq!(1, goods.len());
     }
 }

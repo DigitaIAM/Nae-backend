@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use crate::animo::Object;
-use crate::error::DBError;
-use crate::rocksdb::{FromBytes, ToBytes};
+use crate::animo::error::DBError;
+use crate::animo::db::{FromBytes, ToBytes};
 use crate::warehouse::balance_operation::BalanceOperation;
 use crate::warehouse::primitives::{Money, Qty};
 
