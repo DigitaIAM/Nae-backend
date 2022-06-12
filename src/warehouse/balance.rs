@@ -1,38 +1,53 @@
 use serde::{Deserialize, Serialize};
+use derives::ImplBytes;
 use crate::animo::Object;
 use crate::animo::error::DBError;
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::warehouse::balance_operation::BalanceOperation;
 use crate::warehouse::primitives::{Money, Qty};
 
-#[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize)]
-pub struct Balance(pub Qty, pub Money);
+#[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize, ImplBytes)]
+pub struct WHBalance(pub Qty, pub Money);
 
-impl std::ops::Add<Balance> for Balance {
-    type Output = Balance;
+impl std::ops::Add<WHBalance> for WHBalance {
+    type Output = WHBalance;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Balance(self.0 + rhs.0, self.1 + rhs.1)
+        WHBalance(self.0 + rhs.0, self.1 + rhs.1)
     }
 }
 
-impl std::ops::Sub<Balance> for Balance {
-    type Output = Balance;
+impl<'a, 'b> std::ops::Add<&'b WHBalance> for &'a WHBalance {
+    type Output = WHBalance;
+
+    fn add(self, other: &'b WHBalance) -> WHBalance {
+        WHBalance(&self.0 + &other.0, &self.1 + &other.1)
+    }
+}
+
+impl std::ops::Sub<WHBalance> for WHBalance {
+    type Output = WHBalance;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Balance(self.0 - rhs.0, self.1 - rhs.1)
+        WHBalance(self.0 - rhs.0, self.1 - rhs.1)
     }
 }
 
-impl std::ops::Neg for Balance {
-    type Output = Balance;
+impl std::ops::Neg for WHBalance {
+    type Output = WHBalance;
 
     fn neg(self) -> Self::Output {
-        Balance(-self.0, -self.1)
+        WHBalance(-self.0, -self.1)
     }
 }
 
-impl Object<BalanceOperation> for Balance {
+impl From<WHBalance> for Money {
+    fn from(f: WHBalance) -> Self {
+        f.1
+    }
+}
+
+impl Object<BalanceOperation> for WHBalance {
     // fn apply_delta(&self, other: &Balance) -> Self {
     //     self + other
     // }
@@ -44,28 +59,6 @@ impl Object<BalanceOperation> for Balance {
         };
         log::debug!("apply {:?} to {:?}", op, self);
 
-        Ok(Balance(qty, cost))
-    }
-}
-
-impl ToBytes for Balance {
-    fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
-        serde_json::to_vec(self)
-            .map_err(|e| e.to_string().into())
-    }
-}
-
-impl FromBytes<Balance> for Balance {
-    fn from_bytes(bs: &[u8]) -> Result<Balance, DBError> {
-        serde_json::from_slice(bs)
-            .map_err(|e| e.to_string().into())
-    }
-}
-
-impl<'a, 'b> std::ops::Add<&'b Balance> for &'a Balance {
-    type Output = Balance;
-
-    fn add(self, other: &'b Balance) -> Balance {
-        Balance(&self.0 + &other.0, &self.1 + &other.1)
+        Ok(WHBalance(qty, cost))
     }
 }

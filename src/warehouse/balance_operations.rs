@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 use crate::animo::{AObject, AOperation};
 use crate::animo::error::DBError;
 use crate::animo::db::{FromBytes, ToBytes};
-use crate::warehouse::balance::Balance;
+use crate::warehouse::balance::WHBalance;
 use crate::warehouse::balance_operation::BalanceOperation;
-use crate::warehouse::primitives::{Money, Qty};
+use crate::warehouse::primitives::{Money, MoneyOps, Qty};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BalanceOps {
@@ -45,16 +45,22 @@ impl std::ops::Neg for BalanceOps {
     }
 }
 
-impl AOperation<Balance> for BalanceOps {
-    fn to_value(&self) -> Balance {
-        Balance(
+impl From<BalanceOps> for MoneyOps {
+    fn from(f: BalanceOps) -> Self {
+        MoneyOps { incoming: f.incoming.1, outgoing: f.outgoing.1 }
+    }
+}
+
+impl AOperation<WHBalance> for BalanceOps {
+    fn to_value(&self) -> WHBalance {
+        WHBalance(
             &self.incoming.0 - &self.outgoing.0,
             &self.incoming.1 - &self.outgoing.1
         )
     }
 }
 
-impl AObject<BalanceOps> for Balance {
+impl AObject<BalanceOps> for WHBalance {
     fn is_zero(&self) -> bool {
         self.0.0.is_zero() && self.1.0.is_zero()
     }
@@ -65,7 +71,7 @@ impl AObject<BalanceOps> for Balance {
 
         log::debug!("apply aggregation {:?} to {:?}", op, self);
 
-        Ok(Balance(qty, cost))
+        Ok(WHBalance(qty, cost))
     }
 }
 

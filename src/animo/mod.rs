@@ -1,5 +1,6 @@
 pub mod ops_manager;
 pub mod db;
+mod time;
 pub mod memory;
 pub mod shared;
 pub mod error;
@@ -14,9 +15,12 @@ use rocksdb::{AsColumnFamilyRef, WriteBatch};
 use error::DBError;
 
 use crate::animo::db::*;
+pub(crate) use crate::animo::time::{Time, TimeInterval};
 use crate::animo::memory::*;
 use crate::animo::ops_manager::*;
-use crate::warehouse::{WHStockTopology, WHTopology};
+use crate::warehouse::{WHGoodsTopology, WHTopology};
+use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
+use crate::warehouse::store_topology::WHStoreTopology;
 
 pub(crate) trait Calculation {
     fn depends_on(&self) -> Vec<ID>;
@@ -173,7 +177,7 @@ pub(crate) trait AObjectInTopology<BV,BO,TO: AOperationInTopology<BV,BO,Self>>: 
     fn position(&self) -> Vec<u8>;
     fn value(&self) -> &BV;
 
-    fn apply(&self, op: &TO) -> Result<Self,DBError>;
+    fn apply(&self, op: &TO) -> Result<Option<Self>,DBError>;
 }
 
 // Aggregation operation in topology
@@ -212,8 +216,8 @@ impl<V> Memo<V> {
         Memo { object }
     }
 
-    pub fn value(self) -> V {
-        self.object
+    pub fn value(&self) -> &V {
+        &self.object
     }
 }
 
@@ -343,8 +347,8 @@ impl<'a> Txn<'a> {
         Ok(())
     }
 
-    pub(crate) fn values<O: FromKVBytes<O>>(&self, from: Vec<u8>, till:  Vec<u8>) -> BetweenHeavyIterator<'a,O> {
-        self.s.rf.ops_manager.values_between_heavy::<O>(self.s, from, till)
+    pub(crate) fn values<O>(&self, from: &'a impl PositionInTopology, till: &'a impl PositionInTopology) -> BetweenHeavyIterator<'a,O> {
+        self.s.rf.ops_manager.values_between_heavy(self.s, from, till)
     }
 
     pub(crate) fn value<O: FromBytes<O>>(&self, position: &Vec<u8>) -> Result<Option<O>, DBError> {
@@ -432,7 +436,9 @@ impl<'a> Txn<'a> {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub(crate) enum Topology {
     Warehouse(Arc<WHTopology>),
-    WarehouseStock(Arc<WHStockTopology>),
+    WarehouseStore(Arc<WHStoreTopology>),
+    WarehouseStoreAggregation(Arc<WHStoreAggregationTopology>),
+    WarehouseGoods(Arc<WHGoodsTopology>),
 }
 
 #[derive(Default)]
@@ -468,11 +474,32 @@ impl Animo {
                     }
                 }
             }
-            Topology::WarehouseStock(top) => {
-                // TODO fix it
-                let mut set = HashSet::new();
-                set.insert(Topology::WarehouseStock(top.clone()));
-                self.op_to_topologies.insert(self.topologies[0].clone(), set);
+            Topology::WarehouseStore(top) => {
+                // update helper map for fast resolve of dependants on given mutation
+                for id in top.depends_on() {
+                    match self.what_to_topologies.get_mut(&id) {
+                        None => {
+                            let mut set = HashSet::new();
+                            set.insert(topology.clone());
+                            self.what_to_topologies.insert(id, set);
+                        }
+                        Some(v) => {
+                            v.insert(topology.clone());
+                        }
+                    }
+                }
+            }
+            Topology::WarehouseStoreAggregation(top) => {
+                let mut set = self.op_to_topologies.entry(self.topologies[0].clone())
+                    .or_insert(HashSet::new());
+
+                set.insert(Topology::WarehouseStoreAggregation(top.clone()));
+            }
+            Topology::WarehouseGoods(top) => {
+                let mut set = self.op_to_topologies.entry(self.topologies[0].clone())
+                    .or_insert(HashSet::new());
+
+                set.insert(Topology::WarehouseGoods(top.clone()));
             }
         }
 
@@ -518,8 +545,10 @@ impl Dispatcher for Animo {
                         Some(set) => {
                             for dependant in set {
                                 match dependant {
-                                    Topology::Warehouse(_) => {}
-                                    Topology::WarehouseStock(top) => {
+                                    Topology::Warehouse(_) => {},
+                                    Topology::WarehouseStore(_) => {},
+                                    Topology::WarehouseStoreAggregation(_) => {},
+                                    Topology::WarehouseGoods(top) => {
                                         top.on_operation(&mut tx, &ops)?;
                                     }
                                 }
@@ -527,7 +556,27 @@ impl Dispatcher for Animo {
                         }
                     }
                 },
-                Topology::WarehouseStock(_) => {}
+                Topology::WarehouseStore(top) => {
+                    let ops = top.on_mutation(&mut tx, contexts)?;
+
+                    match self.op_to_topologies.get(&Topology::WarehouseStore(top)) {
+                        None => {}
+                        Some(set) => {
+                            for dependant in set {
+                                match dependant {
+                                    Topology::Warehouse(_) => {},
+                                    Topology::WarehouseStore(_) => {},
+                                    Topology::WarehouseStoreAggregation(top) => {
+                                        top.on_operation(&mut tx, &ops)?;
+                                    }
+                                    Topology::WarehouseGoods(_) => {},
+                                }
+                            }
+                        }
+                    }
+                },
+                Topology::WarehouseStoreAggregation(_) => {},
+                Topology::WarehouseGoods(_) => {},
             }
         }
 

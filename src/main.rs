@@ -11,6 +11,7 @@ mod commutator;
 mod api;
 mod animo;
 mod warehouse;
+mod accounts;
 
 use animo::memory::Memory;
 use animo::db::AnimoDB;

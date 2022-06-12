@@ -4,13 +4,22 @@ use crate::animo::error::DBError;
 use crate::animo::memory::ID;
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::animo::shared::*;
-use crate::warehouse::balance::Balance;
-use crate::warehouse::primitives::{Money, Qty};
+use crate::warehouse::balance::WHBalance;
+use crate::warehouse::primitives::{Money, MoneyOp, MoneyOps, Qty};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BalanceOperation {
     In(Qty, Money),
     Out(Qty, Money),
+}
+
+impl From<BalanceOperation> for MoneyOp {
+    fn from(op: BalanceOperation) -> Self {
+        match op {
+            BalanceOperation::In(_, cost) => MoneyOp::Incoming(cost),
+            BalanceOperation::Out(_, cost) => MoneyOp::Outgoing(cost),
+        }
+    }
 }
 
 impl BalanceOperation {
@@ -39,7 +48,7 @@ impl FromBytes<BalanceOperation> for BalanceOperation {
     }
 }
 
-impl Operation<Balance> for BalanceOperation {
+impl Operation<WHBalance> for BalanceOperation {
     fn delta_between(&self, other: &Self) -> BalanceOperation {
         match self {
             BalanceOperation::In(l_qty, l_cost) => {
@@ -71,10 +80,10 @@ impl Operation<Balance> for BalanceOperation {
         }
     }
 
-    fn to_value(&self) -> Balance {
+    fn to_value(&self) -> WHBalance {
         match self {
-            BalanceOperation::In(qty, cost) => Balance(qty.clone(), cost.clone()),
-            BalanceOperation::Out(qty, cost) => Balance(-qty.clone(), -cost.clone()),
+            BalanceOperation::In(qty, cost) => WHBalance(qty.clone(), cost.clone()),
+            BalanceOperation::Out(qty, cost) => WHBalance(-qty.clone(), -cost.clone()),
         }
     }
 }

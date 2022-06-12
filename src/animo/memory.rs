@@ -1,13 +1,12 @@
 use std::array::TryFromSliceError;
+use std::cmp::Ordering;
+use std::ops::{Add, Sub};
 use serde::{Deserialize, Serialize};
 use blake2::{Digest, Blake2s256};
-use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
-use chrono::serde::ts_milliseconds;
 use crate::animo::error::DBError;
 use crate::animo::db::{FromBytes, ToBytes};
-
-pub type Time = DateTime<Utc>;
+use crate::animo::Time;
 
 type Hasher = Blake2s256;
 pub(crate) const ID_BYTES: usize = 32;
@@ -21,6 +20,7 @@ pub struct ID([u8; ID_BYTES]);
 #[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
 pub struct IDs(pub Vec<ID>);
 
+// Options: singularity, magnitude
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum Value {
     Nothing,
@@ -28,7 +28,6 @@ pub enum Value {
     IDs(IDs),
     String(String),
     Number(Decimal),
-    #[serde(with = "ts_milliseconds")]
     DateTime(Time)
 }
 
@@ -152,7 +151,7 @@ impl Value {
 
     pub(crate) fn as_time(&self) -> Option<Time> {
         match self {
-            Value::DateTime(time) => Some(*time),
+            Value::DateTime(time) => Some(time.clone()),
             _ => None,
         }
     }

@@ -34,6 +34,7 @@ impl<'a,O: FromBytes<O>> Iterator for LightIterator<'a,O> {
         match self.0.next() {
             None => None,
             Some((k, v)) => {
+                // log::debug!("next {:?}", k);
                 if self.1.len() <= k.len() && self.1 == &k[0..self.1.len()] {
                     let record = O::from_bytes(&*v).unwrap();
                     Some((k.to_vec(), record))
@@ -45,7 +46,7 @@ impl<'a,O: FromBytes<O>> Iterator for LightIterator<'a,O> {
     }
 }
 
-pub struct HeavyIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>, PhantomData<O>);
+pub struct HeavyIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>, &'a Vec<u8>, PhantomData<O>);
 
 impl<'a,O: FromKVBytes<O>> Iterator for HeavyIterator<'a,O> {
     type Item = (Vec<u8>, O);
@@ -54,9 +55,14 @@ impl<'a,O: FromKVBytes<O>> Iterator for HeavyIterator<'a,O> {
         match self.0.next() {
             None => None,
             Some((k, v)) => {
-                log::debug!("next {:?} {:?}", v, k);
-                let record = O::from_kv_bytes(&*k, &*v).unwrap();
-                Some((k.to_vec(),record))
+                // log::debug!("next {:?}", k);
+                if self.1.len() <= k.len() && self.1 == &k[0..self.1.len()] {
+                    let record = O::from_kv_bytes(&*k, &*v).unwrap();
+                    Some((k.to_vec(),record))
+                } else {
+                    None
+                }
+
             }
         }
     }
@@ -83,18 +89,22 @@ where
     LightIterator(it, pit.prefix(), PhantomData)
 }
 
-fn following_heavy<'a,O>(s: &'a Snapshot, cf_handle: &impl AsColumnFamilyRef, key: &Vec<u8>) -> HeavyIterator<'a,O> {
+// workaround for https://github.com/rust-lang/rust/issues/83701
+fn following_heavy<'a,O,PIT>(s: &'a Snapshot, cf_handle: &impl AsColumnFamilyRef, pit: &'a PIT) -> HeavyIterator<'a,O>
+where
+    PIT: PositionInTopology
+{
     let it = s.pit.iterator_cf_opt(
         cf_handle,
         ReadOptions::default(),
-        IteratorMode::From(key.as_slice(), Direction::Forward)
+        IteratorMode::From(pit.position().as_slice(), Direction::Forward)
     );
-    HeavyIterator(it, PhantomData)
+    HeavyIterator(it, pit.prefix(), PhantomData)
 }
 
 pub struct BetweenLightIterator<'a,O>(LightIterator<'a,O>, &'a Vec<u8>);
 
-impl<'a,O:FromBytes<O>> Iterator for BetweenLightIterator<'a,O> {
+impl<'a,O:FromBytes<O> + Debug> Iterator for BetweenLightIterator<'a,O> {
     type Item = (Vec<u8>, O);
 
     fn next(&mut self) -> Option<(Vec<u8>, O)> {
@@ -148,10 +158,14 @@ impl OpsManager {
         following_light(s, &s.cf_values(), pit)
     }
 
-    pub(crate) fn values_between_heavy<'a,O>(&self, s: &'a Snapshot, from: Vec<u8>, till: Vec<u8>) -> BetweenHeavyIterator<'a,O> {
+    pub(crate) fn values_after_heavy<'a,O: FromKVBytes<O>>(&self, s: &'a Snapshot, pit: &'a impl PositionInTopology) -> HeavyIterator<'a,O> {
+        following_heavy(s, &s.cf_values(), pit)
+    }
+
+    pub(crate) fn values_between_heavy<'a,O>(&self, s: &'a Snapshot, from: &'a impl PositionInTopology, till: &'a impl PositionInTopology) -> BetweenHeavyIterator<'a,O> {
         BetweenHeavyIterator(
-            following_heavy(s, &s.cf_values(), &from),
-            till
+            following_heavy(s, &s.cf_values(), from),
+            till.position().clone()
         )
     }
 
@@ -214,21 +228,25 @@ impl OpsManager {
         log::debug!("checkpoint {:?}", checkpoint);
 
         // propagation
-        for v in ops_manager.values_after(s, &op) {
+        for v in ops_manager.values_after_heavy(s, &op) {
             // workaround for rust issue: https://github.com/rust-lang/rust/issues/83701
-            let (position, value): (_, BV) = v;
+            let (position, value): (_, TV) = v;
 
             // TODO get dependents and notify them
 
             log::debug!("next value {:?} at {:?}", value, position);
 
-            let value = value.apply_aggregation(&op.operation())?;
-
-            // update value
-            if value.is_zero() {
-                tx.delete_value(&position)?;
-            } else {
-                tx.update_value(&position, &value)?;
+            match value.apply(&op)? {
+                Some(result) => {
+                    let value = result.value();
+                    // update value
+                    if value.is_zero() {
+                        tx.delete_value(&position)?;
+                    } else {
+                        tx.update_value(&position, value)?;
+                    }
+                }
+                None => {}
             }
         }
 
@@ -236,6 +254,7 @@ impl OpsManager {
         match tx.value::<BV>(&checkpoint)? {
             None => {
                 let tv = op.to_value();
+                log::debug!("store new checkpoint {:?} at {:?}", tv.value(), position);
                 // store checkpoint
                 tx.update_value(&checkpoint, tv.value())?;
             }

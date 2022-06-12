@@ -1,21 +1,17 @@
-pub mod primitives;
+pub(crate) mod primitives;
 pub(crate) mod balance;
 pub(crate) mod balance_operation;
 pub(crate) mod balance_operations;
+pub(crate) mod turnover;
 pub(crate) mod base_topology;
-pub(crate) mod stock_topology;
+pub(crate) mod goods_topology;
+pub(crate) mod store_topology;
+pub(crate) mod store_aggregation_topology;
+pub(crate) mod report_topology;
 
 pub use base_topology::WHTopology;
-pub use stock_topology::WHStockTopology;
-use crate::animo::memory::Time;
-
-pub(crate) fn time_to_u64(time: Time) -> u64 {
-    time.timestamp().try_into().unwrap()
-}
-
-pub(crate) fn ts_to_bytes(ts: u64) -> [u8; 8] {
-    ts.to_be_bytes()
-}
+pub use goods_topology::WHGoodsTopology;
+use crate::animo::Time;
 
 // Report for dates
 //           | open       | in         | out        | close      |
@@ -52,13 +48,16 @@ pub(crate) fn ts_to_bytes(ts: u64) -> [u8; 8] {
 pub mod test_util {
     use std::sync::Arc;
     use chrono::DateTime;
-    use crate::animo::memory::{ChangeTransformation, Context, ID, Time, Transformation, Value};
+    use crate::animo::memory::{ChangeTransformation, Context, ID, Transformation, Value};
     use crate::{Memory, AnimoDB};
-    use crate::animo::{Animo, Topology};
+    use crate::animo::{Animo, Time, Topology};
     use crate::animo::shared::*;
-    use crate::warehouse::{WHStockTopology, WHTopology};
+    use crate::warehouse::{WHGoodsTopology, WHTopology};
+    use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
+    use crate::warehouse::store_topology::WHStoreTopology;
+    use crate::warehouse::turnover::{Goods, Store};
 
-    pub fn init() -> AnimoDB {
+    pub(crate) fn init() -> AnimoDB {
         std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
         let _ = env_logger::builder().is_test(true).try_init();
 
@@ -68,27 +67,22 @@ pub mod test_util {
         let mut db: AnimoDB = Memory::init(tmp_path).unwrap();
         let mut animo = Animo::default();
 
-        let wh_topology = Arc::new(WHTopology());
+        let wh_base = Arc::new(WHTopology());
+        let wh_store = Arc::new(WHStoreTopology());
 
-        animo.register_topology(Topology::Warehouse(wh_topology.clone()));
-        animo.register_topology(Topology::WarehouseStock(Arc::new(WHStockTopology(wh_topology.clone()))));
+        // animo.register_topology(Topology::Warehouse(wh_topology.clone()));
+        animo.register_topology(Topology::WarehouseStore(wh_store.clone()));
+        animo.register_topology(Topology::WarehouseStoreAggregation(Arc::new(WHStoreAggregationTopology(wh_store.clone()))));
+        // animo.register_topology(Topology::WarehouseGoods(Arc::new(WHGoodsTopology(wh_topology.clone()))));
         db.register_dispatcher(Arc::new(animo)).unwrap();
         db
     }
 
-    pub fn time(dt: &str) -> Time {
-        DateTime::parse_from_rfc3339(format!("{}T00:00:00Z", dt).as_str()).unwrap().into()
-    }
-
-    pub fn time_end(dt: &str) -> Time {
-        DateTime::parse_from_rfc3339(format!("{}T23:59:59Z", dt).as_str()).unwrap().into()
-    }
-
-    fn event(doc: &str, date: &str, class: ID, store: ID, goods: ID, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {
+    fn event(doc: &str, date: &str, class: ID, store: Store, goods: Goods, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {
         let context: Context = vec![doc.into()].into();
         let mut records = vec![
             Transformation::new(&context, *SPECIFIC_OF, class.into()),
-            Transformation::new(&context, *DATE, time(date).into()),
+            Transformation::new(&context, *DATE, Time::new(date).unwrap().into()),
             Transformation::new(&context, *STORE, store.into()),
             Transformation::new(&context, *GOODS, goods.into()),
             Transformation::new(&context, *QTY, qty.into()),
@@ -104,15 +98,15 @@ pub mod test_util {
         }).collect::<Vec<_>>()
     }
 
-    pub fn incoming(doc: &str, date: &str, store: ID, goods: ID, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {
+    pub(crate) fn incoming(doc: &str, date: &str, store: Store, goods: Goods, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {
         event(doc, date, *GOODS_RECEIVE, store, goods, qty, cost)
     }
 
-    pub fn outgoing(doc: &str, date: &str, store: ID, goods: ID, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {
+    pub(crate) fn outgoing(doc: &str, date: &str, store: Store, goods: Goods, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {
         event(doc, date, *GOODS_ISSUE, store, goods, qty, cost)
     }
 
-    pub fn delete(changes: Vec<ChangeTransformation>) -> Vec<ChangeTransformation> {
+    pub(crate) fn delete(changes: Vec<ChangeTransformation>) -> Vec<ChangeTransformation> {
         changes.iter().map(|t| ChangeTransformation {
             context: t.context.clone(),
             what: t.what.clone(),
