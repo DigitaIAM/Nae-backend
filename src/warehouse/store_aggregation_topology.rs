@@ -25,16 +25,16 @@ use crate::warehouse::turnover::*;
 // (time) + store + goods = (turnover, close_balance)
 
 pub(crate) struct WHQueryStoreAggregation {
-    prefix: Vec<u8>,
+    prefix: usize,
     position: Vec<u8>,
 }
 
 impl WHQueryStoreAggregation {
     fn position_stores_at_prev_checkpoint(time: &Time) -> Self {
-        let prefix = WHStoreAggregationTopology::position_prefix();
-        let position = WHStoreAggregationTopology::position_stores_at_prev_checkpoint(time);
-
-        WHQueryStoreAggregation { prefix, position }
+        WHQueryStoreAggregation {
+            prefix: WHStoreAggregationTopology::position_prefix(),
+            position: WHStoreAggregationTopology::position_stores_at_prev_checkpoint(time),
+        }
     }
 
     fn position_stores_at_post_checkpoint(time: &Time) -> Self {
@@ -46,8 +46,8 @@ impl WHQueryStoreAggregation {
 }
 
 impl PositionInTopology for WHQueryStoreAggregation {
-    fn prefix(&self) -> &Vec<u8> {
-        &self.prefix
+    fn prefix(&self) -> usize {
+        self.prefix
     }
 
     fn position(&self) -> &Vec<u8> {
@@ -235,13 +235,8 @@ impl WHStoreAggregationTopology {
         WHStoreAggregationTopology::position(store.into(), ID_MAX, time)
     }
 
-    fn position_prefix() -> Vec<u8> {
-        let mut bs = Vec::with_capacity(ID_BYTES);
-
-        // operation prefix
-        bs.extend_from_slice((*WH_STORE_AGGREGATION_TOPOLOGY).as_slice());
-
-        bs
+    fn position_prefix() -> usize {
+        ID_BYTES
     }
 
     fn position(store: ID, goods: ID, time: Time) -> Vec<u8> {
@@ -367,7 +362,7 @@ pub struct StoreDelta {
     op: CheckpointDelta,
 
     // TODO avoid serialization & deserialize of prefix & position
-    prefix: Vec<u8>,
+    prefix: usize,
     position: Vec<u8>,
 
     pub(crate) date: Time,
@@ -415,8 +410,8 @@ impl From<&DeltaOp<WHBalance,BalanceOperation,StoreBalance,StoreMovement>> for S
 }
 
 impl PositionInTopology for StoreDelta {
-    fn prefix(&self) -> &Vec<u8> {
-        &self.prefix
+    fn prefix(&self) -> usize {
+        self.prefix
     }
 
     fn position(&self) -> &Vec<u8> {

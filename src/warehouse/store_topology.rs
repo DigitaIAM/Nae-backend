@@ -16,26 +16,27 @@ use crate::warehouse::turnover::{Goods, NamedValue, Store};
 
 #[derive(Debug)]
 struct WHQueryStoreBalance {
-    prefix: Vec<u8>,
+    prefix: usize,
     position: Vec<u8>,
 }
 
 impl WHQueryStoreBalance {
-    fn bytes(prefix: Vec<u8>, position: Vec<u8>) -> Self {
+    fn bytes(prefix: usize, position: Vec<u8>) -> Self {
         // TODO check that position starts with prefix
         WHQueryStoreBalance { prefix, position }
     }
 
     fn new(store: Store, date: &Time) -> Self {
-        let prefix = WHStoreTopology::position_prefix(store.into());
-        let position = WHStoreTopology::position_at_end(store, date);
-        WHQueryStoreBalance { prefix, position }
+        WHQueryStoreBalance {
+            prefix: WHStoreTopology::position_prefix(),
+            position: WHStoreTopology::position_at_end(store, date)
+        }
     }
 }
 
 impl PositionInTopology for WHQueryStoreBalance {
-    fn prefix(&self) -> &Vec<u8> {
-        &self.prefix
+    fn prefix(&self) -> usize {
+        self.prefix
     }
 
     fn position(&self) -> &Vec<u8> {
@@ -54,61 +55,54 @@ impl QueryValue<WHBalance> for WHQueryStoreBalance {
 }
 
 pub(crate) struct WHQueryStoreOperation {
-    prefix: Vec<u8>,
+    prefix: usize,
     position: Vec<u8>,
 }
 
 impl WHQueryStoreOperation {
-    // pub(crate) fn from_position(store: Store, position: Vec<u8>) -> Self {
-    //     let prefix = WHStoreTopology::position_prefix(store.into());
-    //
-    //     WHQueryStoreOperation { prefix, position }
-    // }
-
     fn zero(store: Store) -> Self {
-        let prefix = WHStoreTopology::position_prefix(store.into());
-        let position = WHStoreTopology::position_of_zero(store);
-
-        WHQueryStoreOperation { prefix, position }
+        WHQueryStoreOperation {
+            prefix: WHStoreTopology::position_prefix(),
+            position: WHStoreTopology::position_of_zero(store),
+        }
     }
 
     pub(crate) fn start(store: Store, date: &Time) -> Self {
-        let prefix = WHStoreTopology::position_prefix(store.into());
-        let position = WHStoreTopology::position_at_start(store, date.start());
-
-        WHQueryStoreOperation { prefix, position }
+        WHQueryStoreOperation {
+            prefix: WHStoreTopology::position_prefix(),
+            position: WHStoreTopology::position_at_start(store, date.start()),
+        }
     }
 
     pub(crate) fn start_exclude(store: Store, time: &Time) -> Self {
         let time = time.add_quantum();
 
-        let prefix = WHStoreTopology::position_prefix(store.into());
-        let position = WHStoreTopology::position_at_start(store, time);
-
-        WHQueryStoreOperation { prefix, position }
+        WHQueryStoreOperation {
+            prefix: WHStoreTopology::position_prefix(),
+            position: WHStoreTopology::position_at_start(store, time),
+        }
     }
 
-
     pub(crate) fn end(store: Store, date: &Time) -> Self {
-        let prefix = WHStoreTopology::position_prefix(store.into());
-        let position = WHStoreTopology::position_at_end(store, date);
-
-        WHQueryStoreOperation { prefix, position }
+        WHQueryStoreOperation {
+            prefix: WHStoreTopology::position_prefix(),
+            position: WHStoreTopology::position_at_end(store, date),
+        }
     }
 
     pub(crate) fn end_exclude(store: Store, time: &Time) -> Self {
         let time = time.sub_quantum();
 
-        let prefix = WHStoreTopology::position_prefix(store.into());
-        let position = WHStoreTopology::position_at_end(store, &time);
-
-        WHQueryStoreOperation { prefix, position }
+        WHQueryStoreOperation {
+            prefix: WHStoreTopology::position_prefix(),
+            position: WHStoreTopology::position_at_end(store, &time),
+        }
     }
 }
 
 impl PositionInTopology for WHQueryStoreOperation {
-    fn prefix(&self) -> &Vec<u8> {
-        &self.prefix
+    fn prefix(&self) -> usize {
+        self.prefix
     }
 
     fn position(&self) -> &Vec<u8> {
@@ -154,7 +148,7 @@ impl WHStoreTopology {
 
         let balance = if let Some((position, mut balance)) = query.closest_before(tx.s) {
             log::debug!("closest memo {:?} at {:?}", balance, position);
-            let loaded = WHQueryStoreBalance::bytes(query.prefix().clone(), position);
+            let loaded = WHQueryStoreBalance::bytes(query.prefix(), position);
             if loaded.position() != query.position() {
                 log::debug!("calculate from closest value");
                 // TODO write test for this branch
@@ -206,18 +200,9 @@ impl WHStoreTopology {
         }
     }
 
-    fn position_prefix(store: ID) -> Vec<u8> {
-        let mut bs = Vec::with_capacity(ID_BYTES * 2);
-
-        // operation prefix
-        bs.extend_from_slice((*WH_STORE_TOPOLOGY).as_slice());
-
-        // prefix define calculation context
-        bs.extend_from_slice(store.as_slice());
-
-        bs
+    fn position_prefix() -> usize {
+        ID_BYTES * 2
     }
-
 
     fn position(store: ID, goods: ID, time: Time, op: u8) -> Vec<u8> {
         let mut bs = Vec::with_capacity((ID_BYTES * 3) + 10 + 1);
@@ -352,7 +337,7 @@ pub(crate) struct StoreMovement {
     pub(crate) op: BalanceOperation,
 
     // TODO avoid serialization & deserialize of prefix & position
-    prefix: Vec<u8>,
+    prefix: usize,
     position: Vec<u8>,
 
     pub(crate) date: Time,
@@ -363,7 +348,7 @@ pub(crate) struct StoreMovement {
 
 impl StoreMovement {
     fn new(store: Store, goods: Goods, date: Time, op: BalanceOperation) -> Self {
-        let prefix = WHStoreTopology::position_prefix(store.into());
+        let prefix = WHStoreTopology::position_prefix();
         let position = WHStoreTopology::position_at_end(store, &date);
         StoreMovement { store, goods, date, op, prefix, position }
     }
@@ -387,8 +372,8 @@ impl FromKVBytes<StoreMovement> for StoreMovement {
 }
 
 impl PositionInTopology for StoreMovement {
-    fn prefix(&self) -> &Vec<u8> {
-        &self.prefix
+    fn prefix(&self) -> usize {
+        self.prefix
     }
 
     fn position(&self) -> &Vec<u8> {

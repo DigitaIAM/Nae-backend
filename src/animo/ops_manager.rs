@@ -8,7 +8,7 @@ use crate::animo::db::{FromBytes, FromKVBytes, Snapshot};
 pub struct OpsManager();
 
 pub trait PositionInTopology {
-    fn prefix(&self) -> &Vec<u8>;
+    fn prefix(&self) -> usize;
     fn position(&self) -> &Vec<u8>;
 }
 
@@ -18,12 +18,14 @@ pub trait QueryValue<BV>: PositionInTopology {
     fn values_after<'a>(&'a self, s: &'a Snapshot<'a>) -> LightIterator<'a,BV>;
 }
 
-pub struct LightIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>, &'a Vec<u8>, PhantomData<O>);
+pub struct LightIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>, &'a[u8], PhantomData<O>);
 
 impl<'a,O> LightIterator<'a,O> {
     pub fn preceding_values(s: &'a Snapshot, query: &'a impl QueryValue<O>) -> Self {
-        let it = preceding(s, &s.cf_values(), query.position().clone());
-        LightIterator(it,query.prefix(),PhantomData)
+        let key = query.position().as_slice();
+        let prefix = &key[0..query.prefix()];
+        let it = preceding(s, &s.cf_values(), key);
+        LightIterator(it,prefix,PhantomData)
     }
 }
 
@@ -46,7 +48,7 @@ impl<'a,O: FromBytes<O>> Iterator for LightIterator<'a,O> {
     }
 }
 
-pub struct HeavyIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>, &'a Vec<u8>, PhantomData<O>);
+pub struct HeavyIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>, &'a[u8], PhantomData<O>);
 
 impl<'a,O: FromKVBytes<O>> Iterator for HeavyIterator<'a,O> {
     type Item = (Vec<u8>, O);
@@ -68,11 +70,11 @@ impl<'a,O: FromKVBytes<O>> Iterator for HeavyIterator<'a,O> {
     }
 }
 
-pub fn preceding<'a>(s: &'a Snapshot, cf_handle: &impl AsColumnFamilyRef, key: Vec<u8>) -> DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>> {
+pub fn preceding<'a>(s: &'a Snapshot, cf_handle: &impl AsColumnFamilyRef, key: &[u8]) -> DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>> {
     s.pit.iterator_cf_opt(
         cf_handle,
         ReadOptions::default(),
-        IteratorMode::From(key.as_slice(), Direction::Reverse)
+        IteratorMode::From(key, Direction::Reverse)
     )
 }
 
@@ -81,12 +83,14 @@ pub fn following_light<'a,O,PIT>(s: &'a Snapshot<'a>, cf_handle: &impl AsColumnF
 where
     PIT: PositionInTopology
 {
+    let key = pit.position().as_slice();
+    let prefix = &key[0..pit.prefix()];
     let it = s.pit.iterator_cf_opt(
         cf_handle,
         ReadOptions::default(),
-        IteratorMode::From(pit.position().as_slice(), Direction::Forward)
+        IteratorMode::From(key, Direction::Forward)
     );
-    LightIterator(it, pit.prefix(), PhantomData)
+    LightIterator(it, prefix, PhantomData)
 }
 
 // workaround for https://github.com/rust-lang/rust/issues/83701
@@ -94,12 +98,14 @@ fn following_heavy<'a,O,PIT>(s: &'a Snapshot, cf_handle: &impl AsColumnFamilyRef
 where
     PIT: PositionInTopology
 {
+    let key = pit.position().as_slice();
+    let prefix = &key[0..pit.prefix()];
     let it = s.pit.iterator_cf_opt(
         cf_handle,
         ReadOptions::default(),
-        IteratorMode::From(pit.position().as_slice(), Direction::Forward)
+        IteratorMode::From(key, Direction::Forward)
     );
-    HeavyIterator(it, pit.prefix(), PhantomData)
+    HeavyIterator(it, prefix, PhantomData)
 }
 
 pub struct BetweenLightIterator<'a,O>(LightIterator<'a,O>, &'a Vec<u8>);

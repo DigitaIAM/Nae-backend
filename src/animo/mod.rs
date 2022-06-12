@@ -125,7 +125,7 @@ where
     TV: ObjectInTopology<BV,BO,TO>,
     TO: OperationInTopology<BV,BO,TV>,
 {
-    fn prefix(&self) -> &Vec<u8> {
+    fn prefix(&self) -> usize {
         if let Some(after) = self.after.as_ref() {
             after.prefix()
         } else if let Some(before) = self.before.as_ref() {

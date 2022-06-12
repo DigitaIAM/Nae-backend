@@ -70,10 +70,10 @@ pub mod test_util {
         let wh_base = Arc::new(WHTopology());
         let wh_store = Arc::new(WHStoreTopology());
 
-        // animo.register_topology(Topology::Warehouse(wh_topology.clone()));
+        // animo.register_topology(Topology::Warehouse(wh_base.clone()));
         animo.register_topology(Topology::WarehouseStore(wh_store.clone()));
         animo.register_topology(Topology::WarehouseStoreAggregation(Arc::new(WHStoreAggregationTopology(wh_store.clone()))));
-        // animo.register_topology(Topology::WarehouseGoods(Arc::new(WHGoodsTopology(wh_topology.clone()))));
+        // animo.register_topology(Topology::WarehouseGoods(Arc::new(WHGoodsTopology(wh_base.clone()))));
         db.register_dispatcher(Arc::new(animo)).unwrap();
         db
     }

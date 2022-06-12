@@ -132,16 +132,8 @@ impl WHGoodsTopology {
         WHGoodsTopology::position(store.into(), ID_MAX, time.end())
     }
 
-    fn position_prefix(store: ID) -> Vec<u8> {
-        let mut bs = Vec::with_capacity(ID_BYTES * 2);
-
-        // operation prefix
-        bs.extend_from_slice((*WH_STOCK_TOPOLOGY).as_slice());
-
-        // prefix define calculation context
-        bs.extend_from_slice(store.as_slice());
-
-        bs
+    fn position_prefix() -> usize {
+        ID_BYTES * 2
     }
 
     fn position(store: ID, goods: ID, time: Time) -> Vec<u8> {
@@ -286,7 +278,7 @@ pub struct StockDelta {
     op: CheckpointOp,
 
     // TODO avoid serialization & deserialize of prefix & position
-    prefix: Vec<u8>,
+    prefix: usize,
     position: Vec<u8>,
 
     pub(crate) date: Time,
@@ -297,7 +289,7 @@ pub struct StockDelta {
 
 impl StockDelta {
     fn new(number_of_ops: i8, store: Store, goods: Goods, date: Time, op: BalanceOps) -> Self {
-        let prefix = WHGoodsTopology::position_prefix(store.into());
+        let prefix = WHGoodsTopology::position_prefix();
         let position = WHGoodsTopology::position_of_value(store, goods, date.clone());
 
         let op = CheckpointOp { number_of_ops, op };
@@ -334,8 +326,8 @@ impl From<&DeltaOp<WHBalance,BalanceOperation,WarehouseBalance,WarehouseMovement
 }
 
 impl PositionInTopology for StockDelta {
-    fn prefix(&self) -> &Vec<u8> {
-        &self.prefix
+    fn prefix(&self) -> usize {
+        self.prefix
     }
 
     fn position(&self) -> &Vec<u8> {
