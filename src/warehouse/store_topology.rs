@@ -558,8 +558,7 @@ mod tests {
 
     #[test]
     fn test_store_operations() {
-        // animo.register_topology(Topology::Warehouse(Arc::new(WarehouseTopology())));
-        let db = init();
+        let (tmp_dir, settings, db) = init();
 
         let wh1: Store = ID::from("wh1").into();
         let g1: Goods = ID::from("g1").into();
@@ -621,5 +620,9 @@ mod tests {
             NamedValue::new(wh1, Money(20.into())),
             store_balance.value().clone()
         );
+
+        // stop db and delete data folder
+        db.close();
+        tmp_dir.close().unwrap();
     }
 }

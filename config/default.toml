@@ -1,0 +1,9 @@
+debug = false
+
+[database]
+folder = "./data/memory"
+
+[jwt_config]
+audience = "https://yourdomain.com"
+issuer = "Nae"
+secret = "Rbv6xU9kwX8ViDsv8YxBuEAecxn7Z4PrRDaGjcN37YFnQJIHhdnHAlr9Mk4UBis"

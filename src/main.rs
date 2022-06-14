@@ -1,12 +1,21 @@
 #![allow(dead_code, unused)]
 extern crate core;
 
+use lazy_static::lazy_static;
+use std::sync::RwLock;
 use actix::Actor;
 use actix_web::{App, HttpServer, middleware, web};
+use actix_web::dev::ServiceRequest;
+use actix_web::http::header;
+use actix_web_httpauth::extractors::AuthenticationError;
+use actix_web_httpauth::extractors::bearer::{BearerAuth, Config};
+use actix_web_httpauth::middleware::HttpAuthentication;
 use crate::commutator::Commutator;
 
+mod settings;
 mod websocket;
 mod commutator;
+mod auth;
 
 mod api;
 mod animo;
@@ -15,22 +24,39 @@ mod accounts;
 
 use animo::memory::Memory;
 use animo::db::AnimoDB;
+use crate::settings::Settings;
+
+// lazy_static! {
+//     static ref SETTINGS: RwLock<Config> = RwLock::new(Config::default());
+// }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=debug,actix_server=debug");
     env_logger::init();
 
-    log::info!("starting up 127.0.0.1:8080");
+    let address = "localhost"; // "127.0.0.1"
+    let port = 8080;
 
-    let db: AnimoDB = Memory::init("./data/memory").unwrap();
+    log::info!("starting up {:?}:{:?}", address, port);
+
+    let settings = std::sync::Arc::new(Settings::new().unwrap());
+
+    let db: AnimoDB = Memory::init(&settings.database.folder).unwrap();
     let communicator = Commutator::new(db.clone()).start();
 
     HttpServer::new(move || {
+        // let auth = HttpAuthentication::bearer(auth::validator);
+
         App::new()
+            .app_data(web::Data::new(settings.clone()))
             .app_data(web::Data::new(db.clone()))
-            .app_data(communicator.clone())
+            .app_data(web::Data::new(communicator.clone()))
             .wrap(middleware::Logger::default())
+            // .wrap(auth)
+            .service(
+                web::scope("/")
+            )
             .service(
                 web::scope("/v1")
                     .service(websocket::start_connection_route)
@@ -40,7 +66,7 @@ async fn main() -> std::io::Result<()> {
             // .route("/ws/", web::get().to(websocket))
             .default_service(web::route().to(api::not_implemented))
     })
-        .bind(("127.0.0.1", 8080))?
+        .bind((address, port))?
         .run()
         .await
 }
@@ -51,17 +77,11 @@ mod tests {
     use actix_web::{App, test, web};
     use actix_web::web::Bytes;
     use crate::animo::memory::{ChangeTransformation, Transformation, TransformationKey, Value};
-
-    fn init() {
-        std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
+    use crate::warehouse::test_util::init;
 
     #[actix_web::test]
     async fn test_put_get() {
-        init();
-
-        let db: AnimoDB = Memory::init("./data/tests").unwrap();
+        let (tmp_dir, settings, db) = init();
 
         let app = test::init_service(
             App::new()
@@ -118,6 +138,8 @@ mod tests {
         let response = test::call_service(&app, req).await;
         assert_eq!(response.status().to_string(), "501 Not Implemented");
 
-        // TODO db.clear();
+        // stop db and delete data folder
+        db.close();
+        tmp_dir.close().unwrap();
     }
 }

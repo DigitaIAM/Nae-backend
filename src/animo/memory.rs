@@ -7,6 +7,7 @@ use rust_decimal::Decimal;
 use crate::animo::error::DBError;
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::animo::Time;
+use crate::Settings;
 
 type Hasher = Blake2s256;
 pub(crate) const ID_BYTES: usize = 32;
@@ -42,10 +43,30 @@ pub struct ChangeTransformation {
     pub into_after: Value
 }
 
+impl ChangeTransformation {
+    pub(crate) fn create(context: ID, what: &str, into: Value) -> Self {
+        ChangeTransformation {
+            context: Context(vec![context]),
+            what: what.into(),
+            into_before: Value::Nothing,
+            into_after: into
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransformationKey {
     pub context: Context,
     pub what: ID,
+}
+
+impl TransformationKey {
+    pub(crate) fn simple(context: ID, what: &str) -> Self {
+        TransformationKey {
+            context: Context(vec![context]),
+            what: what.into()
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -104,6 +125,12 @@ impl From<ID> for Value {
 impl From<&str> for Value {
     fn from(data: &str) -> Self {
         Value::String(data.into())
+    }
+}
+
+impl From<String> for Value {
+    fn from(data: String) -> Self {
+        Value::String(data)
     }
 }
 
@@ -217,10 +244,11 @@ impl Context {
 
 
 pub(crate) trait Memory {
-    fn init(path: &str) -> Result<Self, DBError> where Self: Sized;
+    fn init(folder: &str) -> Result<Self, DBError> where Self: Sized;
 
     fn modify(&self, mutations: Vec<ChangeTransformation>) -> Result<(), DBError>;
 
+    fn value(&self, key: TransformationKey) -> Result<Value, DBError>;
     fn query(&self, keys: Vec<TransformationKey>) -> Result<Vec<Transformation>, DBError>;
 }
 

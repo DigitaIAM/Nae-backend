@@ -1,7 +1,8 @@
+use std::mem;
 use std::sync::{Arc, Mutex};
 use rocksdb::{BoundColumnFamily, DB, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch};
 use crate::animo::error::DBError;
-use crate::Memory;
+use crate::{Memory, Settings};
 use crate::animo::OpsManager;
 use crate::animo::memory::*;
 
@@ -46,6 +47,10 @@ impl AnimoDB {
         let pit = self.db.snapshot();
         Snapshot { rf: self, pit }
     }
+
+    pub(crate) fn close(self) {
+        std::mem::drop(self.db);
+    }
 }
 
 pub struct Snapshot<'a> {
@@ -87,17 +92,17 @@ pub trait Dispatcher: Sync + Send {
 }
 
 impl Memory for AnimoDB {
-    fn init(path: &str) -> Result<Self, DBError> {
+    fn init(folder: &str) -> Result<Self, DBError> {
         let mut options = Options::default();
         options.set_error_if_exists(false);
         options.create_if_missing(true);
         options.create_missing_column_families(true);
 
         // list existing ColumnFamilies
-        let cfs = DB::list_cf(&options, path).unwrap_or_default();
+        let cfs = DB::list_cf(&options, folder).unwrap_or_default();
 
         // open DB
-        let mut db = DB::open_cf(&options, path, cfs.clone()).unwrap();
+        let mut db = DB::open_cf(&options, folder, cfs.clone()).unwrap();
 
         let create_cf = |db: &mut DB, cfs: &Vec<String>, cf_name: &str| {
             if !cfs.iter().any(|cf| cf == cf_name) {
@@ -153,6 +158,12 @@ impl Memory for AnimoDB {
         }
 
         Ok(())
+    }
+
+    fn value(&self, key: TransformationKey) -> Result<Value, DBError> {
+        let s = self.snapshot();
+
+        s.load_by(&key.context, &key.what)
     }
 
     fn query(&self, keys: Vec<TransformationKey>) -> Result<Vec<Transformation>, DBError> {

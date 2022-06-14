@@ -48,8 +48,9 @@ use crate::animo::Time;
 pub mod test_util {
     use std::sync::Arc;
     use chrono::DateTime;
+    use tempfile::TempDir;
     use crate::animo::memory::{ChangeTransformation, Context, ID, Transformation, Value};
-    use crate::{Memory, AnimoDB};
+    use crate::{Memory, AnimoDB, Settings};
     use crate::animo::{Animo, Time, Topology};
     use crate::animo::shared::*;
     use crate::warehouse::{WHGoodsTopology, WHTopology};
@@ -57,12 +58,14 @@ pub mod test_util {
     use crate::warehouse::store_topology::WHStoreTopology;
     use crate::warehouse::turnover::{Goods, Store};
 
-    pub(crate) fn init() -> AnimoDB {
+    pub(crate) fn init() -> (TempDir, Settings, AnimoDB) {
         std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
         let _ = env_logger::builder().is_test(true).try_init();
 
         let tmp_dir = tempfile::tempdir().unwrap();
         let tmp_path = tmp_dir.path().to_str().unwrap();
+
+        let settings = Settings::test(tmp_path.into());
 
         let mut db: AnimoDB = Memory::init(tmp_path).unwrap();
         let mut animo = Animo::default();
@@ -75,7 +78,7 @@ pub mod test_util {
         animo.register_topology(Topology::WarehouseStoreAggregation(Arc::new(WHStoreAggregationTopology(wh_store.clone()))));
         // animo.register_topology(Topology::WarehouseGoods(Arc::new(WHGoodsTopology(wh_base.clone()))));
         db.register_dispatcher(Arc::new(animo)).unwrap();
-        db
+        (tmp_dir, settings, db)
     }
 
     fn event(doc: &str, date: &str, class: ID, store: Store, goods: Goods, qty: u32, cost: Option<u32>) -> Vec<ChangeTransformation> {

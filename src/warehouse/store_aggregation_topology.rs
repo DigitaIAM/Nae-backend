@@ -121,9 +121,11 @@ impl WHStoreAggregationTopology {
 
             if point.date.to_bytes() == checkpoint_from.to_bytes() {
                 aggregation.open += Money::from(point.aggregation.balance);
-            } else {
+            } else if point.date.to_bytes() == checkpoint_till.to_bytes() {
                 aggregation.ops += MoneyOps::from(point.aggregation.turnover);
                 aggregation.close += Money::from(point.aggregation.balance);
+            } else {
+                aggregation.ops += MoneyOps::from(point.aggregation.turnover);
             }
 
             log::debug!("on full {:?}", aggregation);
@@ -482,7 +484,7 @@ mod tests {
 
     #[test]
     fn test_warehouse_store_turnover() {
-        let db = init();
+        let (tmp_dir, settings, db) = init();
 
         let wh1: Store = ID::from("wh1").into();
         let g1: Goods = ID::from("g1").into();
@@ -578,5 +580,9 @@ mod tests {
             },
             store_details.value
         );
+
+        // stop db and delete data folder
+        db.close();
+        tmp_dir.close().unwrap();
     }
 }

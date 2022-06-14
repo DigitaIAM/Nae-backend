@@ -536,7 +536,7 @@ mod tests {
     #[test]
     fn test_store_operations() {
         // animo.register_topology(Topology::Warehouse(Arc::new(WarehouseTopology())));
-        let db = init();
+        let (tmp_dir, settings, db) = init();
 
         let wh1: Store = ID::from("wh1").into();
         let g1: Goods = ID::from("g1").into();
@@ -582,5 +582,9 @@ mod tests {
         log::debug!("READING 2022-05-31 [4]");
         let g1_balance = WHTopology::balance(&db, wh1, g1, d22_05_31.clone()).expect("Ok");
         assert_eq!(WHBalance(Qty(4.into()), Money(20.into())), g1_balance.value().into());
+
+        // stop db and delete data folder
+        db.close();
+        tmp_dir.close().unwrap();
     }
 }

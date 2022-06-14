@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_warehouse_stock() {
-        let db = init();
+        let (tmp_dir, settings, db) = init();
 
         let wh1: Store = ID::from("wh1").into();
         let g1: Goods = ID::from("g1").into();
@@ -216,5 +216,9 @@ mod tests {
         log::debug!("READING [3] 2022-05-31");
         let goods = WHGoodsTopology::goods(&db, wh1, d22_05_31.clone()).expect("Ok");
         assert_eq!(1, goods.len());
+
+        // stop db and delete data folder
+        db.close();
+        tmp_dir.close().unwrap();
     }
 }
