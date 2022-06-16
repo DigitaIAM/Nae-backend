@@ -85,7 +85,7 @@ mod tests {
 
         let app = test::init_service(
             App::new()
-                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(db.clone()))
                 .wrap(middleware::Logger::default())
                 .service(api::memory_modify)
                 .service(api::memory_query)
