@@ -17,7 +17,8 @@ pub(crate) async fn memory_query(db: web::Data<AnimoDB>, keys: web::Json<Vec<Tra
     //     .await?
         .map_err(actix_web::error::ErrorInternalServerError)?;
 
-    Ok(HttpResponse::Ok().json(transformations))
+    // Ok(HttpResponse::Ok().json(transformations))
+    todo!()
 }
 
 #[post("/memory/modify")]

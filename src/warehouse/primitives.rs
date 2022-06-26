@@ -1,7 +1,14 @@
-use serde::{Deserialize, Serialize};
-use rust_decimal::Decimal;
+use rkyv::{Archive, Deserialize, Serialize};
+use bytecheck::CheckBytes;
+use crate::Decimal;
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Default, Serialize, Deserialize)]
+// #[derive(Debug, Clone, Hash, Eq, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Default)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct Qty(pub Decimal); // TODO UOM,
 
 impl std::ops::Add<Qty> for Qty {
@@ -44,7 +51,13 @@ impl std::ops::Neg for Qty {
     }
 }
 
-#[derive(Debug, Default, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+// #[derive(Debug, Default, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Default)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct Money(pub Decimal); // TODO Currency,
 
 impl From<MoneyOp> for Money {
@@ -114,7 +127,7 @@ pub(crate) enum MoneyOp {
     Outgoing(Money),
 }
 
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub(crate) struct MoneyOps {
     pub(crate) incoming: Money,
     pub(crate) outgoing: Money,

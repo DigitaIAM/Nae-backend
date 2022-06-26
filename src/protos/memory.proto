@@ -1,0 +1,12 @@
+syntax = "proto3";
+package memory;
+
+message Value {
+  bool nothing = 1;
+  bool id = 2;
+  bool ids = 3;
+  string string = 4;
+  double number = 5;
+  uint64 uint64 = 6;
+  uint64 time = 7;
+}

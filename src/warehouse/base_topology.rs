@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::fmt::Debug;
 use chrono::{TimeZone, Utc};
+use rkyv::AlignedVec;
 use serde::{Deserialize, Serialize};
 use crate::animo::error::DBError;
 use crate::animo::memory::{Context, ID, ID_BYTES};
@@ -46,7 +47,7 @@ impl PositionInTopology for WHQueryBalance {
 
 impl QueryValue<WHBalance> for WHQueryBalance {
     fn closest_before(&self, s: &Snapshot) -> Option<(Vec<u8>, WHBalance)> {
-        LightIterator::preceding_values(s, self).next()
+        LightIterator::preceding_values(s, self).next().clone()
     }
 
     fn values_after<'a>(&'a self, s: &'a Snapshot<'a>) -> LightIterator<'a, WHBalance> {
@@ -259,6 +260,7 @@ impl OperationsTopology for WHTopology {
 
         let mut ops = Vec::with_capacity(contexts.len());
         for context in contexts {
+            // profiling::scope!("Looped Context To Operation");
             let (before,after) = WarehouseMovement::resolve(tx, &context)?;
 
             if before.is_some() || after.is_some() {
@@ -271,7 +273,7 @@ impl OperationsTopology for WHTopology {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)] // , Serialize, Deserialize)]
 pub(crate) struct WarehouseBalance {
     pub(crate) balance: WHBalance,
 
@@ -282,7 +284,7 @@ pub(crate) struct WarehouseBalance {
 }
 
 impl ToKVBytes for WarehouseBalance {
-    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, AlignedVec), DBError> {
         let k = WHTopology::position_at_end(self.store, self.goods, self.date.clone());
         let v = self.balance.to_bytes()?;
         Ok((k,v))
@@ -309,7 +311,7 @@ impl From<&WarehouseBalance> for WHBalance {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)] // , Serialize, Deserialize)]
 pub(crate) struct WarehouseMovement {
     pub(crate) op: BalanceOperation,
 
@@ -333,7 +335,7 @@ impl WarehouseMovement {
 }
 
 impl ToKVBytes for WarehouseMovement {
-    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, AlignedVec), DBError> {
         let k = WHTopology::position_of_operation(self.store, self.goods, self.date.clone(), &self.op);
         let v = self.op.to_bytes()?;
         Ok((k,v))
@@ -496,8 +498,8 @@ impl OperationInTopology<WHBalance,BalanceOperation,WarehouseBalance> for Wareho
         Ok((before,after))
     }
 
-    fn operation(&self) -> BalanceOperation {
-        self.op.clone()
+    fn operation(&self) -> &BalanceOperation {
+        &self.op
     }
 
     fn to_value(&self) -> WarehouseBalance {

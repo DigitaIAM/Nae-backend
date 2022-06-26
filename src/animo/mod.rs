@@ -64,7 +64,7 @@ pub(crate) trait Delta<V> {
 pub(crate) trait OperationInTopology<BV,BO,TV: ObjectInTopology<BV,BO,Self>>: PositionInTopology + Sized + Debug + FromKVBytes<Self> + ToKVBytes {
     fn resolve(env: &Txn, context: &Context) -> Result<(Option<Self>,Option<Self>), DBError>;
 
-    fn operation(&self) -> BO;
+    fn operation(&self) -> &BO;
 
     fn to_value(&self) -> TV;
 }
@@ -241,6 +241,10 @@ impl<V> MemoOfList<V> {
     pub fn get(&self, index: usize) -> Option<&Memo<V>> {
         self.list.get(index)
     }
+
+    pub fn list(&self) -> &Vec<Memo<V>> {
+        &self.list
+    }
 }
 
 pub(crate) struct Txn<'a> {
@@ -360,7 +364,7 @@ impl<'a> Txn<'a> {
 
         log::debug!("put value {:?} {:?}", k, v);
 
-        self.batch.put_cf(&self.s.cf_values(), k.as_slice(), v.as_slice());
+        self.batch.put_cf(&self.s.cf_values(), k.as_slice(), v);
         Ok(())
     }
 
@@ -511,9 +515,11 @@ impl Animo {
 impl Dispatcher for Animo {
     // push propagation of mutations
     fn on_mutation(&self, s: &Snapshot, mutations: &[ChangeTransformation]) -> Result<(), DBError> {
+        let mut count = 0;
         // calculate node_producers that affected by mutations
         let mut topologies: HashMap<Topology, HashSet<Context>> = HashMap::new();
         for mutation in mutations {
+            // profiling::scope!("Looped Contexts");
             if let Some(set) = self.what_to_topologies.get(&mutation.what) {
                 for item in set {
                     match topologies.get_mut(item) {
@@ -536,6 +542,7 @@ impl Dispatcher for Animo {
 
         // generate new operations or overwrite existing
         for (topology, contexts) in topologies.into_iter() {
+            println!("contexts {}", contexts.len());
             match topology {
                 Topology::Warehouse(top) => {
                     let ops = top.on_mutation(&mut tx, contexts)?;

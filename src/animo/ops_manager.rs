@@ -29,7 +29,7 @@ impl<'a,O> LightIterator<'a,O> {
     }
 }
 
-impl<'a,O: FromBytes<O>> Iterator for LightIterator<'a,O> {
+impl<'a,O: FromBytes<O> + Debug> Iterator for LightIterator<'a,O> {
     type Item = (Vec<u8>, O);
 
     fn next(&mut self) -> Option<(Vec<u8>, O)> {

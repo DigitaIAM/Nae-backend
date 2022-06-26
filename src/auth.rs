@@ -3,7 +3,6 @@ use actix_web::{post, web, Responder, HttpResponse, Error, FromRequest, HttpRequ
 use actix_web::dev::{Payload, ServiceRequest};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
-use serde::{Deserialize, Serialize};
 use pbkdf2::{
     password_hash::{
         rand_core::OsRng,
@@ -17,7 +16,7 @@ use crate::animo::memory::{ChangeTransformation, Context, ID, TransformationKey,
 
 const ALGORITHM: Algorithm = Algorithm::HS256;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct Claims {
     aud: String,         // Audience [optional]
     exp: u128,            // Required (validate_exp defaults to true in validation). Expiration time (as UTC timestamp)
@@ -58,9 +57,9 @@ pub(crate) fn decode_token(settings: &Settings, db: &AnimoDB, token: &str) -> Re
                 let last_logout: Option<u128> = match
                     db.value(TransformationKey::simple(account_id, "last_logout"))?
                 {
-                    Value::Number(number) => {
+                    Value::U128(number) => {
                         log::debug!("last_logout {} vs {}", number, token.claims.iat);
-                        number.try_into().ok()
+                        Some(number)
                     },
                     _ => None,
                 };
@@ -104,7 +103,7 @@ pub(crate) fn decode_token(settings: &Settings, db: &AnimoDB, token: &str) -> Re
 //     }
 // }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Account {
     id: ID,
     // first_name: String,
@@ -120,20 +119,20 @@ impl Account {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SignUpRequest {
     email: String,
     password: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct LoginRequest {
     email: String,
     password: String,
     remember_me: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct LoginResponse {
     token: String,
 }
@@ -148,7 +147,7 @@ pub(crate) async fn logout(auth: BearerAuth, settings: web::Data<Settings>, db: 
     log::debug!("logout {}", now);
 
     let mutation = vec![
-        ChangeTransformation::create(account.id, "last_logout", Value::Number(now.into())),
+        ChangeTransformation::create(account.id, "last_logout", Value::U128(now)),
     ];
     db.modify(mutation)
         .map_err(actix_web::error::ErrorInternalServerError)?;

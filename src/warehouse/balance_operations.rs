@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
+use bytecheck::CheckBytes;
+use rust_decimal::prelude::Zero;
+
 use crate::animo::{AObject, AOperation};
 use crate::animo::error::DBError;
 use crate::animo::db::{FromBytes, ToBytes};
@@ -6,10 +9,16 @@ use crate::warehouse::balance::WHBalance;
 use crate::warehouse::balance_operation::BalanceOperation;
 use crate::warehouse::primitives::{Money, MoneyOps, Qty};
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+// #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct BalanceOps {
-    incoming: (Qty, Money),
-    outgoing: (Qty, Money),
+    pub(crate) incoming: (Qty, Money),
+    pub(crate) outgoing: (Qty, Money),
 }
 
 impl std::ops::Add<BalanceOps> for BalanceOps {
@@ -96,15 +105,17 @@ impl From<&BalanceOperation> for BalanceOps {
 
 impl FromBytes<Self> for BalanceOps {
     fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
-        serde_json::from_slice(bs)
-            .map_err(|_| "fail to decode BalanceOperations".into())
+        todo!()
+        // serde_json::from_slice(bs)
+        //     .map_err(|_| "fail to decode BalanceOperations".into())
     }
 }
 
 impl ToBytes for BalanceOps {
-    fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
-        serde_json::to_string(self)
-            .map(|s| s.as_bytes().to_vec())
-            .map_err(|_| format!("fail to encode BalanceOperations {:?}", self).into())
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        todo!()
+        // serde_json::to_string(self)
+        //     .map(|s| s.as_bytes().to_vec())
+        //     .map_err(|_| format!("fail to encode BalanceOperations {:?}", self).into())
     }
 }

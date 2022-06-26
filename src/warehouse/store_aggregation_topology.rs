@@ -1,10 +1,12 @@
+use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
+use bytecheck::CheckBytes;
+
 use std::collections::{HashMap, HashSet};
 use std::ops::{Add, Neg, Sub};
 use std::sync::Arc;
 use chrono::{Datelike, Timelike, TimeZone, Utc};
 use log::debug;
-use serde::{Deserialize, Serialize};
-use derives::ImplBytes;
+
 use crate::animo::*;
 use crate::animo::error::DBError;
 use crate::animo::memory::*;
@@ -119,9 +121,10 @@ impl WHStoreAggregationTopology {
 
             let aggregation = &mut named.value;
 
-            if point.date.to_bytes() == checkpoint_from.to_bytes() {
+            log::debug!("{:?} vs {:?} {:?} - {:?} {:?}", point.date, checkpoint_from, point.date.ts() == checkpoint_from.ts(), checkpoint_till, point.date.ts() == checkpoint_till.ts());
+            if point.date.ts() == checkpoint_from.ts() {
                 aggregation.open += Money::from(point.aggregation.balance);
-            } else if point.date.to_bytes() == checkpoint_till.to_bytes() {
+            } else if point.date.ts() == checkpoint_till.ts() {
                 aggregation.ops += MoneyOps::from(point.aggregation.turnover);
                 aggregation.close += Money::from(point.aggregation.balance);
             } else {
@@ -132,6 +135,7 @@ impl WHStoreAggregationTopology {
         }
 
         log::debug!("***** subtract operations between [checkpoint_from, from) *****");
+        log::debug!("aggregation: {:?}", stores);
 
         // subtract operations between [checkpoint_from, from)
         if checkpoint_from.to_bytes() < interval.from.to_bytes() {
@@ -162,6 +166,7 @@ impl WHStoreAggregationTopology {
         }
 
         log::debug!("***** subtract operations between (till, checkpoint_till] *****");
+        log::debug!("aggregation: {:?}", stores);
 
         // subtract operations between (till, checkpoint_till]
         if checkpoint_till.to_bytes() > interval.till.to_bytes() {
@@ -190,6 +195,8 @@ impl WHStoreAggregationTopology {
                 }
             }
         }
+
+        log::debug!("aggregation: {:?}", stores);
 
         let items = stores.values()
             .cloned()
@@ -276,11 +283,39 @@ impl WHStoreAggregationTopology {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ImplBytes)]
-pub(crate) struct AggregationAtCheckpoint {
+// #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ImplBytes)]
+#[derive(Clone)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct AggregationAtCheckpoint {
     number_of_ops: i32,
     turnover: BalanceOps,
     balance: WHBalance,
+}
+
+impl ToBytes for AggregationAtCheckpoint {
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        rkyv::to_bytes::<_, 1024>(self)
+            .map_err(|e| DBError::from(e.to_string()))
+    }
+}
+
+impl FromBytes<Self> for AggregationAtCheckpoint {
+    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+        let archived = unsafe { rkyv::archived_root::<Self>(bs) };
+        let value: Self = archived.deserialize(&mut rkyv::Infallible).unwrap();
+        Ok(value)
+        // match rkyv::check_archived_root::<Self>(bs) {
+        //     Ok(archived) => {
+        //         let value: Self = archived.deserialize(&mut rkyv::Infallible).unwrap();
+        //         Ok(value)
+        //     },
+        //     Err(e) => Err(DBError::from(e.to_string()))
+        // }
+    }
 }
 
 impl AObject<CheckpointDelta> for AggregationAtCheckpoint {
@@ -333,10 +368,28 @@ impl Neg for AggregationAtCheckpoint {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ImplBytes)]
-pub(crate) struct CheckpointDelta {
+// #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ImplBytes)]
+#[derive(Clone)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+// #[archive_attr(derive(CheckBytes, Debug))]
+pub struct CheckpointDelta {
     number_of_ops: i8,
     op: BalanceOps,
+}
+
+impl ToBytes for CheckpointDelta {
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        todo!()
+    }
+}
+
+impl FromBytes<Self> for CheckpointDelta {
+    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+        todo!()
+    }
 }
 
 impl AOperation<AggregationAtCheckpoint> for CheckpointDelta {
@@ -349,7 +402,13 @@ impl AOperation<AggregationAtCheckpoint> for CheckpointDelta {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+// #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+// #[archive_attr(derive(CheckBytes, Debug))]
 pub struct WarehouseStock {
     aggregation: AggregationAtCheckpoint,
 
@@ -359,7 +418,13 @@ pub struct WarehouseStock {
     date: Time,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+// #[archive_attr(derive(CheckBytes, Debug))]
 pub struct StoreDelta {
     op: CheckpointDelta,
 
@@ -441,7 +506,7 @@ impl AOperationInTopology<AggregationAtCheckpoint,CheckpointDelta,WarehouseStock
 }
 
 impl ToKVBytes for WarehouseStock {
-    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, AlignedVec), DBError> {
         let k = WHStoreAggregationTopology::position_of_value(self.store, self.goods, self.date.clone());
         let v = self.aggregation.to_bytes()?;
         Ok((k,v))
@@ -478,8 +543,15 @@ impl AObjectInTopology<AggregationAtCheckpoint,CheckpointDelta,StoreDelta> for W
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+    use std::io::{BufWriter, Write};
+    use std::thread;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use chrono::DateTime;
+    use criterion::Bencher;
+    use dbase::{FieldValue, Record};
     use super::*;
-    use crate::Memory;
+    use crate::{Memory, Settings};
     use crate::warehouse::test_util::*;
 
     #[test]
@@ -586,3 +658,4 @@ mod tests {
         tmp_dir.close().unwrap();
     }
 }
+

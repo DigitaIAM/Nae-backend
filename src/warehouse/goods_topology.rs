@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::{Datelike, Timelike, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use derives::ImplBytes;
+use rkyv::AlignedVec;
 use crate::animo::*;
 use crate::animo::error::DBError;
 use crate::animo::memory::*;
@@ -182,10 +183,22 @@ impl WHGoodsTopology {
 //
 //  - operations topology: store, time, goods = op (untrusted list of goods for given time)
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ImplBytes)]
+#[derive(Debug, Clone, PartialEq)] // , Serialize, Deserialize)] // , ImplBytes
 pub(crate) struct BalanceCheckpoint {
     number_of_ops: i16,
     balance: WHBalance,
+}
+
+impl ToBytes for BalanceCheckpoint {
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        todo!()
+    }
+}
+
+impl FromBytes<Self> for BalanceCheckpoint {
+    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+        todo!()
+    }
 }
 
 impl AObject<CheckpointOp> for BalanceCheckpoint {
@@ -234,7 +247,7 @@ impl Neg for BalanceCheckpoint {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)] // , Serialize, Deserialize)]
 pub(crate) struct CheckpointOp {
     number_of_ops: i8,
     op: BalanceOps,
@@ -250,20 +263,22 @@ impl AOperation<BalanceCheckpoint> for CheckpointOp {
 }
 
 impl ToBytes for CheckpointOp {
-    fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
-        serde_json::to_vec(self)
-            .map_err(|e| e.to_string().into())
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        todo!()
+        // serde_json::to_vec(self)
+        //     .map_err(|e| e.to_string().into())
     }
 }
 
 impl FromBytes<Self> for CheckpointOp {
     fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
-        serde_json::from_slice(bs)
-            .map_err(|e| e.to_string().into())
+        todo!()
+        // serde_json::from_slice(bs)
+        //     .map_err(|e| e.to_string().into())
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)] // , Serialize, Deserialize)]
 pub struct WarehouseStock {
     value: BalanceCheckpoint,
 
@@ -273,7 +288,7 @@ pub struct WarehouseStock {
     store: Store,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)] // , Serialize, Deserialize)]
 pub struct StockDelta {
     op: CheckpointOp,
 
@@ -355,7 +370,7 @@ impl AOperationInTopology<BalanceCheckpoint,CheckpointOp,WarehouseStock> for Sto
 }
 
 impl ToKVBytes for WarehouseStock {
-    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, AlignedVec), DBError> {
         let k = WHGoodsTopology::position_of_value(self.store, self.goods, self.date.clone());
         let v = self.value.to_bytes()?;
         Ok((k,v))

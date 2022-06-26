@@ -1,13 +1,15 @@
+use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
+use bytecheck::CheckBytes;
+
 use std::array::TryFromSliceError;
 use std::cmp::Ordering;
 use std::ops::{Add, Sub};
-use serde::{Deserialize, Serialize};
+
 use blake2::{Digest, Blake2s256};
-use rust_decimal::Decimal;
 use crate::animo::error::DBError;
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::animo::Time;
-use crate::Settings;
+use crate::{Decimal, Settings};
 
 type Hasher = Blake2s256;
 pub(crate) const ID_BYTES: usize = 32;
@@ -15,27 +17,52 @@ pub(crate) const ID_BYTES: usize = 32;
 pub const ID_MIN: ID = ID([u8::MIN;ID_BYTES]);
 pub const ID_MAX: ID = ID([u8::MAX;ID_BYTES]);
 
-#[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq, Copy)]
+// #[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq, Copy)]
+#[derive(Clone, Copy, Hash, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct ID([u8; ID_BYTES]);
 
-#[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
+// #[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct IDs(pub Vec<ID>);
 
 // Options: singularity, magnitude
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+// #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+// #[archive_attr(derive(CheckBytes, Debug))]
 pub enum Value {
     Nothing,
     ID(ID),
     IDs(IDs),
     String(String),
     Number(Decimal),
+    U128(u128),
     DateTime(Time)
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+// #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Hash, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+// #[archive_attr(derive(CheckBytes, Debug))]
 pub struct Context(pub Vec<ID>);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChangeTransformation {
     pub context: Context,
     pub what: ID,
@@ -44,6 +71,15 @@ pub struct ChangeTransformation {
 }
 
 impl ChangeTransformation {
+    pub(crate) fn new(context: Context, what: ID, into: Value) -> Self {
+        ChangeTransformation {
+            context,
+            what,
+            into_before: Value::Nothing,
+            into_after: into
+        }
+    }
+
     pub(crate) fn create(context: ID, what: &str, into: Value) -> Self {
         ChangeTransformation {
             context: Context(vec![context]),
@@ -52,9 +88,18 @@ impl ChangeTransformation {
             into_after: into
         }
     }
+
+    pub(crate) fn create_(context: ID, what: ID, into: Value) -> Self {
+        ChangeTransformation {
+            context: Context(vec![context]),
+            what,
+            into_before: Value::Nothing,
+            into_after: into
+        }
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct TransformationKey {
     pub context: Context,
     pub what: ID,
@@ -69,7 +114,13 @@ impl TransformationKey {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+// #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+// #[archive_attr(derive(CheckBytes, Debug))]
 pub struct Transformation {
     pub context: Context,
     pub what: ID,
@@ -88,6 +139,14 @@ impl Transformation {
 
 impl From<&str> for ID {
     fn from(data: &str) -> Self {
+        let mut bs = [0; 32];
+        bs.copy_from_slice(Hasher::digest(data).as_slice());
+        ID(bs)
+    }
+}
+
+impl From<String> for ID {
+    fn from(data: String) -> Self {
         let mut bs = [0; 32];
         bs.copy_from_slice(Hasher::digest(data).as_slice());
         ID(bs)
@@ -140,6 +199,13 @@ impl From<u32> for Value {
     }
 }
 
+impl From<f64> for Value {
+    fn from(data: f64) -> Self {
+        // TODO recode, do not panic!
+        Value::Number(Decimal::try_from(data).unwrap())
+    }
+}
+
 impl From<Time> for Value {
     fn from(data: Time) -> Self {
         Value::DateTime(data)
@@ -147,17 +213,30 @@ impl From<Time> for Value {
 }
 
 impl ToBytes for Value {
-    fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
-        serde_json::to_string(self)
-            .map(|s| s.as_bytes().to_vec())
-            .map_err(|_| format!("fail to encode value {:?}", self).into())
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        rkyv::to_bytes::<_, 1024>(self)
+            .map_err(|e| DBError::from(e.to_string()))
+        // serde_json::to_string(self)
+        //     .map(|s| s.as_bytes().to_vec())
+        //     .map_err(|_| format!("fail to encode value {:?}", self).into())
     }
 }
 
 impl FromBytes<Value> for Value {
     fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
-        serde_json::from_slice(bs)
-            .map_err(|_| "fail to decode value".into())
+        let archived = unsafe { rkyv::archived_root::<Self>(bs) };
+        let value: Self = archived.deserialize(&mut rkyv::Infallible).unwrap();
+        Ok(value)
+
+        // match rkyv::check_archived_root::<Self>(bs) {
+        //     Ok(archived) => {
+        //         let value: Self = archived.deserialize(&mut rkyv::Infallible).unwrap();
+        //         Ok(value)
+        //     },
+        //     Err(e) => Err(DBError::from(e.to_string()))
+        // }
+        // serde_json::from_slice(bs)
+        //     .map_err(|_| "fail to decode value".into())
     }
 }
 

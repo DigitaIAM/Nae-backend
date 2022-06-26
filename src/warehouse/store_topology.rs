@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::fmt::Debug;
 use chrono::{TimeZone, Utc};
+use rkyv::AlignedVec;
 use serde::{Deserialize, Serialize};
 use crate::animo::error::DBError;
 use crate::animo::memory::{Context, ID, ID_BYTES, ID_MAX, ID_MIN};
@@ -294,7 +295,7 @@ impl OperationsTopology for WHStoreTopology {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)] // , Serialize, Deserialize)]
 pub(crate) struct StoreBalance {
     pub(crate) balance: WHBalance,
 
@@ -305,7 +306,7 @@ pub(crate) struct StoreBalance {
 }
 
 impl ToKVBytes for StoreBalance {
-    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, AlignedVec), DBError> {
         let k = WHStoreTopology::position_at_end(self.store, &self.date);
         let v = self.balance.to_bytes()?;
         Ok((k,v))
@@ -332,7 +333,7 @@ impl From<&StoreBalance> for WHBalance {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)] // , Serialize, Deserialize)]
 pub(crate) struct StoreMovement {
     pub(crate) op: BalanceOperation,
 
@@ -356,7 +357,7 @@ impl StoreMovement {
 }
 
 impl ToKVBytes for StoreMovement {
-    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, AlignedVec), DBError> {
         let k = WHStoreTopology::position_of_operation(self.store, self.goods, self.date.clone(), &self.op);
         let v = self.op.to_bytes()?;
         Ok((k,v))
@@ -519,8 +520,8 @@ impl OperationInTopology<WHBalance,BalanceOperation,StoreBalance> for StoreMovem
         Ok((before,after))
     }
 
-    fn operation(&self) -> BalanceOperation {
-        self.op.clone()
+    fn operation(&self) -> &BalanceOperation {
+        &self.op
     }
 
     fn to_value(&self) -> StoreBalance {

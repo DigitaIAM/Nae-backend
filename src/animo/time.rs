@@ -1,15 +1,22 @@
-use serde::{Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize};
+use bytecheck::CheckBytes;
+
 use std::cmp::Ordering;
 use std::ops::{Add, Sub};
-use chrono::{Datelike, DateTime, Duration, MIN_DATETIME, NaiveDate, NaiveDateTime, NaiveTime, ParseError, Timelike, TimeZone, Utc};
-use chrono::serde::ts_milliseconds;
-use now::DateTimeNow;
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use chrono::{Datelike, DateTime, Duration, MIN_DATETIME, Month, NaiveDate, NaiveDateTime, NaiveTime, ParseError, Timelike, TimeZone, Utc};
 use rust_decimal::Decimal;
 use crate::animo::error::DBError;
 
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-enum IntervalPosition {
+// #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+#[archive_attr(derive(CheckBytes, Debug))]
+pub enum IntervalPosition {
     Start,
     End
 }
@@ -24,8 +31,8 @@ impl IntervalPosition {
 
     pub(crate) fn from_bytes(bs: &[u8], offset: usize) -> Result<Self,DBError> {
         match bs[offset..offset+1] {
-            [1] => Ok(IntervalPosition::End),
-            [2] => Ok(IntervalPosition::Start),
+            [1] => Ok(IntervalPosition::Start),
+            [2] => Ok(IntervalPosition::End),
             [b] => Err(format!("wrong byte {}", b).into()),
             [] => Err(format!("no byte").into()),
             [_, _, ..] => unreachable!("internal error")
@@ -33,8 +40,14 @@ impl IntervalPosition {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-enum TimeAccuracy {
+// #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+#[archive_attr(derive(CheckBytes, Debug))]
+pub enum TimeAccuracy {
     Year,
     Month,
     Day,
@@ -70,9 +83,15 @@ impl TimeAccuracy {
     }
 }
 
-#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
+// #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Archive, Deserialize, Serialize, Debug)] // , PartialEq
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+// #[archive_attr(derive(CheckBytes, Debug))]
 pub struct Time(
-    #[serde(with = "ts_milliseconds")]
+    #[serde(with = "chrono::serde::ts_milliseconds")]
     DateTime<Utc>,
     TimeAccuracy,
     IntervalPosition
@@ -96,21 +115,28 @@ impl Time {
         Ok(Time(ts.beginning_of_day(), TimeAccuracy::Day, IntervalPosition::Start))
     }
 
-    pub(crate) fn to_bytes(&self) -> Vec<u8> {
-        let ts: u64 = self.0.timestamp().try_into().unwrap();
+    pub(crate) fn ts(&self) -> i64 {
+        self.0.timestamp_millis()
+    }
 
-        let t = ts.to_be_bytes();   // timestamp
+    pub(crate) fn to_bytes(&self) -> Vec<u8> {
+        let ts: u64 = self.0.timestamp_millis().try_into().unwrap();
+
+        // let t = ts.to_be_bytes();   // timestamp
+        let mut t = Vec::with_capacity(8);
+        t.write_u64::<BigEndian>(ts).unwrap();
         let f = [self.1.to_byte()]; // accuracy
         let b = [self.2.to_byte()]; // interval position
         [t.as_slice(), f.as_slice(), b.as_slice()].concat()
     }
 
     pub(crate) fn from_bytes(bs: &[u8], offset: usize) -> Result<Self,DBError> {
-        let convert = |bs: &[u8]| -> [u8; 8] {
-            bs.try_into().expect("slice with incorrect length")
-        };
+        // let convert = |bs: &[u8]| -> [u8; 8] {
+        //     bs.try_into().expect("slice with incorrect length")
+        // };
 
-        let ts = u64::from_be_bytes(convert(&bs[offset..offset+8]));
+        let mut sub = &bs[offset..offset+8];
+        let ts = sub.read_u64::<BigEndian>().unwrap(); // u64::from_be_bytes(convert(&bs[offset..offset+8]));
         let ts = Utc.timestamp_millis(ts as i64);
 
         let accuracy = TimeAccuracy::from_bytes(bs, offset+8)?;
@@ -166,10 +192,11 @@ impl Time {
             TimeAccuracy::Day => {
                 match self.2 {
                     IntervalPosition::Start => {
-                        let ts = self.0
-                            .end_of_day()
-                            .add(Duration::nanoseconds(1));
-                        Time(ts, TimeAccuracy::Day, IntervalPosition::Start)
+                        todo!()
+                        // let ts = self.0
+                        //     .end_of_day()
+                        //     .add(Duration::nanoseconds(1));
+                        // Time(ts, TimeAccuracy::Day, IntervalPosition::Start)
                     }
                     IntervalPosition::End => {
                         let ts = self.0.add(Duration::nanoseconds(1));
@@ -190,10 +217,11 @@ impl Time {
                         Time(ts, TimeAccuracy::Day, IntervalPosition::End)
                     }
                     IntervalPosition::End => {
-                        let ts = self.0
-                            .beginning_of_day()
-                            .sub(Duration::nanoseconds(1));
-                        Time(ts, TimeAccuracy::Day, IntervalPosition::End)
+                        todo!()
+                        // let ts = self.0
+                        //     .beginning_of_day()
+                        //     .sub(Duration::nanoseconds(1));
+                        // Time(ts, TimeAccuracy::Day, IntervalPosition::End)
                     }
                 }
             }
@@ -222,7 +250,7 @@ impl PartialEq<Self> for Time {
                 return self.0 == other.0;
             }
         }
-        unimplemented!()
+        unimplemented!("{:?} vs {:?}", self, other)
     }
 
     fn ne(&self, other: &Self) -> bool {
@@ -255,3 +283,240 @@ impl TimeInterval {
         Ok(TimeInterval { from, till })
     }
 }
+
+pub trait DateTimeNow {
+    type Timezone: TimeZone;
+    fn beginning_of_minute(&self) -> DateTime<Self::Timezone>;
+    fn beginning_of_hour(&self) -> DateTime<Self::Timezone>;
+    fn beginning_of_day(&self) -> DateTime<Self::Timezone>;
+    // /// get beginning of week. the default week start day is Monday.
+    // fn beginning_of_week(&self) -> DateTime<Self::Timezone>;
+    // /// get beginning of week given specific week start day.
+    // fn beginning_of_week_with_start_day(
+    //     &self,
+    //     week_start_day: &WeekStartDay,
+    // ) -> DateTime<Self::Timezone>;
+
+    fn beginning_of_month(&self) -> DateTime<Self::Timezone>;
+    fn beginning_of_quarter(&self) -> DateTime<Self::Timezone>;
+    fn beginning_of_year(&self) -> DateTime<Self::Timezone>;
+
+    fn end_of_minute(&self) -> DateTime<Self::Timezone>;
+    fn end_of_hour(&self) -> DateTime<Self::Timezone>;
+    fn end_of_day(&self) -> DateTime<Self::Timezone>;
+    // fn end_of_week(&self) -> DateTime<Self::Timezone>;
+    // fn end_of_week_with_start_day(&self, week_start_day: &WeekStartDay)
+    //                               -> DateTime<Self::Timezone>;
+    fn end_of_month(&self) -> DateTime<Self::Timezone>;
+    fn end_of_quarter(&self) -> DateTime<Self::Timezone>;
+    fn end_of_year(&self) -> DateTime<Self::Timezone>;
+
+    fn week_of_year(&self) -> u32;
+}
+
+impl<T: TimeZone> DateTimeNow for DateTime<T> {
+    type Timezone = T;
+
+    fn beginning_of_minute(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let time5 = NaiveDate::from_ymd(
+            local_date_time.year(),
+            local_date_time.month(),
+            local_date_time.day(),
+        )
+            .and_hms(local_date_time.hour(), local_date_time.minute(), 0);
+        self.timezone().from_local_datetime(&time5).unwrap()
+    }
+
+    fn beginning_of_hour(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let time5 = NaiveDate::from_ymd(
+            local_date_time.year(),
+            local_date_time.month(),
+            local_date_time.day(),
+        )
+            .and_hms(local_date_time.hour(), 0, 0);
+        self.timezone().from_local_datetime(&time5).unwrap()
+    }
+
+    fn beginning_of_day(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let time5 = NaiveDate::from_ymd(
+            local_date_time.year(),
+            local_date_time.month(),
+            local_date_time.day(),
+        )
+            .and_hms(0, 0, 0);
+        self.timezone().from_local_datetime(&time5).unwrap()
+    }
+
+    // fn beginning_of_week(&self) -> DateTime<Self::Timezone> {
+    //     self.beginning_of_week_with_start_day(&WeekStartDay::Monday)
+    // }
+    //
+    // fn beginning_of_week_with_start_day(
+    //     &self,
+    //     week_start_day: &WeekStartDay,
+    // ) -> DateTime<Self::Timezone> {
+    //     let prec_day = match week_start_day {
+    //         WeekStartDay::Monday => self.weekday().number_from_monday() - 1,
+    //         WeekStartDay::Sunday => self.weekday().num_days_from_sunday(),
+    //     };
+    //     let time: DateTime<T> = self.clone().sub(Duration::days(prec_day as i64));
+    //     let succ_local_date_time = time.naive_local();
+    //     let time5 = NaiveDate::from_ymd(
+    //         succ_local_date_time.year(),
+    //         succ_local_date_time.month(),
+    //         succ_local_date_time.day(),
+    //     )
+    //         .and_hms(0, 0, 0);
+    //     self.timezone().from_local_datetime(&time5).unwrap()
+    // }
+
+    fn beginning_of_month(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let time5 = NaiveDate::from_ymd(local_date_time.year(), local_date_time.month(), 1)
+            .and_hms(0, 0, 0);
+        self.timezone().from_local_datetime(&time5).unwrap()
+    }
+
+    fn beginning_of_quarter(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let month = match local_date_time.month() {
+            1..=3 => 1u32,
+            4..=6 => 4u32,
+            7..=9 => 7u32,
+            _ => 10u32,
+        };
+        let time5 = NaiveDate::from_ymd(local_date_time.year(), month, 1).and_hms(0, 0, 0);
+        self.timezone().from_local_datetime(&time5).unwrap()
+    }
+
+    fn beginning_of_year(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let time5 = NaiveDate::from_ymd(local_date_time.year(), 1, 1).and_hms(0, 0, 0);
+        self.timezone().from_local_datetime(&time5).unwrap()
+    }
+
+    fn end_of_minute(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let time5 = NaiveDate::from_ymd(
+            local_date_time.year(),
+            local_date_time.month(),
+            local_date_time.day(),
+        )
+            .and_hms_nano(
+                local_date_time.hour(),
+                local_date_time.minute(),
+                59,
+                999999999,
+            );
+        self.timezone().from_local_datetime(&time5).unwrap()
+    }
+
+    fn end_of_hour(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let time5 = NaiveDate::from_ymd(
+            local_date_time.year(),
+            local_date_time.month(),
+            local_date_time.day(),
+        )
+            .and_hms_nano(local_date_time.hour(), 59, 59, 999999999);
+        self.timezone().from_local_datetime(&time5).unwrap()
+    }
+
+    fn end_of_day(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let time5 = NaiveDate::from_ymd(
+            local_date_time.year(),
+            local_date_time.month(),
+            local_date_time.day(),
+        )
+            .and_hms_nano(23, 59, 59, 999999999);
+        self.timezone().from_local_datetime(&time5).unwrap()
+    }
+
+    // fn end_of_week(&self) -> DateTime<Self::Timezone> {
+    //     self.end_of_week_with_start_day(&WeekStartDay::Monday)
+    // }
+    //
+    // fn end_of_week_with_start_day(
+    //     &self,
+    //     week_start_day: &WeekStartDay,
+    // ) -> DateTime<Self::Timezone> {
+    //     let succ_day = match week_start_day {
+    //         WeekStartDay::Monday => 7 - self.weekday().number_from_monday(),
+    //         WeekStartDay::Sunday => 7 - self.weekday().number_from_sunday(),
+    //     };
+    //     let time: DateTime<T> = self.clone().add(Duration::days(succ_day as i64));
+    //     let succ_local_date_time = time.naive_local();
+    //     let time5 = NaiveDate::from_ymd(
+    //         succ_local_date_time.year(),
+    //         succ_local_date_time.month(),
+    //         succ_local_date_time.day(),
+    //     )
+    //         .and_hms_nano(23, 59, 59, 999999999);
+    //     self.timezone().from_local_datetime(&time5).unwrap()
+    // }
+
+    fn end_of_month(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let (year, month) = if local_date_time.month() == Month::December.number_from_month() {
+            (
+                local_date_time.year() + 1,
+                Month::January.number_from_month(),
+            )
+        } else {
+            (local_date_time.year(), local_date_time.month() + 1)
+        };
+
+        let time5 = NaiveDate::from_ymd(year, month, 1).and_hms(0, 0, 0);
+        self.timezone()
+            .from_local_datetime(&time5)
+            .unwrap()
+            .sub(Duration::nanoseconds(1))
+    }
+
+    fn end_of_quarter(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let (year, month) = match local_date_time.month() {
+            1..=3 => (local_date_time.year(), 4u32),
+            4..=6 => (local_date_time.year(), 7u32),
+            7..=9 => (local_date_time.year(), 10u32),
+            _ => (local_date_time.year() + 1, 1u32),
+        };
+        let time5 = NaiveDate::from_ymd(year, month, 1).and_hms(0, 0, 0);
+        self.timezone()
+            .from_local_datetime(&time5)
+            .unwrap()
+            .sub(Duration::nanoseconds(1))
+    }
+
+    fn end_of_year(&self) -> DateTime<Self::Timezone> {
+        let local_date_time = self.naive_local();
+        let time5 =
+            NaiveDate::from_ymd(local_date_time.year(), 12, 31).and_hms_nano(23, 59, 59, 999999999);
+        self.timezone().from_local_datetime(&time5).unwrap()
+    }
+
+    fn week_of_year(&self) -> u32 {
+        self.iso_week().week()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_time() {
+        let t1 = Time::new("2022-05-01").unwrap();
+        let bs = t1.to_bytes();
+
+        let t2 = Time::from_bytes(bs.as_slice(), 0).unwrap();
+
+        assert_eq!(t1, t2);
+    }
+}
+
+// Time(2022-05-01T00:00:00Z, Month, Start)

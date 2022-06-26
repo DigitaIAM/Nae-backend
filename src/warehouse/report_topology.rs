@@ -3,6 +3,7 @@ use derives::ImplBytes;
 use crate::animo::db::{FromBytes, FromKVBytes, ToBytes, ToKVBytes};
 
 use std::sync::Arc;
+use rkyv::AlignedVec;
 use crate::animo::{AggregationTopology, AObject, AOperation, DeltaOp, MemoOfList, Object, Time, TimeInterval, Txn};
 use crate::animo::error::DBError;
 use crate::animo::memory::ID;
@@ -67,7 +68,7 @@ impl AggregationTopology for WHReportTopology {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ImplBytes)]
+#[derive(Debug, Clone)] // , Serialize, Deserialize)] // , ImplBytes
 struct ReportFigures {
     number_of_ops: i32,
     open: WHBalance,
@@ -76,6 +77,18 @@ struct ReportFigures {
 
     from: Time,
     till: Time,
+}
+
+impl ToBytes for ReportFigures {
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        todo!()
+    }
+}
+
+impl FromBytes<Self> for ReportFigures {
+    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+        todo!()
+    }
 }
 
 impl AObject<ReportDelta> for ReportFigures {
@@ -113,12 +126,24 @@ impl AObject<ReportDelta> for ReportFigures {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ImplBytes)]
+#[derive(Debug, Clone)] // , Serialize, Deserialize)] // , ImplBytes
 pub struct ReportDelta {
     number_of_ops: i8,
     ops: BalanceOps,
 
     date: Time,
+}
+
+impl ToBytes for ReportDelta {
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        todo!()
+    }
+}
+
+impl FromBytes<Self> for ReportDelta {
+    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+        todo!()
+    }
 }
 
 impl AOperation<ReportFigures> for ReportDelta {
