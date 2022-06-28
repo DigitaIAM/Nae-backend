@@ -39,7 +39,6 @@ use crate::animo::{Animo, Time, Topology};
 use crate::settings::Settings;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
-use crate::warehouse::WHTopology;
 
 pub type Decimal = f64; // rust_decimal::Decimal;
 

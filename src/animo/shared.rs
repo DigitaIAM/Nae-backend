@@ -6,7 +6,8 @@ lazy_static::lazy_static! {
     pub(crate) static ref WH_BASE_TOPOLOGY: ID = ID::for_constant("warehouse_base_topology");
     pub(crate) static ref WH_STOCK_TOPOLOGY: ID = ID::for_constant("warehouse_stock_topology");
     pub(crate) static ref WH_STORE_TOPOLOGY: ID = ID::for_constant("warehouse_store_topology");
-    pub(crate) static ref WH_STORE_AGGREGATION_TOPOLOGY: ID = ID::for_constant("warehouse_store_aggregation_topology");
+    pub(crate) static ref WH_AGGREGATION_TOPOLOGY: ID = ID::for_constant("warehouse_aggregation_topology");
+    pub(crate) static ref WH_AGGREGATION_CHECKPOINTS: ID = ID::for_constant("warehouse_aggregation_checkpoints");
 
     pub(crate) static ref SPECIFIC_OF: ID = ID::for_constant("specific-of");
     pub(crate) static ref GOODS_RECEIVE: ID = ID::for_constant("GoodsReceive");

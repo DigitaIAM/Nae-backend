@@ -3,14 +3,9 @@ pub(crate) mod balance;
 pub(crate) mod balance_operation;
 pub(crate) mod balance_operations;
 pub(crate) mod turnover;
-pub(crate) mod base_topology;
-pub(crate) mod goods_topology;
 pub(crate) mod store_topology;
 pub(crate) mod store_aggregation_topology;
-pub(crate) mod report_topology;
 
-pub use base_topology::WHTopology;
-pub use goods_topology::WHGoodsTopology;
 use crate::animo::Time;
 
 // Report for dates
@@ -53,7 +48,6 @@ pub mod test_util {
     use crate::{Memory, AnimoDB, Settings};
     use crate::animo::{Animo, Time, Topology};
     use crate::animo::shared::*;
-    use crate::warehouse::{WHGoodsTopology, WHTopology};
     use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
     use crate::warehouse::store_topology::WHStoreTopology;
     use crate::warehouse::turnover::{Goods, Store};
@@ -70,13 +64,11 @@ pub mod test_util {
         let mut db: AnimoDB = Memory::init(tmp_path).unwrap();
         let mut animo = Animo::default();
 
-        let wh_base = Arc::new(WHTopology());
         let wh_store = Arc::new(WHStoreTopology());
 
-        // animo.register_topology(Topology::Warehouse(wh_base.clone()));
         animo.register_topology(Topology::WarehouseStore(wh_store.clone()));
         animo.register_topology(Topology::WarehouseStoreAggregation(Arc::new(WHStoreAggregationTopology(wh_store.clone()))));
-        // animo.register_topology(Topology::WarehouseGoods(Arc::new(WHGoodsTopology(wh_base.clone()))));
+
         db.register_dispatcher(Arc::new(animo)).unwrap();
         (tmp_dir, settings, db)
     }

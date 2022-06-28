@@ -47,8 +47,8 @@ pub(crate) struct Turnover<V,O> {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) struct NamedValue<N,V> {
-    pub(crate) name: N,
     pub(crate) value: V,
+    pub(crate) name: N,
 }
 
 impl<N,V> NamedValue<N,V> {

@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use rocksdb::{AsColumnFamilyRef, DBIteratorWithThreadMode, DBWithThreadMode, Direction, IteratorMode, MultiThreaded, ReadOptions};
-use crate::animo::{Txn, Object, Operation, AOperation, ObjectInTopology, OperationInTopology, AOperationInTopology, AObjectInTopology, AObject, DeltaOp};
+use crate::animo::{Txn, Object, Operation, AOperation, ObjectInTopology, OperationInTopology, AOperationInTopology, AObjectInTopology, AObject, DeltaOp, ACheckpoint};
 use crate::animo::error::DBError;
 use crate::animo::db::{FromBytes, FromKVBytes, Snapshot};
 
@@ -10,6 +10,7 @@ pub struct OpsManager();
 pub trait PositionInTopology {
     fn prefix(&self) -> usize;
     fn position(&self) -> &Vec<u8>;
+    fn suffix(&self) -> &(usize, Vec<u8>);
 }
 
 pub trait QueryValue<BV>: PositionInTopology {
@@ -48,23 +49,37 @@ impl<'a,O: FromBytes<O> + Debug> Iterator for LightIterator<'a,O> {
     }
 }
 
-pub struct HeavyIterator<'a,O>(DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>, &'a[u8], PhantomData<O>);
+pub struct HeavyIterator<'a,O> {
+    it: DBIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>,
+    prefix: &'a [u8],
+    suffix: &'a (usize, Vec<u8>),
+    ph: PhantomData<O>
+}
 
 impl<'a,O: FromKVBytes<O>> Iterator for HeavyIterator<'a,O> {
     type Item = (Vec<u8>, O);
 
     fn next(&mut self) -> Option<(Vec<u8>, O)> {
-        match self.0.next() {
-            None => None,
-            Some((k, v)) => {
-                // log::debug!("next {:?}", k);
-                if self.1.len() <= k.len() && self.1 == &k[0..self.1.len()] {
-                    let record = O::from_kv_bytes(&*k, &*v).unwrap();
-                    Some((k.to_vec(),record))
-                } else {
-                    None
+        loop {
+            match self.it.next() {
+                None => break None,
+                Some((k, v)) => {
+                    // log::debug!("next {:?}", k);
+                    if self.prefix.len() <= k.len() && self.prefix == &k[0..self.prefix.len()] {
+                        if self.suffix.1.len() == 0
+                            || (
+                            self.suffix.0 + self.suffix.1.len() <= k.len()
+                            && self.suffix.1 == &k[self.suffix.0..(self.suffix.0+self.suffix.1.len())]
+                        ) {
+                            let record = O::from_kv_bytes(&*k, &*v).unwrap();
+                            break Some((k.to_vec(), record));
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        break None;
+                    }
                 }
-
             }
         }
     }
@@ -100,12 +115,13 @@ where
 {
     let key = pit.position().as_slice();
     let prefix = &key[0..pit.prefix()];
+    let suffix = pit.suffix();
     let it = s.pit.iterator_cf_opt(
         cf_handle,
         ReadOptions::default(),
         IteratorMode::From(key, Direction::Forward)
     );
-    HeavyIterator(it, prefix, PhantomData)
+    HeavyIterator { it, prefix, suffix, ph: PhantomData }
 }
 
 pub struct BetweenLightIterator<'a,O>(LightIterator<'a,O>, &'a Vec<u8>);
@@ -160,6 +176,10 @@ impl OpsManager {
         BetweenLightIterator(it, till.position())
     }
 
+    pub(crate) fn values_before_heavy<'a,O: FromKVBytes<O>>(&self, s: &'a Snapshot, pit: &'a impl PositionInTopology) -> HeavyIterator<'a,O> {
+        following_heavy(s, &s.cf_values(), pit)
+    }
+
     pub(crate) fn values_after<'a,O: FromBytes<O>>(&self, s: &'a Snapshot, pit: &'a impl PositionInTopology) -> LightIterator<'a,O> {
         following_light(s, &s.cf_values(), pit)
     }
@@ -175,7 +195,7 @@ impl OpsManager {
         )
     }
 
-    pub(crate) fn write_ops<BV,BO,TV,TO>(&self, tx: &mut Txn, deltas: &Vec<DeltaOp<BV,BO,TV,TO>>) -> Result<(), DBError>
+    pub(crate) fn write_ops<BV,BO,TV,TO>(&self, tx: &mut Txn, deltas: &Vec<DeltaOp<BV,BO,TV,TO>>) -> Result<usize, DBError>
     where
         BV: Object<BO>,
         BO: Operation<BV>,
@@ -185,6 +205,8 @@ impl OpsManager {
     {
         let s = tx.s;
         let ops_manager = s.rf.ops_manager.clone();
+
+        let mut max = 0;
 
         for ops in deltas {
             // calculate delta for propagation
@@ -197,6 +219,8 @@ impl OpsManager {
                 tx.del_operation::<BV,BO,TV,TO>(&before)?;
             }
 
+            let mut count = 0;
+
             // propagation
             for v in ops_manager.values_after(s, ops) {
                 // workaround for rust issue: https://github.com/rust-lang/rust/issues/83701
@@ -204,25 +228,34 @@ impl OpsManager {
 
                 // TODO get dependents and notify them
 
-                log::debug!("update value {:?} {:?}", value, position);
+                log::debug!("updating value {:?} {:?}", value, position);
 
                 // TODO: remove `.clone()`?
                 let value = value + delta.clone();
 
+                log::debug!("updated value {:?}", value);
+
                 // store updated memo
                 tx.update_value(&position, &value)?;
+
+                count += 1;
+            }
+
+            if max < count {
+                max = count;
             }
         }
 
-        Ok(())
+        Ok(max)
     }
 
-    pub(crate) fn write_aggregation_delta<BV,BO,TV,TO>(&self, tx: &mut Txn, op: TO) -> Result<(), DBError>
+    pub(crate) fn write_aggregation_delta<BV,BO,TV,TC,TO>(&self, tx: &mut Txn, op: TO) -> Result<usize, DBError>
         where
             BV: AObject<BO> + Debug,
             BO: AOperation<BV> + Debug,
-            TV: AObjectInTopology<BV,BO,TO> + Debug,
-            TO: AOperationInTopology<BV,BO,TV> + Debug,
+            TV: AObjectInTopology<BV,BO,TC,TO> + Debug,
+            TC: ACheckpoint + Debug,
+            TO: AOperationInTopology<BV,BO,TC,TV> + Debug,
     {
         let s = tx.s;
         let ops_manager = s.rf.ops_manager.clone();
@@ -233,10 +266,14 @@ impl OpsManager {
         log::debug!("propagate delta {:?} at {:?}", op, position);
         log::debug!("checkpoint {:?}", checkpoint);
 
+        let mut count = 0;
+
         // propagation
         for v in ops_manager.values_after_heavy(s, &op) {
             // workaround for rust issue: https://github.com/rust-lang/rust/issues/83701
             let (position, value): (_, TV) = v;
+
+            count += 1;
 
             // TODO get dependents and notify them
 
@@ -267,6 +304,6 @@ impl OpsManager {
             Some(_) => {} // exist, updated above
         }
 
-        Ok(())
+        Ok(count)
     }
 }

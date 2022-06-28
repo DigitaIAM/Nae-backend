@@ -18,7 +18,6 @@ use crate::animo::db::*;
 pub(crate) use crate::animo::time::{Time, TimeInterval};
 use crate::animo::memory::*;
 use crate::animo::ops_manager::*;
-use crate::warehouse::{WHGoodsTopology, WHTopology};
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
 
@@ -144,6 +143,10 @@ where
             unreachable!("internal error")
         }
     }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        todo!()
+    }
 }
 
 pub(crate) trait OperationsTopology {
@@ -173,17 +176,22 @@ pub(crate) trait AOperation<TV>: Sized + ToBytes + FromBytes<Self> {
 }
 
 // Aggregation object in topology
-pub(crate) trait AObjectInTopology<BV,BO,TO: AOperationInTopology<BV,BO,Self>>: Sized + ToKVBytes + FromKVBytes<Self> {
+pub(crate) trait AObjectInTopology<BV,BO,TC: ACheckpoint, TO: AOperationInTopology<BV,BO,TC, Self>>: Sized + ToKVBytes + FromKVBytes<Self> {
     fn position(&self) -> Vec<u8>;
     fn value(&self) -> &BV;
 
     fn apply(&self, op: &TO) -> Result<Option<Self>,DBError>;
 }
 
+pub(crate) trait ACheckpoint: Sized + PositionInTopology + ToBytes + FromBytes<Self> {
+}
+
 // Aggregation operation in topology
-pub(crate) trait AOperationInTopology<BV,BO,TV: AObjectInTopology<BV,BO,Self>>: Sized + PositionInTopology {
+pub(crate) trait AOperationInTopology<BV,BO,TC: ACheckpoint, TV: AObjectInTopology<BV,BO,TC,Self>>: Sized + PositionInTopology {
 
     fn position_of_aggregation(&self) -> Result<Vec<u8>, DBError>;
+
+    fn checkpoint(&self) -> TC;
 
     fn operation(&self) -> BO;
 
@@ -359,6 +367,10 @@ impl<'a> Txn<'a> {
         self.get_light(&self.s.cf_values(), position.as_slice())
     }
 
+    pub(crate) fn value_heavy<O: FromKVBytes<O>>(&self, position: &Vec<u8>) -> Result<Option<O>, DBError> {
+        self.get_heavy(&self.s.cf_values(), position.as_slice())
+    }
+
     pub(crate) fn put_value<V: ToKVBytes>(&mut self, v: &V) -> Result<(), DBError> {
         let (k,v) = v.to_kv_bytes()?;
 
@@ -439,10 +451,8 @@ impl<'a> Txn<'a> {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub(crate) enum Topology {
-    Warehouse(Arc<WHTopology>),
     WarehouseStore(Arc<WHStoreTopology>),
     WarehouseStoreAggregation(Arc<WHStoreAggregationTopology>),
-    WarehouseGoods(Arc<WHGoodsTopology>),
 }
 
 #[derive(Default)]
@@ -463,21 +473,6 @@ pub(crate) struct Animo {
 impl Animo {
     pub fn register_topology(&mut self, topology: Topology) {
         match &topology {
-            Topology::Warehouse(top) => {
-                // update helper map for fast resolve of dependants on given mutation
-                for id in top.depends_on() {
-                    match self.what_to_topologies.get_mut(&id) {
-                        None => {
-                            let mut set = HashSet::new();
-                            set.insert(topology.clone());
-                            self.what_to_topologies.insert(id, set);
-                        }
-                        Some(v) => {
-                            v.insert(topology.clone());
-                        }
-                    }
-                }
-            }
             Topology::WarehouseStore(top) => {
                 // update helper map for fast resolve of dependants on given mutation
                 for id in top.depends_on() {
@@ -498,12 +493,6 @@ impl Animo {
                     .or_insert(HashSet::new());
 
                 set.insert(Topology::WarehouseStoreAggregation(top.clone()));
-            }
-            Topology::WarehouseGoods(top) => {
-                let mut set = self.op_to_topologies.entry(self.topologies[0].clone())
-                    .or_insert(HashSet::new());
-
-                set.insert(Topology::WarehouseGoods(top.clone()));
             }
         }
 
@@ -542,48 +531,30 @@ impl Dispatcher for Animo {
 
         // generate new operations or overwrite existing
         for (topology, contexts) in topologies.into_iter() {
-            println!("contexts {}", contexts.len());
             match topology {
-                Topology::Warehouse(top) => {
-                    let ops = top.on_mutation(&mut tx, contexts)?;
-
-                    match self.op_to_topologies.get(&Topology::Warehouse(top)) {
-                        None => {}
-                        Some(set) => {
-                            for dependant in set {
-                                match dependant {
-                                    Topology::Warehouse(_) => {},
-                                    Topology::WarehouseStore(_) => {},
-                                    Topology::WarehouseStoreAggregation(_) => {},
-                                    Topology::WarehouseGoods(top) => {
-                                        top.on_operation(&mut tx, &ops)?;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
                 Topology::WarehouseStore(top) => {
                     let ops = top.on_mutation(&mut tx, contexts)?;
 
-                    match self.op_to_topologies.get(&Topology::WarehouseStore(top)) {
+                    let top = Topology::WarehouseStore(top);
+
+                    println!("{}", ops.len());
+                    println!("{:?}", self.op_to_topologies.get(&top));
+
+                    match self.op_to_topologies.get(&top) {
                         None => {}
                         Some(set) => {
                             for dependant in set {
                                 match dependant {
-                                    Topology::Warehouse(_) => {},
                                     Topology::WarehouseStore(_) => {},
                                     Topology::WarehouseStoreAggregation(top) => {
                                         top.on_operation(&mut tx, &ops)?;
                                     }
-                                    Topology::WarehouseGoods(_) => {},
                                 }
                             }
                         }
                     }
                 },
                 Topology::WarehouseStoreAggregation(_) => {},
-                Topology::WarehouseGoods(_) => {},
             }
         }
 

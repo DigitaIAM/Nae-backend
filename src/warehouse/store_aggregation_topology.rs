@@ -11,15 +11,12 @@ use crate::animo::*;
 use crate::animo::error::DBError;
 use crate::animo::memory::*;
 use crate::AnimoDB;
-use crate::animo::db::{FromBytes, FromKVBytes, ToBytes, ToKVBytes};
+use crate::animo::db::{FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 use crate::animo::ops_manager::*;
 use crate::animo::shared::*;
 use crate::warehouse::balance::WHBalance;
 use crate::warehouse::balance_operation::BalanceOperation;
 use crate::warehouse::balance_operations::BalanceOps;
-use crate::warehouse::base_topology::{WarehouseBalance, WarehouseMovement};
-use crate::warehouse::WHTopology;
-use crate::warehouse::goods_topology::CheckpointOp;
 use crate::warehouse::primitives::*;
 use crate::warehouse::store_topology::*;
 use crate::warehouse::turnover::*;
@@ -29,6 +26,7 @@ use crate::warehouse::turnover::*;
 pub(crate) struct WHQueryStoreAggregation {
     prefix: usize,
     position: Vec<u8>,
+    suffix: (usize,Vec<u8>),
 }
 
 impl WHQueryStoreAggregation {
@@ -36,6 +34,7 @@ impl WHQueryStoreAggregation {
         WHQueryStoreAggregation {
             prefix: WHStoreAggregationTopology::position_prefix(),
             position: WHStoreAggregationTopology::position_stores_at_prev_checkpoint(time),
+            suffix: (0,vec![]),
         }
     }
 
@@ -43,7 +42,14 @@ impl WHQueryStoreAggregation {
         let prefix = WHStoreAggregationTopology::position_prefix();
         let position = WHStoreAggregationTopology::position_stores_at_post_checkpoint(time);
 
-        WHQueryStoreAggregation { prefix, position }
+        WHQueryStoreAggregation { prefix, position, suffix: (0,vec![]) }
+    }
+
+    fn existence(date: Time) -> Self {
+        let prefix = ID_BYTES + 10;
+        let position = WHStoreAggregationTopology::position(ID_MIN, ID_MIN, date);
+
+        WHQueryStoreAggregation { prefix, position, suffix: (0,vec![]) }
     }
 }
 
@@ -54,6 +60,49 @@ impl PositionInTopology for WHQueryStoreAggregation {
 
     fn position(&self) -> &Vec<u8> {
         &self.position
+    }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        &self.suffix
+    }
+}
+
+#[derive(Debug)]
+struct QueryWHCheckpoint {
+    prefix: usize,
+    position: Vec<u8>,
+}
+
+impl QueryWHCheckpoint {
+    fn new(date: &Time) -> Self {
+        QueryWHCheckpoint {
+            prefix: WHStoreAggregationTopology::position_prefix(),
+            position: WHStoreAggregationTopology::position_checkpoint(date)
+        }
+    }
+}
+
+impl PositionInTopology for QueryWHCheckpoint {
+    fn prefix(&self) -> usize {
+        self.prefix
+    }
+
+    fn position(&self) -> &Vec<u8> {
+        &self.position
+    }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        todo!()
+    }
+}
+
+impl QueryValue<WHCheckpoint> for QueryWHCheckpoint {
+    fn closest_before(&self, s: &Snapshot) -> Option<(Vec<u8>, WHCheckpoint)> {
+        LightIterator::preceding_values(s, self).next()
+    }
+
+    fn values_after<'a>(&'a self, s: &'a Snapshot<'a>) -> LightIterator<'a, WHCheckpoint> {
+        following_light(s, &s.cf_values(), self)
     }
 }
 
@@ -74,11 +123,86 @@ impl AggregationTopology for WHStoreAggregationTopology {
     }
 
     fn on_operation(&self, tx: &mut Txn, ops: &Vec<DeltaOp<Self::InObj,Self::InOp,Self::InTObj,Self::InTOp>>) -> Result<(), DBError> {
+        let s = tx.s;
+        let ops_manager = s.rf.ops_manager.clone();
+
+        let ts = std::time::Instant::now();
+
+        let mut max = 0;
         for op in ops {
+
             let delta = StoreDelta::from(op);
 
-            tx.ops_manager().write_aggregation_delta(tx, delta)?;
+            //tx.ops_manager().write_aggregation_delta(tx, delta)?;
+
+            let first_checkpoint = delta.checkpoint();
+
+            let query = QueryWHCheckpoint::new(&delta.date);
+
+            let mut dates = vec![];
+            for (_, checkpoint) in query.values_after(s) {
+                // println!("found checkpoint {:?}", checkpoint.date);
+                dates.push(checkpoint.date);
+            }
+
+            if dates.len() == 0 {
+                let checkpoint = WHStoreAggregationTopology::next_checkpoint(&delta.date);
+                let position = WHStoreAggregationTopology::position(delta.store.into(), delta.goods.into(), checkpoint.clone());
+                let point = WHCheckpoint::new(checkpoint.clone());
+
+                // check if required to copy previous state of existence
+                match query.closest_before(s) {
+                    None => {
+                        let v = delta.to_value();
+                        // println!("store new checkpoint {:?} {:?}", checkpoint, v);
+                        tx.update_value(&position, &v.aggregation)?;
+                        tx.update_value(&point.position, &point)?;
+                    }
+                    Some((_,prev)) => {
+                        // println!("found closest checkpoint {:?} before {:?}", prev.date, delta.date);
+                        let query = WHQueryStoreAggregation::existence(prev.date);
+
+                        // copy previous state of existence
+                        for data in ops_manager.values_after_heavy(s, &query) {
+                            let (k,v): (_,WarehouseStock) = data;
+
+                            // println!("copy checkpoint {:?} {:?}", checkpoint, v);
+
+                            let position = WHStoreAggregationTopology::position(v.store.into(), v.goods.into(), checkpoint.clone());
+                            tx.update_value(&position, &v.aggregation)?;
+                        }
+                        tx.update_value(&point.position, &point)?;
+
+                        dates.push(checkpoint);
+                    }
+                }
+            }
+
+            for date in dates {
+                let position = WHStoreAggregationTopology::position(delta.store.into(), delta.goods.into(), date.clone());
+                match tx.value::<AggregationAtCheckpoint>(&position)? {
+                    Some(value) => {
+                        let result = value.apply_aggregation(&delta.op)?;
+
+                        // println!("update checkpoint {:?} {:?}", date, result);
+
+                        // update value
+                        if result.is_zero() {
+                            tx.delete_value(&position)?;
+                        } else {
+                            tx.update_value(&position, &result)?;
+                        }
+                    }
+                    None => {
+                        let value = delta.to_value();
+                        // println!("store checkpoint {:?} {:?}", date, value);
+                        tx.update_value(&position, &value.aggregation)?;
+                    }
+                }
+            }
         }
+
+        println!("max {} {:?}", max, ts.elapsed());
 
         Ok(())
     }
@@ -114,8 +238,9 @@ impl WHStoreAggregationTopology {
             &WHQueryStoreAggregation::position_stores_at_prev_checkpoint(&interval.from),
             &WHQueryStoreAggregation::position_stores_at_post_checkpoint(&interval.till)
         ) {
-            let (_,point): (_,WarehouseStock) = data;
-            log::debug!("on full point {:?}", point);
+            let (key,point): (_,WarehouseStock) = data;
+            log::debug!("key {:?}", key);
+            log::debug!("point {:?}", point);
             let named = stores.entry(point.store)
                 .or_insert(NamedValue::new(point.store, Turnover::default()));
 
@@ -138,7 +263,7 @@ impl WHStoreAggregationTopology {
         log::debug!("aggregation: {:?}", stores);
 
         // subtract operations between [checkpoint_from, from)
-        if checkpoint_from.to_bytes() < interval.from.to_bytes() {
+        if checkpoint_from.ts() < interval.from.ts() {
             for (store_id, mut named) in stores.iter_mut() {
                 let store_id = store_id.clone();
 
@@ -169,7 +294,7 @@ impl WHStoreAggregationTopology {
         log::debug!("aggregation: {:?}", stores);
 
         // subtract operations between (till, checkpoint_till]
-        if checkpoint_till.to_bytes() > interval.till.to_bytes() {
+        if checkpoint_till.ts() > interval.till.ts() {
             for (store_id, mut named) in stores.iter_mut() {
                 let store_id = store_id.clone();
 
@@ -248,11 +373,23 @@ impl WHStoreAggregationTopology {
         ID_BYTES
     }
 
+    fn position_checkpoint(time: &Time) -> Vec<u8> {
+        let mut bs = Vec::with_capacity(ID_BYTES + 10);
+
+        // operation prefix
+        bs.extend_from_slice((*WH_AGGREGATION_CHECKPOINTS).as_slice());
+
+        // define order by time
+        bs.extend_from_slice(time.to_bytes().as_slice());
+
+        bs
+    }
+
     fn position(store: ID, goods: ID, time: Time) -> Vec<u8> {
         let mut bs = Vec::with_capacity((ID_BYTES * 3) + 10);
 
         // operation prefix
-        bs.extend_from_slice((*WH_STORE_AGGREGATION_TOPOLOGY).as_slice());
+        bs.extend_from_slice((*WH_AGGREGATION_TOPOLOGY).as_slice());
 
         // define order by time
         bs.extend_from_slice(time.to_bytes().as_slice());
@@ -264,14 +401,24 @@ impl WHStoreAggregationTopology {
         bs
     }
 
+    fn suffix(store: ID, goods: ID) -> (usize, Vec<u8>) {
+        let mut bs = Vec::with_capacity(ID_BYTES * 2);
+
+        // suffix
+        bs.extend_from_slice(store.as_slice());
+        bs.extend_from_slice(goods.as_slice());
+
+        (ID_BYTES + 10, bs)
+    }
+
     fn decode_position_from_bytes(bs: &[u8]) -> Result<(ID,ID,Time), DBError> {
         let expected = (ID_BYTES * 3) + 10;
         if bs.len() != expected {
             Err(format!("Warehouse store topology: incorrect number ({}) of bytes, expected {}", bs.len(), expected).into())
         } else {
             let prefix: ID = bs[0..ID_BYTES].try_into()?;
-            if prefix != *WH_STORE_AGGREGATION_TOPOLOGY {
-                Err(format!("incorrect prefix id ({:?}), expected {:?}", prefix, *WH_STORE_AGGREGATION_TOPOLOGY).into())
+            if prefix != *WH_AGGREGATION_TOPOLOGY {
+                Err(format!("incorrect prefix id ({:?}), expected {:?}", prefix, *WH_AGGREGATION_TOPOLOGY).into())
             } else {
                 let date = Time::from_bytes(bs, 1*ID_BYTES)?;
                 let store = bs[(1*ID_BYTES+10)..(2*ID_BYTES+10)].try_into()?;
@@ -403,12 +550,7 @@ impl AOperation<AggregationAtCheckpoint> for CheckpointDelta {
 }
 
 // #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-#[derive(Clone)]
-#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
-// This will generate a PartialEq impl between our unarchived and archived types
-// #[archive(compare(PartialEq))]
-// To use the safe API, you have to derive CheckBytes for the archived type
-// #[archive_attr(derive(CheckBytes, Debug))]
+#[derive(Debug, Clone)]
 pub struct WarehouseStock {
     aggregation: AggregationAtCheckpoint,
 
@@ -431,6 +573,7 @@ pub struct StoreDelta {
     // TODO avoid serialization & deserialize of prefix & position
     prefix: usize,
     position: Vec<u8>,
+    suffix: (usize, Vec<u8>),
 
     pub(crate) date: Time,
 
@@ -442,9 +585,10 @@ impl StoreDelta {
     fn new(number_of_ops: i8, store: Store, goods: Goods, date: Time, op: BalanceOps) -> Self {
         let prefix = WHStoreAggregationTopology::position_prefix();
         let position = WHStoreAggregationTopology::position_of_value(store, goods, date.clone());
+        let suffix = WHStoreAggregationTopology::suffix(store.into(), goods.into());
 
         let op = CheckpointDelta { number_of_ops, op };
-        StoreDelta { op, store, goods, date, prefix, position }
+        StoreDelta { op, store, goods, date, prefix, position, suffix }
     }
 }
 
@@ -484,12 +628,71 @@ impl PositionInTopology for StoreDelta {
     fn position(&self) -> &Vec<u8> {
         &self.position
     }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        &self.suffix
+    }
 }
 
-impl AOperationInTopology<AggregationAtCheckpoint,CheckpointDelta,WarehouseStock> for StoreDelta {
+#[derive(Clone)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+// #[archive_attr(derive(CheckBytes, Debug))]
+struct WHCheckpoint {
+    date: Time,
+    position: Vec<u8>,
+    suffix: (usize,Vec<u8>),
+}
+
+impl WHCheckpoint {
+    fn new(date: Time) -> Self {
+        let position = WHStoreAggregationTopology::position_checkpoint(&date);
+
+        WHCheckpoint { date, position, suffix: (0,vec![]) }
+    }
+}
+
+impl PositionInTopology for WHCheckpoint {
+    fn prefix(&self) -> usize {
+        WHStoreAggregationTopology::position_prefix()
+    }
+
+    fn position(&self) -> &Vec<u8> {
+        &self.position
+    }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        &self.suffix
+    }
+}
+
+impl ToBytes for WHCheckpoint {
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        rkyv::to_bytes::<_, 512>(self)
+            .map_err(|e| DBError::from(e.to_string()))
+    }
+}
+
+impl FromBytes<Self> for WHCheckpoint {
+    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+        let archived = unsafe { rkyv::archived_root::<Self>(bs) };
+        let value: Self = archived.deserialize(&mut rkyv::Infallible).unwrap();
+        Ok(value)
+    }
+}
+
+impl ACheckpoint for WHCheckpoint {}
+
+impl AOperationInTopology<AggregationAtCheckpoint,CheckpointDelta,WHCheckpoint,WarehouseStock> for StoreDelta {
 
     fn position_of_aggregation(&self) -> Result<Vec<u8>,DBError> {
         Ok(WHStoreAggregationTopology::position_of_aggregation(self.store, self.goods, self.date.clone()))
+    }
+
+    fn checkpoint(&self) -> WHCheckpoint {
+        WHCheckpoint::new(self.date.clone())
     }
 
     fn operation(&self) -> CheckpointDelta {
@@ -521,7 +724,7 @@ impl FromKVBytes<Self> for WarehouseStock {
     }
 }
 
-impl AObjectInTopology<AggregationAtCheckpoint,CheckpointDelta,StoreDelta> for WarehouseStock {
+impl AObjectInTopology<AggregationAtCheckpoint,CheckpointDelta,WHCheckpoint,StoreDelta> for WarehouseStock {
     fn position(&self) -> Vec<u8> {
         WHStoreAggregationTopology::position_of_value(self.store, self.goods, self.date.clone())
     }

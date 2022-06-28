@@ -43,6 +43,10 @@ impl PositionInTopology for WHQueryStoreBalance {
     fn position(&self) -> &Vec<u8> {
         &self.position
     }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        todo!()
+    }
 }
 
 impl QueryValue<WHBalance> for WHQueryStoreBalance {
@@ -108,6 +112,10 @@ impl PositionInTopology for WHQueryStoreOperation {
 
     fn position(&self) -> &Vec<u8> {
         &self.position
+    }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        todo!()
     }
 }
 
@@ -268,6 +276,8 @@ impl OperationsTopology for WHStoreTopology {
 
         // TODO handle delete case
 
+        let ts = std::time::Instant::now();
+
         // filter contexts by "object type"
         let mut contexts = HashSet::with_capacity(cs.len());
         for c in cs {
@@ -278,8 +288,11 @@ impl OperationsTopology for WHStoreTopology {
                 }
             }
         }
+        // println!("on_mutation contexts preparation: {:.2?}", ts.elapsed());
 
         // TODO resolve up-dependent contexts
+
+        let ts = std::time::Instant::now();
 
         let mut ops = Vec::with_capacity(contexts.len());
         for context in contexts {
@@ -289,7 +302,13 @@ impl OperationsTopology for WHStoreTopology {
                 ops.push(DeltaOp::new(context, before, after));
             }
         }
+        println!("on_mutation contexts processed: {:.2?}", ts.elapsed());
+
+        let ts = std::time::Instant::now();
+
         tx.ops_manager().write_ops(tx, &ops)?;
+
+        println!("on_mutation write_ops: {:.2?}", ts.elapsed());
 
         Ok(ops)
     }
@@ -379,6 +398,10 @@ impl PositionInTopology for StoreMovement {
 
     fn position(&self) -> &Vec<u8> {
         &self.position
+    }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        todo!()
     }
 }
 

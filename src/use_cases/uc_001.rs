@@ -345,11 +345,15 @@ pub(crate) fn import(db: &AnimoDB) {
 pub(crate) fn report(db: &AnimoDB) {
     let interval = TimeInterval::new("2021-06-01", "2021-06-30").unwrap();
 
+    let ts = std::time::Instant::now();
+
     let stores = WHStoreAggregationTopology::stores_turnover(
         &db, interval.clone(),
     ).expect("Ok");
 
-    println!("{:?}", stores.len());
+    println!("done in {:?}", ts.elapsed());
+
+    println!("count {:?}", stores.len());
 
     for store in stores.iter() {
         let v = store.value();

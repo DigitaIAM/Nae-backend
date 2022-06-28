@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use rkyv::AlignedVec;
 use rocksdb::{BoundColumnFamily, DB, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch};
 use crate::animo::error::DBError;
-use crate::{Animo, Memory, Settings, Topology, WHStoreAggregationTopology, WHStoreTopology, WHTopology};
+use crate::{Animo, Memory, Settings, Topology, WHStoreAggregationTopology, WHStoreTopology};
 use crate::animo::OpsManager;
 use crate::animo::memory::*;
 
@@ -130,10 +130,9 @@ impl Memory for AnimoDB {
         // let wh_base = Arc::new(WHTopology());
         let wh_store = Arc::new(WHStoreTopology());
 
-        // animo.register_topology(Topology::Warehouse(wh_base.clone()));
         animo.register_topology(Topology::WarehouseStore(wh_store.clone()));
         animo.register_topology(Topology::WarehouseStoreAggregation(Arc::new(WHStoreAggregationTopology(wh_store.clone()))));
-        // animo.register_topology(Topology::WarehouseGoods(Arc::new(WHGoodsTopology(wh_base.clone()))));
+
         db.register_dispatcher(Arc::new(animo)).unwrap();
 
         Ok(db)
@@ -152,7 +151,7 @@ impl Memory for AnimoDB {
                 // TODO let b = change.into_before.to_bytes()?;
                 let v = change.into_after.to_bytes()?;
 
-                log::debug!("put {:?} = {:?}", k, v);
+                // log::debug!("put {:?} = {:?}", k, v);
 
                 batch.put_cf(&cf, k, v);
             }
@@ -165,8 +164,6 @@ impl Memory for AnimoDB {
         // TODO require snapshot with modification
         let s = self.snapshot();
 
-        print!("dispatchers ");
-
         // TODO how to handle error?
         let dispatchers = {
             self.dispatchers.lock()
@@ -177,8 +174,6 @@ impl Memory for AnimoDB {
         for dispatcher in dispatchers.iter() {
             dispatcher.on_mutation(&s, &mutations)?;
         }
-
-        println!(" done");
 
         Ok(())
     }
