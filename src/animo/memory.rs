@@ -368,7 +368,7 @@ mod tests {
 
         let json = serde_json::to_string(&value).unwrap();
 
-        assert_eq!(json, "{\"Number\":\"10\"}");
+        assert_eq!(json, "{\"Number\":10.0}");
 
         let restored = serde_json::from_str(json.as_str()).unwrap();
 

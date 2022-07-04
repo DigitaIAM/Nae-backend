@@ -18,13 +18,16 @@ pub struct WHBalance(pub Qty, pub Money);
 
 impl FromBytes<WHBalance> for WHBalance {
     fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
-        todo!()
+        let archived = unsafe { rkyv::archived_root::<Self>(bs) };
+        let value: Self = archived.deserialize(&mut rkyv::Infallible).unwrap();
+        Ok(value)
     }
 }
 
 impl ToBytes for WHBalance {
     fn to_bytes(&self) -> Result<AlignedVec, DBError> {
-        todo!()
+        rkyv::to_bytes::<_, 1024>(self)
+            .map_err(|e| DBError::from(e.to_string()))
     }
 }
 
