@@ -11,7 +11,7 @@ use pbkdf2::{
     Pbkdf2
 };
 use crate::animo::error::DBError;
-use crate::{AnimoDB, Memory, Settings};
+use crate::{AnimoDB, DESC, Memory, Settings};
 use crate::animo::memory::{ChangeTransformation, Context, ID, TransformationKey, Value};
 
 const ALGORITHM: Algorithm = Algorithm::HS256;
@@ -147,7 +147,7 @@ pub(crate) async fn logout(auth: BearerAuth, settings: web::Data<Settings>, db: 
     log::debug!("logout {}", now);
 
     let mutation = vec![
-        ChangeTransformation::create(account.id, "last_logout", Value::U128(now)),
+        ChangeTransformation::create(*DESC, account.id, "last_logout", Value::U128(now)),
     ];
     db.modify(mutation)
         .map_err(actix_web::error::ErrorInternalServerError)?;
@@ -168,9 +168,9 @@ pub(crate) async fn signup_post(settings: web::Data<Settings>, db: web::Data<Ani
     let account_id = ID::from(data.email.as_str());
 
     let mutation = vec![
-        ChangeTransformation::create(account_id, "instance_of", ID::from("user_account").into()),
-        ChangeTransformation::create(account_id, "email", data.email.clone().into()),
-        ChangeTransformation::create(account_id, "password_hash", password_hash.into()),
+        ChangeTransformation::create(*DESC, account_id, "instance_of", ID::from("user_account").into()),
+        ChangeTransformation::create(*DESC, account_id, "email", data.email.clone().into()),
+        ChangeTransformation::create(*DESC, account_id, "password_hash", password_hash.into()),
     ];
     db.modify(mutation)
         .map_err(actix_web::error::ErrorInternalServerError)?;

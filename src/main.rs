@@ -29,6 +29,7 @@ mod api;
 mod animo;
 pub mod warehouse;
 mod accounts;
+mod text_search;
 mod use_cases;
 
 use animo::memory::Memory;
@@ -48,6 +49,9 @@ struct Opt {
     /// Run mode
     #[structopt(short, long, default_value = "server")]
     mode: String,
+
+    #[structopt(short = "c", long = "case", default_value = "001")]
+    case: String,
 
     /// Data folder
     #[structopt(short, long, parse(from_os_str))]
@@ -107,11 +111,19 @@ async fn main() -> std::io::Result<()> {
             server().await
         }
         "import" => {
-            use_cases::uc_001::import(&db);
+            match opt.case.as_str() {
+                "001" => use_cases::uc_001::import(&db),
+                "002" => use_cases::uc_002::import(&db),
+                _ => unreachable!()
+            }
             Ok(())
         }
         "report" => {
-            use_cases::uc_001::report(&db);
+            match opt.case.as_str() {
+                "001" => use_cases::uc_001::report(&db),
+                "002" => use_cases::uc_002::report(&db),
+                _ => unreachable!()
+            }
             Ok(())
         }
         _ => unreachable!()
@@ -141,6 +153,7 @@ mod tests {
 
         let changes = vec![
             ChangeTransformation {
+                zone: *DESC,
                 context: vec!["language".into(), "label".into()].into(),
                 what: "english".into(),
                 into_before: Value::Nothing,

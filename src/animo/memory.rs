@@ -43,15 +43,19 @@ pub struct IDs(pub Vec<ID>);
 // #[archive(compare(PartialEq))]
 // To use the safe API, you have to derive CheckBytes for the archived type
 // #[archive_attr(derive(CheckBytes, Debug))]
+#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
 pub enum Value {
     Nothing,
     ID(ID),
     IDs(IDs),
+    Pairs(#[omit_bounds] Vec<(ID, Box<Value>)>),
     String(String),
     Number(Decimal),
     U128(u128),
-    DateTime(Time)
+    DateTime(Time),
 }
+
+pub type Zone = ID;
 
 // #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 #[derive(Clone, Hash, Eq, serde::Serialize, serde::Deserialize)]
@@ -64,45 +68,49 @@ pub struct Context(pub Vec<ID>);
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChangeTransformation {
-    pub context: Context,
-    pub what: ID,
-    pub into_before: Value,
-    pub into_after: Value
+  pub zone: Zone,
+  pub context: Context,
+  pub what: ID,
+  pub into_before: Value,
+  pub into_after: Value
 }
 
 impl ChangeTransformation {
-    pub(crate) fn new(context: Context, what: ID, into: Value) -> Self {
-        ChangeTransformation {
-            context,
-            what,
-            into_before: Value::Nothing,
-            into_after: into
-        }
+  pub(crate) fn new(zone: ID, context: Context, what: ID, into: Value) -> Self {
+    ChangeTransformation {
+      zone,
+      context,
+      what,
+      into_before: Value::Nothing,
+      into_after: into
     }
+  }
 
-    pub(crate) fn create(context: ID, what: &str, into: Value) -> Self {
-        ChangeTransformation {
-            context: Context(vec![context]),
-            what: what.into(),
-            into_before: Value::Nothing,
-            into_after: into
-        }
+  pub(crate) fn create(zone: ID, context: ID, what: &str, into: Value) -> Self {
+    ChangeTransformation {
+      zone,
+      context: Context(vec![context]),
+      what: what.into(),
+      into_before: Value::Nothing,
+      into_after: into
     }
+  }
 
-    pub(crate) fn create_(context: ID, what: ID, into: Value) -> Self {
-        ChangeTransformation {
-            context: Context(vec![context]),
-            what,
-            into_before: Value::Nothing,
-            into_after: into
-        }
+  pub(crate) fn create_(zone: ID, context: ID, what: ID, into: Value) -> Self {
+    ChangeTransformation {
+      zone,
+      context: Context(vec![context]),
+      what,
+      into_before: Value::Nothing,
+      into_after: into
     }
+  }
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct TransformationKey {
-    pub context: Context,
-    pub what: ID,
+  pub context: Context,
+  pub what: ID,
 }
 
 impl TransformationKey {
@@ -178,6 +186,19 @@ impl From<Vec<ID>> for Context {
 impl From<ID> for Value {
     fn from(data: ID) -> Self {
         Value::ID(data)
+    }
+}
+
+impl From<IDs> for Value {
+    fn from(data: IDs) -> Self {
+        Value::IDs(data)
+    }
+}
+
+impl From<Vec<(ID,Value)>> for Value {
+    fn from(data: Vec<(ID,Value)>) -> Self {
+        let data = data.iter().map(|p| (p.0, Box::new(p.1.clone())) ).collect();
+        Value::Pairs(data)
     }
 }
 
@@ -331,8 +352,44 @@ pub(crate) trait Memory {
     fn query(&self, keys: Vec<TransformationKey>) -> Result<Vec<Transformation>, DBError>;
 }
 
+pub(crate) fn create(zone: ID, primary: ID, pairs: Vec<(ID, Value)>) -> Vec<ChangeTransformation> {
+  let mut v = vec![];
+
+  let mut processing = vec![];
+
+  for pair in pairs {
+      processing.push((Context(vec![primary]), pair.0, Box::new(pair.1)));
+  }
+
+  while !processing.is_empty() {
+    let (context, what, into) = processing.pop().unwrap();
+    let into = *into;
+    match into {
+      Value::Pairs(ps) => {
+        let mut ctx = context.0;
+        ctx.push(what);
+
+        for pair in ps {
+          processing.push((Context(ctx.clone()), pair.0, pair.1));
+        }
+      }
+      _ => {
+        v.push(ChangeTransformation {
+          zone,
+          context,
+          what,
+          into_before: Value::Nothing,
+          into_after: into,
+        })
+      }
+    }
+  }
+  v
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::DESC;
     use super::*;
 
     #[test]
@@ -351,6 +408,7 @@ mod tests {
     #[test]
     fn test_change_transformation_json() {
         let trans = ChangeTransformation {
+            zone: *DESC,
             context: vec!["1".into(), "2".into()].into(),
             what: "3".into(),
             into_before: Value::Nothing,

@@ -4,8 +4,9 @@ use rkyv::AlignedVec;
 use rocksdb::{BoundColumnFamily, DB, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch};
 use crate::animo::error::DBError;
 use crate::{Animo, Memory, Settings, Topology, WHStoreAggregationTopology, WHStoreTopology};
-use crate::animo::OpsManager;
+use crate::animo::{OpsManager, Txn};
 use crate::animo::memory::*;
+use crate::text_search::TextSearch;
 
 const CF_CORE: &str = "cf_core";
 const CF_OPERATIONS: &str = "cf_operations";
@@ -30,6 +31,7 @@ pub(crate) trait FromKVBytes<V> {
 #[derive(Clone)]
 pub struct AnimoDB {
     pub(crate) db: Arc<DB>,
+    pub(crate) text_search: Arc<TextSearch>,
     pub(crate) dispatchers: Arc<Mutex<Vec<Arc<dyn Dispatcher>>>>,
     pub(crate) ops_manager: Arc<OpsManager>,
 }
@@ -94,6 +96,13 @@ pub trait Dispatcher: Sync + Send {
 
 impl Memory for AnimoDB {
     fn init(folder: &str) -> Result<Self, DBError> {
+        // search index
+        let text_index_folder = folder.to_string() + "/text_index";
+        std::fs::create_dir_all(text_index_folder.as_str())
+            .map_err(|e| DBError::from(e.to_string()))?;
+
+        let text_search = Arc::new(TextSearch::open(text_index_folder.as_str())?);
+
         let mut options = Options::default();
         options.set_error_if_exists(false);
         options.create_if_missing(true);
@@ -123,6 +132,7 @@ impl Memory for AnimoDB {
             db: rf.clone(),
             dispatchers: Arc::new(Mutex::new(vec![])),
             ops_manager: Arc::new(OpsManager()),
+            text_search
         };
 
         let mut animo = Animo::default();
@@ -163,6 +173,9 @@ impl Memory for AnimoDB {
 
         // TODO require snapshot with modification
         let s = self.snapshot();
+        let mut tx = Txn::new_with(&s, &mutations);
+
+        self.text_search.modification(&s, tx, &mutations)?;
 
         // TODO how to handle error?
         let dispatchers = {

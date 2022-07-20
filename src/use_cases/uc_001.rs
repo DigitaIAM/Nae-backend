@@ -8,8 +8,6 @@ use crate::*;
 use crate::animo::TimeInterval;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 
-const MAX_WRITES: usize = 17;
-
 pub(crate) fn import(db: &AnimoDB) {
     println!("running import");
 
@@ -55,35 +53,6 @@ pub(crate) fn import(db: &AnimoDB) {
             }
             _ => unreachable!("internal error")
         }
-    };
-
-    // let mut bg = vec![];
-    let mut write = |mut changes: Vec<ChangeTransformation>| -> Vec<ChangeTransformation> {
-        let chg = changes.clone();
-        changes.clear();
-
-        let storage = db.clone();
-
-        // let handle = thread::spawn(move || {
-            let now = || -> u128 {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("system time is likely incorrect")
-                    .as_millis()
-            };
-
-            let ts = now();
-            storage.modify(chg).unwrap();
-            println!("stored in {:?}", (now() - ts));
-        // });
-        // bg.push(handle);
-        // while bg.len() > MAX_WRITES {
-        //     let h = bg.remove(0);
-        //     h.join().expect("Couldn't join");
-        //     bg.retain(|h| !h.is_finished());
-        // }
-        // bg.retain(|h| !h.is_finished());
-        changes
     };
 
     let mut changes = Vec::with_capacity(1_000_000);
@@ -167,7 +136,7 @@ pub(crate) fn import(db: &AnimoDB) {
         if count % 5_000 == 0 {
             println!("DT95 {:?}", count);
 
-            changes = write(changes);
+            changes = super::write(db, changes);
         }
 
         // F=IDDOC     |ID Document's       |C   |9     |0
@@ -190,18 +159,12 @@ pub(crate) fn import(db: &AnimoDB) {
         if head_added.insert(doc_id.clone()) {
             if let Some((store_id, supplier_id)) = head.get(&doc_id) {
                 let context = Context(vec![doc_id.clone().into()]);
-                changes.push(ChangeTransformation::new(
-                    context.clone(), *SPECIFIC_OF, Value::ID(*GOODS_RECEIVE))
-                );
-                changes.push(ChangeTransformation::new(
-                    context.clone(), *DATE, Value::DateTime(date.clone()))
-                );
-                changes.push(ChangeTransformation::new(
-                    context.clone(), "supplier".into(), ID::from(supplier_id.as_str()).into())
-                );
-                changes.push(ChangeTransformation::new(
-                    context.clone(), *STORE, ID::from(store_id.as_str()).into())
-                );
+                changes.extend(create(*DESC, doc_id.clone().into(), vec![
+                    (*SPECIFIC_OF, Value::ID(*GOODS_RECEIVE)),
+                    (*DATE, Value::DateTime(date.clone())),
+                    ("supplier".into(), ID::from(supplier_id.as_str()).into()),
+                    (*STORE, ID::from(store_id.as_str()).into())
+                ]));
 
                 let data = format!("{:?} {:?} {:?} {:?}\n", doc_id, store_id, supplier_id, date);
                 f.write_all(data.as_bytes()).expect("Unable to write data");
@@ -212,26 +175,21 @@ pub(crate) fn import(db: &AnimoDB) {
         }
 
         if head_added.contains(&doc_id) {
-            let context = Context(vec![doc_id.clone().into(), line_id.clone().into()]);
-            changes.push(ChangeTransformation::new(
-                context.clone(),
-                *GOODS, ID::from(goods_id.as_str()).into())
-            );
-            changes.push(ChangeTransformation::new(
-                context.clone(),
-                *QTY, qty.into())
-            );
-            changes.push(ChangeTransformation::new(
-                context.clone(),
-                *COST, cost.into())
-            );
+            let context = Context(vec![doc_id.clone().into(), ]);
+            changes.extend(create(*DESC, doc_id.clone().into(), vec![
+              (line_id.clone().into(), vec![
+                (*GOODS, ID::from(goods_id.as_str()).into()),
+                (*QTY, qty.into()),
+                (*COST, cost.into())
+              ].into())
+            ]));
 
             let data = format!("{:?} {:?} {:?} {:?}\n", doc_id, goods_id, qty, cost);
             f.write_all(data.as_bytes()).expect("Unable to write data");
         }
     }
 
-    changes = write(changes);
+    changes = super::write(db, changes);
 
     println!("Lines of ТоварПриход {:?}", count);
     count = 0;
@@ -279,7 +237,7 @@ pub(crate) fn import(db: &AnimoDB) {
         if count % 5_000 == 0 {
             println!("DT112 {:?}", count);
 
-            changes = write(changes);
+            changes = super::write(db, changes);
         }
 
         // F=IDDOC     |ID Document's       |C   |9     |0
@@ -298,48 +256,32 @@ pub(crate) fn import(db: &AnimoDB) {
         let cost = number(record, "SP105");
 
         if let Some((store_id, customer_id)) = head.get(&doc_id) {
-            let context = Context(vec![doc_id.clone().into()]);
-            changes.push(ChangeTransformation::new(
-                context.clone(), *SPECIFIC_OF, Value::ID(*GOODS_ISSUE))
-            );
-            changes.push(ChangeTransformation::new(
-                context.clone(), *DATE, Value::DateTime(doc_date.get(doc_id.as_str()).unwrap().clone()))
-            );
-            changes.push(ChangeTransformation::new(
-                context.clone(), "customer".into(), ID::from(customer_id.as_str()).into())
-            );
-            changes.push(ChangeTransformation::new(
-                context.clone(), *STORE, ID::from(store_id.as_str()).into())
-            );
+          changes.extend(create(*DESC, doc_id.clone().into(), vec![
+            (*SPECIFIC_OF, Value::from(*GOODS_ISSUE)),
+            (*DATE, Value::DateTime(doc_date.get(doc_id.as_str()).unwrap().clone())),
+            (*CUSTOMER, ID::from(customer_id.as_str()).into()),
+            (*STORE, ID::from(store_id.as_str()).into()),
+          ]));
 
-            let context = Context(vec![doc_id.clone().into(), line_id.clone().into()]);
-            changes.push(ChangeTransformation::new(
-                context.clone(),
-                *GOODS, ID::from(goods_id.as_str()).into())
-            );
-            changes.push(ChangeTransformation::new(
-                context.clone(),
-                *QTY, qty.into())
-            );
-            changes.push(ChangeTransformation::new(
-                context.clone(),
-                *COST, cost.into())
-            );
+          changes.extend(create(*DESC, doc_id.into(), vec![
+            (line_id.clone().into(), vec![
+              (*GOODS, ID::from(goods_id.as_str()).into()),
+              (*QTY, qty.into()),
+              (*COST, cost.into())
+            ].into())
+          ]));
         } else {
             println!("doc_id: {}", doc_id);
         }
     }
 
-    changes = write(changes);
+    changes = super::write(db, changes);
 
     println!("Lines of ТоварРасход {:?}", count);
     count = 0;
 
-    // while bg.len() != 0 {
-    //     let h = bg.remove(0);
-    //     h.join().expect("Couldn't join");
-    //     bg.retain(|h| !h.is_finished());
-    // }
+
+    super::join();
 }
 
 pub(crate) fn report(db: &AnimoDB) {

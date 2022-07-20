@@ -41,3 +41,7 @@ impl fmt::Display for DBError {
         self.message.fmt(formatter)
     }
 }
+
+pub(crate) fn convert(e: impl ToString) -> DBError {
+    DBError { message: e.to_string() }
+}

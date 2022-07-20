@@ -86,6 +86,7 @@ pub mod test_util {
             records.push(Transformation::new(&context, *COST, cost.into()));
         }
         records.iter().map(|t| ChangeTransformation {
+            zone: *DESC,
             context: t.context.clone(),
             what: t.what.clone(),
             into_before: Value::Nothing,
@@ -102,10 +103,11 @@ pub mod test_util {
     }
 
     pub(crate) fn delete(changes: Vec<ChangeTransformation>) -> Vec<ChangeTransformation> {
-        changes.iter().map(|t| ChangeTransformation {
-            context: t.context.clone(),
-            what: t.what.clone(),
-            into_before: t.into_after.clone(),
+        changes.into_iter().map(|t| ChangeTransformation {
+            zone: t.zone,
+            context: t.context,
+            what: t.what,
+            into_before: t.into_after,
             into_after: Value::Nothing,
         }).collect::<Vec<_>>()
     }
