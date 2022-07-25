@@ -11,7 +11,7 @@ use pbkdf2::{
     Pbkdf2
 };
 use crate::animo::error::DBError;
-use crate::{AnimoDB, DESC, Memory, Settings};
+use crate::{AnimoDB, Application, DESC, Memory, Settings};
 use crate::animo::memory::{ChangeTransformation, Context, ID, TransformationKey, Value};
 
 const ALGORITHM: Algorithm = Algorithm::HS256;
@@ -127,9 +127,9 @@ pub(crate) struct SignUpRequest {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct LoginRequest {
-    email: String,
-    password: String,
-    remember_me: bool,
+    pub(crate) email: String,
+    pub(crate) password: String,
+    pub(crate) remember_me: bool,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -156,7 +156,7 @@ pub(crate) async fn logout(auth: BearerAuth, settings: web::Data<Settings>, db: 
 }
 
 #[post("/signup")]
-pub(crate) async fn signup_post(settings: web::Data<Settings>, db: web::Data<AnimoDB>, data: web::Json<SignUpRequest>) -> Result<HttpResponse, Error> {
+pub(crate) async fn signup_post(app: web::Data<Application>, data: web::Json<SignUpRequest>) -> Result<HttpResponse, Error> {
     let password = data.password.as_bytes();
 
     let salt = SaltString::generate(&mut OsRng);
@@ -172,7 +172,7 @@ pub(crate) async fn signup_post(settings: web::Data<Settings>, db: web::Data<Ani
         ChangeTransformation::create(*DESC, account_id, "email", data.email.clone().into()),
         ChangeTransformation::create(*DESC, account_id, "password_hash", password_hash.into()),
     ];
-    db.modify(mutation)
+    app.db.modify(mutation)
         .map_err(actix_web::error::ErrorInternalServerError)?;
 
     let login_data = LoginRequest {
@@ -181,26 +181,32 @@ pub(crate) async fn signup_post(settings: web::Data<Settings>, db: web::Data<Ani
         remember_me: false,
     };
 
-    login_procedure(settings, db, login_data)
+    match login_procedure(app.get_ref(), login_data) {
+        Ok(result) => Ok(HttpResponse::Ok().json(result)),
+        Err(mgs) => Err(actix_web::error::ErrorUnauthorized(mgs)),
+    }
 }
 
 #[post("/login")]
-pub(crate) async fn login_post(settings: web::Data<Settings>, db: web::Data<AnimoDB>, data: web::Json<LoginRequest>) -> Result<HttpResponse, Error> {
-    login_procedure(settings, db, data.0)
+pub(crate) async fn login_post(app: web::Data<Application>, data: web::Json<LoginRequest>) -> Result<HttpResponse, Error> {
+    match login_procedure(app.get_ref(), data.0) {
+        Ok(token) => Ok(HttpResponse::Ok().json(LoginResponse { token })),
+        Err(mgs) => Err(actix_web::error::ErrorUnauthorized(mgs)),
+    }
 }
 
-fn login_procedure(settings: web::Data<Settings>, db: web::Data<AnimoDB>, data: LoginRequest) -> Result<HttpResponse, Error> {
+pub(crate) fn login_procedure(app: &Application, data: LoginRequest) -> Result<String, String> {
     // find user's password hash
     let account_id = ID::from(data.email.as_str());
-    let hash = match db.value(TransformationKey::simple(account_id, "password_hash"))
-        .map_err(actix_web::error::ErrorUnauthorized)?
+    let hash = match app.db.value(TransformationKey::simple(account_id, "password_hash"))
+        .map_err(|e| e.to_string())?
     {
         Value::String(hash) => hash,
-        _ => return Err(actix_web::error::ErrorUnauthorized("")),
+        _ => return Err("".to_string()),
     };
 
     let password_hash = PasswordHash::new(hash.as_str())
-        .map_err(actix_web::error::ErrorUnauthorized)?;
+        .map_err(|e| e.to_string())?;
 
     if Pbkdf2.verify_password(data.password.as_bytes(), &password_hash).is_ok() {
         // JWT
@@ -213,21 +219,21 @@ fn login_procedure(settings: web::Data<Settings>, db: web::Data<AnimoDB>, data: 
         };
 
         let claims = Claims {
-            aud: settings.jwt_config.audience.clone(),
-            iss: settings.jwt_config.issuer.clone(),
+            aud: app.settings.jwt_config.audience.clone(),
+            iss: app.settings.jwt_config.issuer.clone(),
             sub: data.email.clone(),
             iat: now,
             nbf: now,
             exp: exp,
         };
 
-        let key = EncodingKey::from_secret(settings.jwt_config.secret.as_bytes());
+        let key = EncodingKey::from_secret(app.settings.jwt_config.secret.as_bytes());
         let token = jsonwebtoken::encode(&Header::new(ALGORITHM), &claims, &key)
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()) )?;
+            .map_err(|e| e.to_string() )?;
 
-        Ok(HttpResponse::Ok().json(LoginResponse { token }))
+        Ok(token)
     } else {
-        Err(actix_web::error::ErrorUnauthorized(""))
+        Err("invalid password".to_string())
     }
 }
 

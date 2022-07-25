@@ -16,7 +16,7 @@ use actix_web_httpauth::extractors::AuthenticationError;
 use actix_web_httpauth::extractors::bearer::{BearerAuth, Config};
 use actix_web_httpauth::middleware::HttpAuthentication;
 use dbase::{FieldValue, Record};
-use crate::commutator::Commutator;
+use crate::commutator::{Application, Commutator};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -24,6 +24,8 @@ mod settings;
 mod websocket;
 mod commutator;
 mod auth;
+mod services;
+mod ws;
 
 mod api;
 mod animo;
@@ -37,6 +39,7 @@ use animo::db::AnimoDB;
 use crate::animo::memory::*;
 use crate::animo::shared::*;
 use crate::animo::{Animo, Time, Topology};
+use crate::services::Services;
 use crate::settings::Settings;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
@@ -58,33 +61,36 @@ struct Opt {
     data: PathBuf,
 }
 
-
-async fn server() -> std::io::Result<()> {
+async fn server(settings: Arc<Settings>, db: AnimoDB) -> std::io::Result<()> {
     let address = "localhost"; // "127.0.0.1"
-    let port = 8080;
+    let port = 3030;
 
-    log::info!("starting up {:?}:{:?}", address, port);
+    log::info!("starting up {:?}:{}", address, port);
 
-    let settings = std::sync::Arc::new(Settings::new().unwrap());
 
-    let db: AnimoDB = Memory::init(&settings.database.folder).unwrap();
-    let communicator = Commutator::new(db.clone()).start();
+    let mut app = Application::new(settings.clone(), Arc::new(db));
+    app.register(crate::services::Authentication::new(app.clone(), "authentication"));
+
+    let mut com = Commutator::new(app.clone()).start();
 
     HttpServer::new(move || {
         // let auth = HttpAuthentication::bearer(auth::validator);
 
         App::new()
-            .app_data(web::Data::new(settings.clone()))
-            .app_data(web::Data::new(db.clone()))
-            .app_data(web::Data::new(communicator.clone()))
+            .app_data(web::Data::new(app.clone()))
+          .app_data(web::Data::new(com.clone()))
             .wrap(middleware::Logger::default())
             // .wrap(auth)
+            .service(
+                web::scope("/socket.io")
+                    .service(ws::start_connection)
+            )
             .service(
                 web::scope("/")
             )
             .service(
                 web::scope("/v1")
-                    .service(websocket::start_connection_route)
+                    // .service(websocket::start_connection_route)
                     .service(api::memory_query)
                     .service(api::memory_modify)
             )
@@ -108,7 +114,7 @@ async fn main() -> std::io::Result<()> {
 
     match opt.mode.as_str() {
         "server" => {
-            server().await
+            server(settings, db).await
         }
         "import" => {
             match opt.case.as_str() {

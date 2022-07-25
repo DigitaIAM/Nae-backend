@@ -292,26 +292,38 @@ impl Value {
 }
 
 impl ID {
-    // TODO make `const`
-    pub(crate) fn for_constant(data: &str) -> Self {
-        data.into()
+  pub(crate) fn new(data: &[u8]) -> Result<Self, ()> {
+    if data.len() == ID_BYTES {
+      Err(())
+    } else {
+      let mut a = [0; ID_BYTES];
+      for i in 0..ID_BYTES {
+        a[i] = data[i];
+      }
+      Ok(ID(a))
+    }
+  }
+
+  // TODO make `const`
+  pub(crate) fn for_constant(data: &str) -> Self {
+    data.into()
+  }
+
+  pub fn as_slice(&self) -> &[u8] {
+    self.0.as_slice()
+  }
+
+  pub fn bytes(context: &Context, what: &ID) -> Vec<u8> {
+    let mut bs = Vec::with_capacity(ID_BYTES * (1 + context.len()));
+
+    for id in &context.0 {
+      bs.extend_from_slice(id.0.as_slice());
     }
 
-    pub fn as_slice(&self) -> &[u8] {
-        self.0.as_slice()
-    }
+    bs.extend_from_slice(what.0.as_slice());
 
-    pub fn bytes(context: &Context, what: &ID) -> Vec<u8> {
-        let mut bs = Vec::with_capacity(ID_BYTES * (1 + context.len()));
-
-        for id in &context.0 {
-            bs.extend_from_slice(id.0.as_slice());
-        }
-
-        bs.extend_from_slice(what.0.as_slice());
-
-        bs
-    }
+    bs
+  }
 }
 
 impl IDs {
