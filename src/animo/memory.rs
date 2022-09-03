@@ -4,8 +4,11 @@ use bytecheck::CheckBytes;
 use std::array::TryFromSliceError;
 use std::cmp::Ordering;
 use std::ops::{Add, Sub};
+use base64::DecodeError;
 
 use blake2::{Digest, Blake2s256};
+use json::JsonValue;
+use json::JsonValue::Number;
 use crate::animo::error::DBError;
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::animo::Time;
@@ -262,6 +265,19 @@ impl FromBytes<Value> for Value {
 }
 
 impl Value {
+    pub(crate) fn to_json(&self) -> JsonValue {
+      match self {
+        Value::Nothing => JsonValue::Null,
+        Value::ID(_) => todo!(),
+        Value::IDs(_) => todo!(),
+        Value::Pairs(_) => todo!(),
+        Value::String(s) => JsonValue::String(s.into()),
+        Value::Number(n) => JsonValue::Number((*n).into()),
+        Value::U128(_) => todo!(),
+        Value::DateTime(_) => todo!(),
+      }
+    }
+
     pub(crate) fn as_number(&self) -> Option<Decimal> {
         match self {
             Value::Number(number) => Some(*number),
@@ -292,9 +308,9 @@ impl Value {
 }
 
 impl ID {
-  pub(crate) fn new(data: &[u8]) -> Result<Self, ()> {
+  pub(crate) fn new(data: &[u8]) -> Result<Self, DBError> {
     if data.len() == ID_BYTES {
-      Err(())
+      Err(DBError::from(format!("ID require {} bytes, but got {}", ID_BYTES, data.len())))
     } else {
       let mut a = [0; ID_BYTES];
       for i in 0..ID_BYTES {
@@ -302,6 +318,17 @@ impl ID {
       }
       Ok(ID(a))
     }
+  }
+
+  pub(crate) fn from_base64(input: &[u8]) -> Result<ID, DBError> {
+    match base64::decode_config(input, base64::URL_SAFE_NO_PAD) {
+      Ok(bs) => ID::new(bs.as_slice()),
+      Err(msg) => Err(DBError::from(msg.to_string()))
+    }
+  }
+
+  pub(crate) fn to_base64(&self) -> String {
+    base64::encode_config(self.0, base64::URL_SAFE_NO_PAD)
   }
 
   // TODO make `const`

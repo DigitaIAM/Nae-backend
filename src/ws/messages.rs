@@ -5,36 +5,40 @@ use crate::ws::{engine_io, socket_io};
 
 #[derive(Message)]
 #[rtype(result = "()")]
-pub(crate) struct WsMessage(pub String);
+pub(crate) struct WsMessage {
+  pub(crate) data: String,
+  pub(crate) engine_code: String,
+  pub(crate) socket_code: Option<String>,
+}
 
 impl WsMessage {
 
   pub(crate) fn open(sid: &Uuid) -> Self {
     let data = format!(
-      "{}{{\"sid\":\"{}\",\"upgrades\":[\"websocket\"],\"pingInterval\":{},\"pingTimeout\":{}}}",
-      engine_io::OPEN,
+      "{{\"sid\":\"{}\",\"upgrades\":[\"websocket\"],\"pingInterval\":{},\"pingTimeout\":{}}}",
       sid.to_string(),
       crate::websocket::PING_INTERVAL,
       crate::websocket::PING_TIMEOUT
     );
-    WsMessage(data)
+    WsMessage { data, engine_code: engine_io::OPEN.into(), socket_code: None }
   }
 
-  pub(crate) fn ack(event_id: String, response: String) -> Self {
-    let data = format!(
-      "{}{}[{}]",
-      socket_io::ACK,
-      event_id,
-      response,
-    );
-    WsMessage(data)
+  pub(crate) fn ack<S: Convertable>(event_id: String, response: S) -> Self {
+    let response = response.data();
+    let data = if response.starts_with("[") {
+      format!("{}{}", event_id, response)
+    } else {
+      format!("{}[{}]", event_id, response)
+    };
+    WsMessage { data, engine_code: engine_io::MESSAGE.into(), socket_code: Some(socket_io::ACK.into()) }
   }
 
-  pub(crate) fn data(&self) -> String {
+  pub(crate) fn data(self) -> String {
     format!(
-      "{}{}",
-      engine_io::MESSAGE,
-      self.0,
+      "{}{}{}",
+      self.engine_code,
+      self.socket_code.unwrap_or("".into()),
+      self.data,
     )
   }
 }
@@ -62,3 +66,26 @@ pub(crate) struct Connect {
 pub(crate) struct Disconnect {
   pub(crate) sid: Uuid,
 }
+
+pub(crate) trait Convertable {
+  fn data(self) -> String;
+}
+
+impl Convertable for &str {
+  fn data(self) -> String {
+    self.to_string()
+  }
+}
+
+impl Convertable for String {
+  fn data(self) -> String {
+    self
+  }
+}
+
+impl Convertable for JsonValue {
+  fn data(self) -> String {
+    self.to_string()
+  }
+}
+

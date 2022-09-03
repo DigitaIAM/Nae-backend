@@ -81,8 +81,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
         let code = &payload[..1];
         let data = &payload[1..];
         match code {
-          engine_io::OPEN => {}
-          engine_io::CLOSE => {}
+          engine_io::OPEN => todo!(),
+          engine_io::CLOSE => todo!(),
           engine_io::PING => {
             self.hb = Instant::now();
             ctx.text(engine_io::PONG);
@@ -107,7 +107,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
                         if !data.is_array() {
                           ctx.text(WsMessage::ack(
                             event_id,
-                            error_general("unsupported event").to_string(),
+                            error_general("unsupported event"),
                           ).data());
                           return;
                         }
@@ -117,7 +117,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
                         } else {
                           ctx.text(WsMessage::ack(
                               event_id,
-                              error_general("command is missing").to_string(),
+                              error_general("command is missing"),
                           ).data());
                           return;
                         };
@@ -127,7 +127,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
                         } else {
                           ctx.text(WsMessage::ack(
                             event_id,
-                            error_general("service path is missing").to_string(),
+                            error_general("service path is missing"),
                           ).data());
                           return;
                         };
@@ -143,7 +143,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
                       Err(msg) => {
                         ctx.text(WsMessage::ack(
                           event_id,
-                          error_general(msg.to_string().as_str()).to_string(),
+                          error_general(msg.to_string().as_str()),
                         ).data());
                       }
                     }
@@ -152,22 +152,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
               }
               engine_io::UPGRADE => todo!(),
               engine_io::NOON => todo!(),
-              _ => {
-                // TODO handle error
-                todo!();
-              }
+              _ => todo!("handle error"),
             }
           }
-          _ => {
-            // TODO handle unknown message
-            todo!();
-          }
+          _ => todo!("handle unknown message"),
         }
-        // ctx.text(text)
       }
       Ok(ws::Message::Binary(bin)) => {
-        println!("binary {:?}", bin);
-        ctx.binary(bin)
+        todo!("binary {:?}", bin);
       }
       _ => (),
     }

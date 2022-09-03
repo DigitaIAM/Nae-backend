@@ -23,12 +23,12 @@ impl Service for Authentication {
     todo!()
   }
 
-  fn get(&self, id: ID, params: Params) -> JsonValue{
+  fn get(&self, id: ID, params: Params) -> JsonValue {
     todo!()
   }
 
   fn create(&self, data: Data, params: Params) -> JsonValue {
-    let strategy = data["strategy"].as_str().unwrap_or("").to_string();
+    let strategy = data["strategy"].as_str().unwrap_or("local").to_string();
     let email = data["email"].as_str().unwrap_or("").to_string();
     let password = data["password"].as_str().unwrap_or("").to_string();
 
@@ -39,18 +39,20 @@ impl Service for Authentication {
     };
 
     match crate::auth::login_procedure(&self.app, request) {
-      Ok(token) => {
-        let user = (&self.app as (&dyn Services)).service("people").find(
+      Ok((account, token)) => {
+        let user = (&self.app as (&dyn Services))
+          .service("people")
+          .get(account, JsonValue::Null);
+
+        JsonValue::Array(vec![
+          // error
+          JsonValue::Null,
+          // data
           json::object! {
-            query: json::object! {
-              email: email
-            }
+            accessToken: token,
+            user: user
           }
-        );
-        json::object! {
-          accessToken: token,
-          user: user
-        }
+        ])
       },
       Err(msg) => json::object!{
         className: "not-authenticated",
@@ -61,15 +63,15 @@ impl Service for Authentication {
     }
   }
 
-  fn update(&self, id: ID, data: Data, params: Params) -> JsonValue{
+  fn update(&self, id: ID, data: Data, params: Params) -> JsonValue {
     todo!()
   }
 
-  fn patch(&self, id: ID, data: Data, params: Params) -> JsonValue{
+  fn patch(&self, id: ID, data: Data, params: Params) -> JsonValue {
     todo!()
   }
 
-  fn remove(&self, id: ID, params: Params) -> JsonValue{
+  fn remove(&self, id: ID, params: Params) -> JsonValue {
     todo!()
   }
 }

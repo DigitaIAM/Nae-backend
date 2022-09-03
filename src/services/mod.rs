@@ -1,3 +1,6 @@
+mod authentication;
+mod people;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use actix_web::web::Json;
@@ -5,8 +8,9 @@ use json::JsonValue;
 use serde_json::Value;
 use crate::ID;
 
-mod authentication;
 pub(crate) use authentication::Authentication;
+pub(crate) use people::People;
+
 use crate::ws::error_not_found;
 
 type Data = JsonValue;

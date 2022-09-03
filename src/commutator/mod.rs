@@ -26,6 +26,10 @@ impl Application {
             channels: Arc::new(HashMap::new()),
         }
     }
+
+    pub(crate) fn close(mut self) {
+        // TODO self.db.close();
+    }
 }
 
 impl Services for Application {
@@ -67,11 +71,9 @@ impl Commutator {
         if let Some(socket) = self.sessions.get(id_to) {
             socket.do_send(WsMessage::open(id_to));
 
-            // version 3
-            let data = format!("{}{}", engine_io::MESSAGE, socket_io::CONNECT);
-            // version 4
-            // "40{\"sid\":\"...\"}"
-            socket.do_send(WsMessage(data));
+            // version 3: "0"
+            // version 4: "0{\"sid\":\"...\"}"
+            socket.do_send(WsMessage { data: "".to_string(), engine_code: engine_io::MESSAGE.to_string(), socket_code: Some(socket_io::CONNECT.to_string()) });
         } else {
             println!("attempting to send message but couldn't find user id.");
         }

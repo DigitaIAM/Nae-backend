@@ -67,9 +67,9 @@ async fn server(settings: Arc<Settings>, db: AnimoDB) -> std::io::Result<()> {
 
     log::info!("starting up {:?}:{}", address, port);
 
-
     let mut app = Application::new(settings.clone(), Arc::new(db));
     app.register(crate::services::Authentication::new(app.clone(), "authentication"));
+    app.register(crate::services::People::new(app.clone(), "people"));
 
     let mut com = Commutator::new(app.clone()).start();
 
