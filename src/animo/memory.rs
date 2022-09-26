@@ -3,6 +3,7 @@ use bytecheck::CheckBytes;
 
 use std::array::TryFromSliceError;
 use std::cmp::Ordering;
+use std::fmt::Formatter;
 use std::ops::{Add, Sub};
 use base64::DecodeError;
 
@@ -21,7 +22,7 @@ pub const ID_MIN: ID = ID([u8::MIN;ID_BYTES]);
 pub const ID_MAX: ID = ID([u8::MAX;ID_BYTES]);
 
 // #[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq, Copy)]
-#[derive(Clone, Copy, Hash, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Ord, PartialOrd, Eq)] // , serde::Serialize, serde::Deserialize
 #[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
 // This will generate a PartialEq impl between our unarchived and archived types
 // #[archive(compare(PartialEq))]
@@ -307,9 +308,63 @@ impl Value {
     }
 }
 
+impl std::fmt::Display for ID {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.to_base64())
+  }
+}
+
+impl serde::Serialize for ID {
+  fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+      S: serde::Serializer,
+  {
+    s.serialize_str(self.to_base64().as_str())
+  }
+}
+
+impl<'de> serde::Deserialize<'de> for ID {
+  fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    where
+      D: serde::Deserializer<'de>,
+  {
+    struct CustomVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for CustomVisitor {
+      type Value = ID;
+
+      fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(formatter, "base64-encoded ID")
+      }
+
+      fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+          E: serde::de::Error,
+      {
+        ID::from_base64(v.as_bytes())
+          .map_err(|e| E::custom(e.to_string()))
+      }
+    }
+
+    d.deserialize_string(CustomVisitor)
+  }
+}
+
 impl ID {
+  pub(crate) fn random() -> Self {
+    use rand::{distributions::Alphanumeric, Rng};
+
+    let s: String = rand::thread_rng()
+      .sample_iter(&Alphanumeric)
+      .take(256)
+      .map(char::from)
+      .collect();
+
+    ID::from(s)
+  }
+
   pub(crate) fn new(data: &[u8]) -> Result<Self, DBError> {
-    if data.len() == ID_BYTES {
+    if data.len() != ID_BYTES {
       Err(DBError::from(format!("ID require {} bytes, but got {}", ID_BYTES, data.len())))
     } else {
       let mut a = [0; ID_BYTES];

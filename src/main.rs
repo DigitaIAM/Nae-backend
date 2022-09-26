@@ -1,6 +1,9 @@
 #![allow(dead_code, unused)]
 extern crate core;
 
+#[macro_use]
+extern crate quick_error;
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -33,6 +36,8 @@ pub mod warehouse;
 mod accounts;
 mod text_search;
 mod use_cases;
+
+mod hik;
 
 use animo::memory::Memory;
 use animo::db::AnimoDB;
@@ -67,17 +72,20 @@ async fn server(settings: Arc<Settings>, db: AnimoDB) -> std::io::Result<()> {
 
     log::info!("starting up {:?}:{}", address, port);
 
-    let mut app = Application::new(settings.clone(), Arc::new(db));
+    let (mut app, events_receiver) = Application::new(settings.clone(), Arc::new(db));
     app.register(crate::services::Authentication::new(app.clone(), "authentication"));
-    app.register(crate::services::People::new(app.clone(), "people"));
+    app.register(crate::services::Users::new(app.clone(), "users"));
+    app.register(crate::services::persistent::InFiles::new(app.clone(), "organizations", "./data/services/organizations/"));
+    app.register(crate::services::persistent::InFiles::new(app.clone(), "people", "./data/services/people/"));
+    app.register(crate::hik::services::Cameras::new(app.clone(), "cameras"));
 
-    let mut com = Commutator::new(app.clone()).start();
+    let mut com = Commutator::new(app.clone(), events_receiver).start();
 
     HttpServer::new(move || {
         // let auth = HttpAuthentication::bearer(auth::validator);
 
         App::new()
-            .app_data(web::Data::new(app.clone()))
+          .app_data(web::Data::new(app.clone()))
           .app_data(web::Data::new(com.clone()))
             .wrap(middleware::Logger::default())
             // .wrap(auth)
@@ -102,15 +110,16 @@ async fn server(settings: Arc<Settings>, db: AnimoDB) -> std::io::Result<()> {
         .await
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn startup() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=debug,actix_server=debug");
     env_logger::init();
 
     let opt = Opt::from_args();
 
     let settings = std::sync::Arc::new(Settings::new().unwrap());
+    println!("db starting up");
     let db: AnimoDB = Memory::init(&settings.database.folder).unwrap();
+    println!("db started up");
 
     match opt.mode.as_str() {
         "server" => {
@@ -134,6 +143,26 @@ async fn main() -> std::io::Result<()> {
         }
         _ => unreachable!()
     }
+}
+
+// fn main() {
+//     let mut rt = tokio::runtime::Runtime::new().unwrap();
+//     let local = tokio::task::LocalSet::new();
+//     local.block_on(&mut rt, async move {
+//         tokio::task::spawn_local(async move {
+//             let local = tokio::task::LocalSet::new();
+//             let sys = actix_rt::System::run_in_tokio("server", &local);
+//             // define your actix-web app
+//             // define your actix-web server
+//             sys.await;
+//         });
+//         // This still allows use of tokio::spawn
+//     });
+// }
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    startup().await
 }
 
 #[cfg(test)]

@@ -106,15 +106,15 @@ pub(crate) fn decode_token(app: &Application, token: &str) -> Result<String, DBE
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Account {
-    id: ID,
+    pub(crate) id: ID,
     // first_name: String,
     // last_name: String,
     email: String,
 }
 
 impl Account {
-    fn jwt(app: &Application, credentials: BearerAuth) -> Result<Self, DBError> {
-        let email = decode_token(app, credentials.token())?;
+    pub(crate) fn jwt(app: &Application, token: &str) -> Result<Self, DBError> {
+        let email = decode_token(app, token)?;
         let id = ID::from(email.as_str());
         Ok(Account { id, email })
     }
@@ -144,7 +144,7 @@ pub(crate) struct LoginResponse {
 
 #[post("/logout")]
 pub(crate) async fn logout(auth: BearerAuth, app: web::Data<Application>) -> Result<HttpResponse, Error> {
-    let account = Account::jwt(app.get_ref(), auth)
+    let account = Account::jwt(app.get_ref(), auth.token())
         .map_err(actix_web::error::ErrorUnauthorized)?;
 
     let now = now_in_seconds();
@@ -254,7 +254,7 @@ pub(crate) fn login_procedure(app: &Application, data: LoginRequest) -> Result<(
 
 #[post("/ping")]
 pub(crate) async fn ping_post(auth: BearerAuth, app: web::Data<Application>) -> Result<HttpResponse, Error> {
-    let account = Account::jwt(app.get_ref(), auth)
+    let account = Account::jwt(app.get_ref(), auth.token())
         .map_err(actix_web::error::ErrorUnauthorized)?;
 
     Ok(HttpResponse::Ok().json("pong"))

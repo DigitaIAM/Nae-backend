@@ -23,6 +23,11 @@ impl WsMessage {
     WsMessage { data, engine_code: engine_io::OPEN.into(), socket_code: None }
   }
 
+  pub(crate) fn event<S: Convertable>(response: S) -> Self {
+    let data = response.data();
+    WsMessage { data, engine_code: engine_io::MESSAGE.into(), socket_code: Some(socket_io::EVENT.into()) }
+  }
+
   pub(crate) fn ack<S: Convertable>(event_id: String, response: S) -> Self {
     let response = response.data();
     let data = if response.starts_with("[") {

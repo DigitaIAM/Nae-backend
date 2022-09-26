@@ -138,13 +138,9 @@ impl TextSearch {
       println!("{}", schema.to_json(&retrieved_doc));
     }
 
-    // let str= format!("({})(.+)", str);
-    // let query = RegexQuery::from_pattern(str.as_str(), text)
-    //     .map_err(|e| DBError::from(e.to_string()))?;
+    let q = str.to_lowercase();
 
-    let str = str.to_lowercase();
-
-    let term = Term::from_field_text(self.field_text, str.as_str());
+    let term = Term::from_field_text(self.field_text, q.as_str());
     let query = FuzzyTermQuery::new(term, 1, true);
 
     let top_docs: Vec<(Score, DocAddress)> = searcher.search(&query, &TopDocs::with_limit(10))
@@ -154,6 +150,20 @@ impl TextSearch {
     for (_score, doc_address) in top_docs {
       let retrieved_doc = searcher.doc(doc_address)
           .map_err(convert)?;
+      println!("{}", schema.to_json(&retrieved_doc));
+    }
+
+    let q= format!("({})(.+)", str);
+    let query = RegexQuery::from_pattern(q.as_str(), self.field_text)
+      .map_err(|e| DBError::from(e.to_string()))?;
+
+    let top_docs: Vec<(Score, DocAddress)> = searcher.search(&query, &TopDocs::with_limit(10))
+      .map_err(convert)?;
+
+    println!("3rd:");
+    for (_score, doc_address) in top_docs {
+      let retrieved_doc = searcher.doc(doc_address)
+        .map_err(convert)?;
       println!("{}", schema.to_json(&retrieved_doc));
     }
 

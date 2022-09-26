@@ -1,0 +1,648 @@
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::io::Write;
+use std::rc::Rc;
+use std::slice::Iter;
+use std::sync::{Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, SystemTime};
+use actix::ContextFutureSpawner;
+use chrono::{Datelike, DateTime, SecondsFormat, Utc};
+use crossbeam::channel::{bounded, Receiver, Sender, TryRecvError};
+use reqwest::{Client, header, Response, Url};
+use serde::{Deserialize, Serialize};
+use futures::StreamExt;
+use json::JsonValue;
+use tantivy::fastfield::FastValue;
+use uuid::Uuid;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tracing::{debug, error, info, info_span, trace, warn, Instrument, event};
+use crate::{Application, ID, Services};
+
+use crate::hik::data::alert_item::AlertItem;
+use crate::hik::error::{Result, Error};
+use crate::header::CONTENT_TYPE;
+use crate::hik::data::triggers_parser::TriggerItem;
+use crate::hik::auth::WithDigestAuth;
+use crate::services::Mutation;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+// #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub enum StatusCamera {
+  Connecting(u64),
+  Connected(u64),
+  LastEvent(u64),
+  Disconnect(u64),
+  Error(u64,String)
+}
+
+impl StatusCamera {
+  fn now_in_seconds() -> u64 {
+    SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .expect("system time is likely incorrect")
+      .as_secs()
+  }
+
+  pub fn connecting() -> Self {
+    StatusCamera::Connecting(StatusCamera::now_in_seconds())
+  }
+
+  pub fn connected() -> Self {
+    StatusCamera::Connected(StatusCamera::now_in_seconds())
+  }
+
+  pub fn last_event() -> Self {
+    StatusCamera::LastEvent(StatusCamera::now_in_seconds())
+  }
+
+  pub fn disconnect() -> Self {
+    StatusCamera::Disconnect(StatusCamera::now_in_seconds())
+  }
+
+  pub fn error(msg: String) -> Self {
+    StatusCamera::Error(StatusCamera::now_in_seconds(),msg)
+  }
+
+  pub fn from_json(data: &JsonValue) -> Option<Self> {
+    println!("from_json {}",data.dump());
+    let ts = data["ts"].as_u64().unwrap_or(0);
+    println!("ts {ts}");
+    match data["name"].as_str() {
+      Some(name) => {
+        let status = match name {
+          "connecting" => StatusCamera::Connecting(ts),
+          "connected" => StatusCamera::Connected(ts),
+          "last-event" => StatusCamera::LastEvent(ts),
+          "disconnect" => StatusCamera::Disconnect(ts),
+          "error" => {
+            let msg = data["msg"].as_str().unwrap_or("");
+            StatusCamera::Error(ts, msg.to_string())
+          },
+          _ => return None,
+        };
+        Some(status)
+      }
+      None => {
+        None
+      }
+    }
+  }
+
+  pub fn to_json(&self) -> JsonValue {
+    let (name, ts, msg) = {
+      match self {
+        StatusCamera::Connecting(ts) => ("connecting", ts, None),
+        StatusCamera::Connected(ts) => ("connected", ts, None),
+        StatusCamera::LastEvent(ts) => ("last-event", ts, None),
+        StatusCamera::Disconnect(ts) => ("disconnect", ts, None),
+        StatusCamera::Error(ts,msg) => ("error", ts, Some(msg.clone())),
+      }
+    };
+
+    if let Some(msg) = msg {
+      json::object! {
+        name: name,
+        ts: *ts,
+        msg: msg
+      }
+    } else {
+      json::object! {
+        name: name,
+        ts: *ts as f64,
+      }
+    }
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+// #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub struct ConfigCamera {
+  // #[serde(skip_deserializing)]
+  pub id: crate::ID,
+  pub name: String,
+
+  pub dev_index: String,
+
+  pub protocol: String,
+  pub ip: String,
+  pub port: Option<u16>,
+  pub username: String,
+  pub password: String,
+
+  pub enabled: Arc<AtomicBool>,
+  pub status: StatusCamera,
+
+  #[serde(skip_serializing)]
+  #[serde(skip_deserializing)]
+  pub jh: Option<Arc<JoinHandle<()>>>,
+}
+
+impl ConfigCamera {
+
+  pub(crate) fn connect(config: Arc<Mutex<ConfigCamera>>, app: Application, folder: String) {
+    let enabled = {
+      let config = config.lock().unwrap();
+      config.enabled.load(Ordering::SeqCst)
+    };
+
+    println!("connect {enabled}");
+    if enabled {
+      crate::hik::connection(&config, app, folder);
+      // {
+      //   let mut config = config.lock().unwrap();
+      //   // TODO config.jh = Some(Arc::new(jh));
+      // }
+    }
+  }
+
+  pub(crate) fn to_json(&self) -> JsonValue {
+    let enabled = self.enabled.load(Ordering::SeqCst);
+
+    let d = json::object! {
+      _id: self.id.to_base64(),
+      devIndex: self.dev_index.clone(),
+      name: self.name.clone(),
+      protocol: self.protocol.clone(),
+      ip: self.ip.clone(),
+      port: self.port.unwrap_or(0),
+      username: self.username.clone(),
+      status: self.status.to_json(),
+      enabled: enabled,
+    };
+
+    println!("{d}");
+
+    d
+  }
+}
+
+fn send_update(app: &Application, id: ID, status: StatusCamera) {
+  println!("send_update {:?}", status);
+  let change = json::object! {
+    status: status.to_json()
+  };
+  // app.service("cameras")
+  //   .patch(id, change, JsonValue::Null);
+  match app.handle(Mutation::Patch("cameras".to_string(), id, change, JsonValue::Null)) {
+    Ok(_) => {}
+    Err(e) => {
+      println!("error {e}");
+    }
+  }
+}
+
+pub fn connection(config: &Arc<Mutex<crate::hik::ConfigCamera>>, app: Application, path: String) {
+  println!("Start camera connection...");
+  let config = config.clone();
+  // let id = {
+  //   let config = config.lock().unwrap();
+  //   config.id
+  // };
+  // let logging_span = info_span!("Camera coms", id=%id);
+  // tokio::spawn(move || { processing(app, config, path); })
+  // tokio::task::spawn(processing(app, config, path))
+
+  // tokio::task::spawn_blocking(move ||
+  tokio::spawn(
+    async move {
+      processing(app, config, path).await
+    }
+  );
+
+  // std::thread::spawn(move || processing(app, config, path));
+  // .instrument(logging_span),
+}
+
+async fn processing(app: Application, config: Arc<Mutex<crate::hik::ConfigCamera>>, path: String) {
+  // info!("Initiating camera connection...");
+  println!("Initiating camera connection...");
+  let id = {
+    let config = config.lock().unwrap();
+    config.id
+  };
+
+  let mut wait_on_error = 15;
+
+  let should_stop = || {
+    let config = config.lock().unwrap();
+    !config.enabled.load(Ordering::SeqCst)
+  };
+
+  loop {
+    if should_stop() {
+      // info!("Configuration disabled, exiting");
+      println!("Configuration disabled, exiting");
+
+      send_update(&app, id, StatusCamera::disconnect());
+      break;
+    }
+
+    let mut cam = {
+      let config = {
+        let config = config.lock().unwrap();
+        config.clone()
+      };
+      send_update(&app, id, StatusCamera::connecting());
+      match crate::hik::Camera::connect(config, path.clone()).await {
+        Ok(cam) => {
+          send_update(&app, id, StatusCamera::connected());
+          wait_on_error = 15;
+
+          cam
+        },
+        Err(e) => {
+          // warn!("Camera errored: {}. Attempting reconnection...", e);
+          println!("Camera errored: {}. Attempting reconnection...", e);
+
+          send_update(&app, id, StatusCamera::error(e.to_string()));
+
+          // wait on error
+          tokio::time::sleep(Duration::from_secs(wait_on_error)).await;
+          if wait_on_error < 120 {
+            wait_on_error += 15;
+          }
+          continue;
+        }
+      }
+    };
+
+    loop {
+      if should_stop() {
+        // info!("Configuration disabled, exiting");
+        println!("Configuration disabled, exiting");
+
+        send_update(&app, id, StatusCamera::disconnect());
+        break;
+      }
+
+      let next = cam.next_event().await;
+      match next {
+        Ok(event) => {
+          println!("event: {event}");
+          if event.is_null() {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+          } else {
+            app.service("events")
+              .create(event, JsonValue::Null);
+
+            // tokio::time::sleep(Duration::from_secs(5)).await;
+          }
+        }
+        Err(e) => {
+          // warn!("Camera errored: {}. Attempting reconnection...", e);
+          println!("Camera errored: {}. Attempting reconnection...", e);
+
+          send_update(&app, id, StatusCamera::error(e.to_string()));
+
+          // wait on error
+          tokio::time::sleep(Duration::from_secs(wait_on_error)).await;
+          if wait_on_error < 120 {
+            wait_on_error += 15;
+          }
+          break;
+        }
+      }
+    }
+    println!("waiting for next try");
+    tokio::time::sleep(Duration::from_secs(10)).await;
+  }
+}
+
+pub struct Camera {
+  pub folder: String,
+  pub config: ConfigCamera,
+  pub info: crate::hik::data::device_info::DeviceInfo,
+  pub triggers: Option<Vec<TriggerItem>>,
+  events: Box<dyn Events + Send>,
+}
+
+impl Camera {
+  pub async fn connect(config: ConfigCamera, folder: String) -> Result<Camera> {
+    let client = reqwest::Client::builder()
+      .tcp_keepalive(Duration::from_secs(60))
+      .danger_accept_invalid_certs(true)
+      .build()
+      .map_err(Error::ConnectionError)?;
+
+    let info = {
+      let info_text = Self::get("/ISAPI/System/deviceInfo", &client, &config)
+        .await?
+        .text()
+        .await
+        .map_err(Error::CameraInvalidResponseBody)?;
+
+      crate::hik::data::device_info::DeviceInfo::parse(&info_text)
+        .map_err(Error::DeviceInfoInvalid)?
+    };
+
+    println!("deviceInfo: {:?}", info);
+
+    // let triggers = {
+    //   let triggers_text = Self::get("/ISAPI/Event/triggers", &client, &config)
+    //     .await?
+    //     .text()
+    //     .await
+    //     .map_err(Error::CameraInvalidResponseBody)?;
+    //   println!("triggers_text {}", triggers_text);
+    //   TriggerItem::parse(&triggers_text)
+    //     .map_err(Error::TriggersInvalid)?
+    // };
+
+    let events: Box<dyn Events + Send> = {
+      if config.dev_index.is_empty() {
+        let res =
+          Self::get("/ISAPI/Event/notification/alertStream", &client, &config)
+            .await?;
+        let content_type: mime::Mime = res
+          .headers()
+          .get(header::CONTENT_TYPE)
+          .ok_or_else(|| {
+            Error::StreamInvalid("Content type header missing on stream".into())
+          })?
+          .to_str()
+          .map_err(|e| {
+            Error::StreamInvalid(format!("Content type header invalid string: {}", e))
+          })?
+          .parse()
+          .map_err(|e| {
+            Error::StreamInvalid(format!("Content type invalid format: {}", e))
+          })?;
+        if content_type.type_() != "multipart" {
+          return Err(Error::StreamInvalid(format!(
+            "Content type on stream should have been multipart. Instead it was {}",
+            content_type.type_()
+          )));
+        }
+        let boundary = content_type.get_param(mime::BOUNDARY).ok_or_else(|| {
+          Error::StreamInvalid("Multipart stream has no boundary set".to_string())
+        })?;
+
+        let stream: std::pin::Pin<
+          Box<
+            dyn futures::Stream<
+              Item=std::result::Result<multipart_stream::Part, multipart_stream::parser::Error>,
+            > + Send,
+          >
+        > = Box::pin(multipart_stream::parse(
+          res.bytes_stream(),
+          boundary.as_str(),
+        ));
+        Box::new(EventsOnStream { stream, folder: folder.clone(), config: config.clone() })
+      } else {
+        Box::new(EventsOnRequest::new(config.clone(), client))
+      }
+    };
+
+    Ok(Camera {
+      folder,
+      info,
+      config,
+      triggers: None,
+      events,
+    })
+  }
+
+  pub async fn next_event(&mut self) -> Result<JsonValue> {
+    self.events.next().await
+    // trace!(cam=?self.config.identifier(), contents=?part_str, "Camera Alert");
+    // AlertItem::parse(&part_str)
+    //   .map_err(Error::AlertInvalid)
+  }
+
+  fn url(
+    path: &str,
+    client: &reqwest::Client,
+    config: &ConfigCamera
+  ) -> Result<Url> {
+    let url = if config.dev_index.is_empty() {
+      format!(
+        "{}://{}{}{}",
+        config.protocol,
+        config.ip,
+        config.port.map(|p| format!(":{}", p)).unwrap_or_default(),
+        path
+      )
+    } else if path.contains("?") {
+      format!(
+        "{}://{}{}{}&devIndex={}",
+        config.protocol,
+        config.ip,
+        config.port.map(|p| format!(":{}", p)).unwrap_or_default(),
+        path,
+        config.dev_index
+      )
+
+    } else {
+      format!(
+        "{}://{}{}{}?devIndex={}",
+        config.protocol,
+        config.ip,
+        config.port.map(|p| format!(":{}", p)).unwrap_or_default(),
+        path,
+        config.dev_index
+      )
+    };
+
+    println!("url {}", url);
+
+    reqwest::Url::parse(url.as_str())
+      .map_err(|e| Error::UrlError(e.to_string()))
+  }
+
+  async fn get(
+    path: &str,
+    client: &reqwest::Client,
+    config: &ConfigCamera,
+  ) -> Result<Response> {
+    client
+      .get(Self::url(path, client, config)?)
+      .send_with_digest_auth(&config.username, &config.password)
+      .await
+  }
+
+  async fn post(
+    path: &str,
+    body: String,
+    client: &reqwest::Client,
+    config: &ConfigCamera,
+  ) -> Result<Response> {
+    client
+      .post(Self::url(path, client, config)?)
+      .body(body)
+      .send_with_digest_auth(&config.username, &config.password)
+      .await
+  }
+}
+
+#[async_trait]
+trait Events {
+  async fn next(&mut self) -> Result<JsonValue>;
+}
+
+struct EventsOnRequest {
+  config: ConfigCamera,
+  client: Client,
+
+  response: Option<JsonValue>,
+
+  items: Vec<JsonValue>,
+
+  position: usize,
+  total: usize,
+
+  wait_till: DateTime<Utc>,
+}
+
+impl EventsOnRequest {
+  fn new(config: ConfigCamera, client: Client) -> Self {
+    EventsOnRequest {
+      config, client, response: None, items: vec![], position: 0, total: 0, wait_till: Utc::now(),
+    }
+  }
+}
+
+#[async_trait]
+impl Events for EventsOnRequest {
+  async fn next(&mut self) -> Result<JsonValue> {
+    if self.response.is_none() {
+      let secs = (self.wait_till - Utc::now()).num_seconds();
+      println!("Duration {secs}");
+      if secs > 0 {
+        tokio::time::sleep(std::time::Duration::from_secs(secs as u64)).await;
+      }
+      let body = json::object! {
+        "AcsEventSearchDescription": json::object! {
+          "searchID": "1",
+          "searchResultPosition": self.position,
+          "maxResults": 100,
+          "AcsEventFilter": json::object! {
+            "major": 5,
+            "minor": 75
+          }
+        }
+      }.dump();
+
+      let data = Camera::post("/ISAPI/AccessControl/AcsEvent?format=json", body, &self.client, &self.config)
+        .await?
+        .text()
+        .await
+        .map_err(Error::CameraInvalidResponseBody)?;
+
+      let data = json::parse(data.as_str())
+        .map_err(|e| Error::IOError(e.to_string()))?;
+
+      self.response = Some(data);
+
+      if let Some(data) = self.response.as_ref() {
+        let result = &data["AcsEventSearchResult"];
+        let total = &result["totalMatches"].as_usize().unwrap_or(0);
+        let list = &result["MatchList"];
+
+        self.items = list.members().into_iter().map(|item| item.clone()).collect();
+        self.total = *total;
+      }
+    }
+
+    if self.items.len() != 0 {
+      self.position += 1;
+
+      return Ok(self.items.remove(0));
+    }
+
+    if self.position >= self.total {
+      self.wait_till = Utc::now() + chrono::Duration::minutes(15);
+      self.position = 0;
+      self.response = None;
+    } else {
+      self.response = None;
+    }
+
+    Ok(JsonValue::Null)
+  }
+}
+
+struct EventsOnStream {
+  folder: String,
+  config: ConfigCamera,
+  stream: std::pin::Pin<Box<
+    dyn futures::Stream<
+      Item=std::result::Result<multipart_stream::Part, multipart_stream::parser::Error>,
+    > + Send,
+  >>,
+}
+
+#[async_trait]
+impl Events for EventsOnStream {
+  async fn next(&mut self) -> Result<JsonValue> {
+    let next = self.stream.next().await
+      .ok_or(Error::ConnectionClosed)?
+      .map_err(|e| {
+        Error::StreamInvalid(format!("Couldn't get next part of stream: {}", e))
+      })?;
+    match next.headers.get(CONTENT_TYPE) {
+      Some(ct) => {
+        match ct.to_str() {
+          Ok(v) => {
+            match v {
+              "application/json; charset=\"UTF-8\"" => {
+                let part_str = String::from_utf8(next.body.to_vec()).map_err(|e| {
+                  Error::StreamInvalid(format!("Stream returned non-UTF-8 text: {}", e))
+                })?;
+                json::parse(part_str.as_str())
+                  .map_err(|e| Error::IOError(format!("fail to parse: {:?} {:?}", e, part_str)))
+              }
+              "image/jpeg" => {
+                let ts = chrono::offset::Utc::now();
+
+                let folder = format!("{}{}/", self.folder, self.config.id.to_base64());
+
+                // create folder
+                let folder = format!("{}/{:0>4}/{:0>2}/", self.folder, ts.year(), ts.month());
+                std::fs::create_dir_all(folder.clone())
+                  .map_err(|e| Error::IOError(format!("can't create folder {}: {}", folder, e)))?;
+
+                // store image
+                let mut path = format!("{folder}img_{}.jpeg", ts.to_rfc3339_opts(SecondsFormat::Millis, true));
+                for count in 0..100_0000 {
+                  if count == 90_000 {
+                    return Err(Error::IOError(format!("fail to open file: {folder}{path}")));
+                  }
+                  let mut file = match std::fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .open(path.clone()) {
+                    Ok(file) => file,
+                    Err(_) => {
+                      path = format!("{folder}img_{}_{count}.jpeg", ts.to_rfc3339_opts(SecondsFormat::Millis, true));
+                      continue
+                    },
+                  };
+
+                  file.write_all(&next.body)
+                    .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
+                }
+
+                Ok(json::object! {
+                  timestamp: ts.timestamp_millis(),
+                  contentType: "image/jpeg",
+                  path: path
+                })
+              }
+              _ => {
+                Err(Error::StreamInvalid(format!("unknown content type {:?} {:?}", v, next)))
+              }
+            }
+          }
+          Err(e) => {
+            Err(Error::StreamInvalid(format!("fail to get content-type: {:?}", e)))
+          }
+        }
+      }
+      None => {
+        Err(Error::StreamInvalid(format!("no content-type case: {:?}", next)))
+      }
+    }
+  }
+}
