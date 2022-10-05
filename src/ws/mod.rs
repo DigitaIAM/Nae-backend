@@ -9,20 +9,20 @@ pub(crate) use messages::*;
 pub(crate) mod engine_io;
 pub(crate) mod socket_io;
 
-fn error(class_name: &str, name: &str, code: u16, message: &str) -> JsonValue {
+fn error<S: AsRef<str>>(class_name: S, name: S, code: u16, message: S) -> JsonValue {
   json::object! {
-    className: class_name,
+    className: class_name.as_ref(),
     code: code,
-    message: message,
-    name: name,
+    message: message.as_ref(),
+    name: name.as_ref(),
   }
 }
 
-pub(crate) fn error_not_found(message: &str) -> JsonValue {
-  error("not-found", "NotFound", 404, message)
+pub(crate) fn error_not_found<S: AsRef<str>>(message: S) -> JsonValue {
+  error("not-found", "NotFound", 404, message.as_ref())
 }
 
-pub(crate) fn error_general(message: &str) -> JsonValue {
-  error("general-error", "GeneralError", 500, message)
+pub(crate) fn error_general<S: AsRef<str>>(message: S) -> JsonValue {
+  error("general-error", "GeneralError", 500, message.as_ref())
 }
 

@@ -143,7 +143,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
                       Err(msg) => {
                         ctx.text(WsMessage::ack(
                           event_id,
-                          error_general(msg.to_string().as_str()),
+                          error_general(msg.to_string()),
                         ).data());
                       }
                     }

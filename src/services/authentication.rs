@@ -23,7 +23,7 @@ impl Service for Authentication {
     Err(Error::NotImplemented)
   }
 
-  fn get(&self, id: ID, params: Params) -> crate::services::Result {
+  fn get(&self, id: String, params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
@@ -37,7 +37,7 @@ impl Service for Authentication {
 
         let user = self.app
           .service("people")
-          .get(account.id, JsonValue::Null)?;
+          .get(account.id.to_base64(), JsonValue::Null)?;
 
         let data = json::object! {
           accessToken: token,
@@ -59,7 +59,7 @@ impl Service for Authentication {
           Ok((account, token)) => {
             let user = self.app
               .service("people")
-              .get(account, JsonValue::Null)?;
+              .get(account.to_base64(), JsonValue::Null)?;
 
             let data = json::object! {
               accessToken: token,
@@ -74,15 +74,15 @@ impl Service for Authentication {
     }
   }
 
-  fn update(&self, id: ID, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, id: ID, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, id: ID, params: Params) -> crate::services::Result {
+  fn remove(&self, id: String, params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

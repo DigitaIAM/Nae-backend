@@ -89,26 +89,14 @@ impl Service for InFiles {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let limit: usize = if let Some(limit) = params["query"]["$limit"].as_str() {
-      limit.parse().unwrap_or_default()
-    } else {
-      10
-    };
-
-    let skip:usize = if let Some(skip) = params["query"]["$skip"].as_str() {
-      skip.parse().unwrap_or_default()
-    } else {
-      0
-    };
+    let limit = self.limit(&params);
+    let skip = self.skip(&params);
 
     let objs = self.objs.read().unwrap();
     let total = objs.len();
 
-    let mut list = Vec::with_capacity(objs.len());
-    for (_, obj) in objs.iter().skip(skip) {
-      if list.len() >= limit {
-        break;
-      }
+    let mut list = Vec::with_capacity(limit);
+    for (_, obj) in objs.iter().skip(skip).take(limit) {
       list.push(obj.clone());
     }
 
@@ -121,7 +109,8 @@ impl Service for InFiles {
     )
   }
 
-  fn get(&self, id: ID, params: Params) -> crate::services::Result {
+  fn get(&self, id: String, params: Params) -> crate::services::Result {
+    let id = crate::services::string_to_id(id)?;
     let objs = self.objs.read().unwrap();
     Ok(
       match objs.get(&id) {
@@ -167,15 +156,15 @@ impl Service for InFiles {
     )
   }
 
-  fn update(&self, id: ID, data: Data, params: Params) -> crate::services::Result{
-    todo!()
+  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result{
+    Err(Error::NotImplemented)
   }
 
-  fn patch(&self, id: ID, data: Data, params: Params) -> crate::services::Result{
-    todo!()
+  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result{
+    Err(Error::NotImplemented)
   }
 
-  fn remove(&self, id: ID, params: Params) -> crate::services::Result{
-    todo!()
+  fn remove(&self, id: String, params: Params) -> crate::services::Result{
+    Err(Error::NotImplemented)
   }
 }

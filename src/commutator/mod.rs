@@ -172,7 +172,7 @@ impl Commutator {
                 while !should_stop.load(Ordering::SeqCst) {
                     match events.recv() {
                         Ok(event) => {
-                            println!("event {:?}", event);
+                            println!("sending to all: {:?}", event);
                             let (name, data) = match event {
                                 Event::Created(name, data) => (format!("{name} created"), data),
                                 Event::Updated(name, data) => (format!("{name} updated"), data),
@@ -244,23 +244,25 @@ fn data_params(mut data: JsonValue) -> Result<(JsonValue,JsonValue),Error> {
     Ok((data.array_remove(0), data.array_remove(0)))
 }
 
-fn id_params(mut data: JsonValue) -> Result<(ID,JsonValue),Error> {
+fn id_params(mut data: JsonValue) -> Result<(String,JsonValue),Error> {
     if let Some(id) = data.array_remove(0).as_str() {
-        match ID::from_base64(id.as_bytes()) {
-            Ok(id) => Ok((id, data.array_remove(0))),
-            Err(_) => Err(Error::GeneralError(format!("incorrect id {}", id))),
-        }
+        Ok((id.to_string(), data.array_remove(0)))
+        // match ID::from_base64(id.as_bytes()) {
+        //     Ok(id) => Ok((id, data.array_remove(0))),
+        //     Err(_) => Err(Error::GeneralError(format!("incorrect id {}", id))),
+        // }
     } else {
         Err(Error::GeneralError("not found id".to_string()))
     }
 }
 
-fn id_data_params(mut data: JsonValue) -> Result<(ID,JsonValue,JsonValue),Error> {
+fn id_data_params(mut data: JsonValue) -> Result<(String,JsonValue,JsonValue),Error> {
     if let Some(id) = data.array_remove(0).as_str() {
-        match ID::from_base64(id.as_bytes()) {
-            Ok(id) => Ok((id, data.array_remove(0), data.array_remove(0))),
-            Err(_) => Err(Error::GeneralError(format!("incorrect id {}", id))),
-        }
+        Ok((id.to_string(), data.array_remove(0), data.array_remove(0)))
+        // match ID::from_base64(id.as_bytes()) {
+        //     Ok(id) => Ok((id, data.array_remove(0), data.array_remove(0))),
+        //     Err(_) => Err(Error::GeneralError(format!("incorrect id {}", id))),
+        // }
     } else {
         Err(Error::GeneralError("not found id".to_string()))
     }

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 derives = { path = "./derives" }
 lazy_static = "1.4.0"
+walkdir = "2.3.2"
 
 linked_hash_set = "0.1.4"
 #bigdecimal = "0.3.0"

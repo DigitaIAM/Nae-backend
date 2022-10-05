@@ -6,27 +6,24 @@ use crate::animo::error::DBError;
 use crate::services::{Data, Error, Params, Service};
 use crate::ws::error_general;
 
-lazy_static::lazy_static! {
-    pub(crate) static ref PEOPLE: ID = ID::for_constant("people");
-}
-
-const PROPERTIES: [&str; 4] = ["organization", "first_name", "last_name", "email"];
-
-pub(crate) struct People {
+pub(crate) struct InKV {
   app: Application,
   path: Arc<String>,
+
+  zone: ID,
+  properties: Arc<Vec<String>>,
 }
 
-impl People {
-  pub(crate) fn new(app: Application, path: &str) -> Arc<dyn Service> {
-    Arc::new(People { app, path: Arc::new(path.to_string()) })
+impl InKV {
+  pub(crate) fn new(app: Application, path: &str, zone: ID, properties: Vec<String>) -> Arc<dyn Service> {
+    Arc::new(InKV { app, path: Arc::new(path.to_string()), zone, properties: Arc::new(properties) })
   }
 
   fn save(&self, id: ID, data: Data, params: Params) -> crate::services::Result {
-    let mut result = Object::with_capacity(PROPERTIES.len() + 1);
+    let mut result = Object::with_capacity(self.properties.len() + 1);
 
     // prepare changes
-    let mutations = PROPERTIES.into_iter()
+    let mutations = self.properties.iter()
       .map(|name| {
         let value = match data[name].as_str() {
           None => Value::Nothing,
@@ -36,8 +33,8 @@ impl People {
       })
       .filter(|(n,v)| v.is_string())
       .map(|(name, value)| {
-        result.insert(name, value.as_string().unwrap_or_default().into());
-        ChangeTransformation::create(*PEOPLE, id, name, value)
+        result.insert(&name, value.as_string().unwrap_or_default().into());
+        ChangeTransformation::create(self.zone, id, &name, value)
       })
       .collect();
 
@@ -50,7 +47,7 @@ impl People {
   }
 }
 
-impl Service for People {
+impl Service for InKV {
   fn path(&self) -> &str {
     &self.path
   }
@@ -81,14 +78,14 @@ impl Service for People {
   fn get(&self, id: String, params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
-    let keys = PROPERTIES.iter()
+    let keys = self.properties.iter()
       .map(|name|TransformationKey::simple(id, name))
       .collect();
     match self.app.db.query(keys) {
       Ok(records) => {
-        let mut obj = Object::with_capacity(PROPERTIES.len() + 1);
+        let mut obj = Object::with_capacity(self.properties.len() + 1);
 
-        PROPERTIES.iter()
+        self.properties.iter()
           .zip(records.iter())
           .filter(|(n, v)| v.into != Value::Nothing)
           .for_each(|(n, v)| obj.insert(n, v.into.to_json()));

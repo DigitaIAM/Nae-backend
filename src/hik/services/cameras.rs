@@ -1,22 +1,24 @@
+use actix_web::error::ParseError::Status;
+use dbase::FieldConversionError;
+use json::object::Object;
+use json::JsonValue;
+use serde_json::ser::State;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::io::Write;
-use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::SystemTime;
-use actix_web::error::ParseError::Status;
-use dbase::FieldConversionError;
-use json::JsonValue;
-use json::object::Object;
 use tantivy::HasLen;
 use uuid::Uuid;
 
-use crate::{Application, auth, ID, Memory, Services, Transformation, TransformationKey, Value};
 use crate::animo::error::DBError;
-use crate::hik::{Camera, ConfigCamera, StatusCamera};
+use crate::hik::camera::States;
 use crate::hik::error::Error;
+use crate::hik::{camera, Camera, ConfigCamera, StatusCamera};
 use crate::services::{Data, Params, Service};
 use crate::ws::error_general;
+use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
 
 pub const PATH: &str = "./data/services/cameras/";
 
@@ -29,7 +31,6 @@ pub struct Cameras {
 
 impl Cameras {
   pub(crate) fn new(app: Application, path: &str) -> Arc<dyn Service> {
-
     // make sure folder exist
     std::fs::create_dir_all(PATH).unwrap();
 
@@ -39,10 +40,18 @@ impl Cameras {
       let entry = entry.unwrap();
       let path = entry.path();
       if path.is_dir() {
-        let contents = std::fs::read_to_string(entry.path().join("data.json"))
-          .unwrap();
+        let contents = std::fs::read_to_string(entry.path().join("data.json")).unwrap();
 
-        let config: crate::hik::ConfigCamera = serde_json::from_str(contents.as_str()).unwrap();
+        let mut config: crate::hik::ConfigCamera = serde_json::from_str(contents.as_str()).unwrap();
+
+        // reset state and status
+        let was_on = config.state.is_on();
+        config.status = StatusCamera::disconnect();
+        if was_on {
+          config.state.force(States::Enabling);
+        } else {
+          config.state.force(States::Disabled);
+        }
 
         let id = config.id;
         let config = Arc::new(Mutex::new(config));
@@ -69,10 +78,11 @@ impl Cameras {
       .open(path.clone())
       .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
 
-    let data = serde_json::to_string(config)
-      .map_err(|e| Error::IOError(format!("fail to generate json")))?;
+    let data =
+      serde_json::to_string(config).map_err(|e| Error::IOError(format!("fail to generate json")))?;
 
-    file.write_all(data.as_bytes())
+    file
+      .write_all(data.as_bytes())
       .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))
   }
 }
@@ -90,43 +100,32 @@ impl Service for Cameras {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let limit: usize = if let Some(limit) = params["query"]["$limit"].as_str() {
-      limit.parse().unwrap_or_default()
-    } else {
-      10
-    };
-
-    let skip:usize = if let Some(skip) = params["query"]["$skip"].as_str() {
-      skip.parse().unwrap_or_default()
-    } else {
-      0
-    };
+    let limit = self.limit(&params);
+    let skip = self.skip(&params);
 
     let objs = self.objs.read().unwrap();
     let total = objs.len();
 
-    let mut list = Vec::with_capacity(objs.len());
-    for (_, obj) in objs.iter().skip(skip) {
-      if list.len() >= limit {
-        break;
-      }
+    let mut list = Vec::with_capacity(limit);
+    for (_, obj) in objs.iter().skip(skip).take(limit) {
       let data = obj.lock().unwrap().to_json();
       list.push(data);
     }
-    Ok(
-      json::object! {
-        data: JsonValue::Array(list),
-        total: total,
-        "$skip": skip,
-      }
-    )
+
+    Ok(json::object! {
+      data: JsonValue::Array(list),
+      total: total,
+      "$skip": skip,
+    })
   }
 
-  fn get(&self, id: ID, params: Params) -> crate::services::Result {
+  fn get(&self, id: String, params: Params) -> crate::services::Result {
+    let id = crate::services::string_to_id(id)?;
+
     let objs = self.objs.read().unwrap();
     match objs.get(&id) {
       None => Err(crate::services::Error::NotFound(id.to_base64())),
-      Some(config) => Ok(config.lock().unwrap().to_json())
+      Some(config) => Ok(config.lock().unwrap().to_json()),
     }
   }
 
@@ -139,29 +138,29 @@ impl Service for Cameras {
     let username = data["username"].as_str().unwrap_or("").trim().to_string();
     let password = data["password"].as_str().unwrap_or("").trim().to_string();
 
-    let enabled = data["enabled"].as_str().unwrap_or("true").trim().to_string();
+    let enabled = data["enabled"].as_bool().unwrap_or(false);
 
     let port = match port.parse::<u16>() {
       Ok(n) => Some(n),
       Err(_) => None,
     };
 
-    let enabled = match enabled.to_lowercase().as_str() {
-      "true" => true,
-      _ => false,
-    };
-
     let config = crate::hik::ConfigCamera {
       id: ID::random(),
-      name, dev_index, protocol, ip, port, username, password,
+      name,
+      dev_index,
+      protocol,
+      ip,
+      port,
+      username,
+      password,
 
-      status: crate::hik::StatusCamera::Connecting(now_in_seconds()),
-      enabled: Arc::new(AtomicBool::new(enabled)),
+      status: crate::hik::StatusCamera::default(),
+      state: crate::hik::camera::State::default(),
       jh: None,
     };
 
-    self.save(&config)
-      .map_err(|e| crate::services::Error::IOError(e.to_string()))?;
+    self.save(&config).map_err(|e| crate::services::Error::IOError(e.to_string()))?;
 
     let id = config.id;
     let json = config.to_json();
@@ -177,18 +176,20 @@ impl Service for Cameras {
     Ok(json)
   }
 
-  fn update(&self, id: ID, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
     self.patch(id, data, params)
   }
 
-  fn patch(&self, id: ID, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+    let id = crate::services::string_to_id(id)?;
+
     println!("patch {:?}", data.dump());
     let mut objs = self.objs.write().unwrap();
     if let Some(config) = objs.get_mut(&id) {
       // mutation block
-      let (was_enabled, data) = {
+      let (was_on, data) = {
         let mut config = config.lock().unwrap();
-        let was_enabled = config.enabled.load(Ordering::SeqCst);
+        let was_on = config.state.is_on();
         if data.is_object() {
           for (n, v) in data.entries() {
             match n {
@@ -196,9 +197,11 @@ impl Service for Cameras {
               "devIndex" => config.dev_index = v.as_str().unwrap_or("").trim().to_string(),
               "protocol" => config.protocol = v.as_str().unwrap_or("").trim().to_string(),
               "ip" => config.ip = v.as_str().unwrap_or("").trim().to_string(),
-              "port" => config.port = match v.as_str().unwrap_or("").trim().parse::<u16>() {
-                Ok(n) => Some(n),
-                Err(_) => None,
+              "port" => {
+                config.port = match v.as_str().unwrap_or("").trim().parse::<u16>() {
+                  Ok(n) => Some(n),
+                  Err(_) => None,
+                }
               },
               "username" => config.username = v.as_str().unwrap_or("").trim().to_string(),
               "password" => {
@@ -208,27 +211,34 @@ impl Service for Cameras {
                 }
               },
               "enabled" => {
-                let enabled = match v.as_str().unwrap_or("false").trim() {
-                  "true" => true,
-                  _ => false,
-                };
-                config.enabled.store(enabled, Ordering::SeqCst);
+                if v.as_bool().unwrap_or(false) {
+                  config.state.enabling();
+                } else {
+                  config.state.disabling();
+                }
               },
               "status" => {
+                // TODO change status only on internal patches
                 match StatusCamera::from_json(v) {
-                  Some(status) => config.status = status,
+                  Some(status) => {
+                    if status.ts() > config.status.ts() {
+                      config.status = status
+                    }
+                  },
                   None => {},
                 }
-              }
+              },
               _ => {}, // ignore
             }
           }
         }
-        (was_enabled, config.to_json())
+        (was_on, config.to_json())
       };
 
+      println!("was_on {was_on}");
+
       // connect if required
-      if was_enabled {
+      if was_on {
         // TODO wait for jh and set it to None
       } else {
         ConfigCamera::connect(config.clone(), self.app.clone(), PATH.to_string());
@@ -240,7 +250,7 @@ impl Service for Cameras {
     }
   }
 
-  fn remove(&self, id: ID, params: Params) -> crate::services::Result {
+  fn remove(&self, id: String, params: Params) -> crate::services::Result {
     Err(crate::services::Error::NotImplemented)
   }
 }

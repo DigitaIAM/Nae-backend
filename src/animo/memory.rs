@@ -279,7 +279,36 @@ impl Value {
       }
     }
 
-    pub(crate) fn as_number(&self) -> Option<Decimal> {
+  pub(crate) fn is_nothing(&self) -> bool {
+    match self {
+      Value::Nothing => true,
+      _ => false,
+    }
+  }
+
+  pub(crate) fn is_string(&self) -> bool {
+    match self {
+      Value::String(_) => true,
+      _ => false,
+    }
+  }
+
+  pub(crate) fn is_number(&self) -> bool {
+    match self {
+      Value::Number(number) => true,
+      _ => false,
+    }
+  }
+
+
+  pub(crate) fn as_string(&self) -> Option<String> {
+    match self {
+      Value::String(str) => Some(str.clone()),
+      _ => None,
+    }
+  }
+
+  pub(crate) fn as_number(&self) -> Option<Decimal> {
         match self {
             Value::Number(number) => Some(*number),
             _ => None,

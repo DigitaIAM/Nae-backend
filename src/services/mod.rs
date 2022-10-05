@@ -13,6 +13,7 @@ use crate::ID;
 pub(crate) use authentication::Authentication;
 pub(crate) use users::Users;
 pub(crate) use people::People;
+use crate::animo::error::DBError;
 
 use crate::ws::error_not_found;
 
@@ -24,9 +25,9 @@ pub(crate) type Params = JsonValue;
 pub enum Mutation {
   // service name, data and etc
   Create(String,Data,Params),
-  Update(String,ID,Data,Params),
-  Patch(String,ID,Data,Params),
-  Remove(String,ID,Params),
+  Update(String,String,Data,Params),
+  Patch(String,String,Data,Params),
+  Remove(String,String,Params),
 }
 
 #[derive(Debug)]
@@ -46,12 +47,33 @@ pub trait Services: Send + Sync {
 pub trait Service: Send + Sync {
   fn path(&self) -> &str;
 
-  fn find(&self, params: Params) -> Result ;
-  fn get(&self, id: ID, params: Params) -> Result;
+  fn find(&self, params: Params) -> Result;
+  fn get(&self, id: String, params: Params) -> Result;
   fn create(&self, data: Data, params: Params) -> Result;
-  fn update(&self, id: ID, data: Data, params: Params) -> Result;
-  fn patch(&self, id: ID, data: Data, params: Params) -> Result;
-  fn remove(&self, id: ID, params: Params) -> Result;
+  fn update(&self, id: String, data: Data, params: Params) -> Result;
+  fn patch(&self, id: String, data: Data, params: Params) -> Result;
+  fn remove(&self, id: String, params: Params) -> Result;
+
+  fn limit(&self, params: &Params) -> usize {
+    if let Some(limit) = params[0]["$limit"].as_number() {
+      usize::try_from(limit).unwrap_or(10)
+    } else {
+      10
+    }
+  }
+
+  fn skip(&self, params: &Params) -> usize {
+    if let Some(skip) = params[0]["$skip"].as_number() {
+      usize::try_from(skip).unwrap_or(0)
+    } else {
+      0
+    }
+  }
+}
+
+pub fn string_to_id(data: String) -> std::result::Result<ID, Error> {
+  ID::from_base64(data.as_bytes())
+    .map_err(|e| Error::GeneralError(e.to_string()))
 }
 
 pub(crate) struct NoService(pub(crate) String);
@@ -71,7 +93,7 @@ impl Service for NoService {
     self.error()
   }
 
-  fn get(&self, id: ID, params: Params) -> Result {
+  fn get(&self, id: String, params: Params) -> Result {
     self.error()
   }
 
@@ -79,15 +101,15 @@ impl Service for NoService {
     self.error()
   }
 
-  fn update(&self, id: ID, data: Data, params: Params) -> Result {
+  fn update(&self, id: String, data: Data, params: Params) -> Result {
     self.error()
   }
 
-  fn patch(&self, id: ID, data: Data, params: Params) -> Result {
+  fn patch(&self, id: String, data: Data, params: Params) -> Result {
     self.error()
   }
 
-  fn remove(&self, id: ID, params: Params) -> Result {
+  fn remove(&self, id: String, params: Params) -> Result {
     self.error()
   }
 }

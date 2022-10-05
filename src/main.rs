@@ -77,7 +77,9 @@ async fn server(settings: Arc<Settings>, db: AnimoDB) -> std::io::Result<()> {
     app.register(crate::services::Users::new(app.clone(), "users"));
     app.register(crate::services::persistent::InFiles::new(app.clone(), "organizations", "./data/services/organizations/"));
     app.register(crate::services::persistent::InFiles::new(app.clone(), "people", "./data/services/people/"));
+    app.register(crate::services::persistent::InFiles::new(app.clone(), "schedule", "./data/services/schedule/"));
     app.register(crate::hik::services::Cameras::new(app.clone(), "cameras"));
+    app.register(crate::hik::services::Events::new(app.clone(), "events", "./data/services/events/"));
 
     let mut com = Commutator::new(app.clone(), events_receiver).start();
 
