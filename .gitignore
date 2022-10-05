@@ -15,3 +15,5 @@ Cargo.lock
 
 # Ignore data folder
 /data/
+
+.idea/
