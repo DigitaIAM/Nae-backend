@@ -1,3 +1,4 @@
+pub(crate) mod actions;
 pub(crate) mod cameras;
 pub(crate) mod events;
 

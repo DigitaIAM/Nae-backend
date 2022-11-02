@@ -3,6 +3,12 @@ name = "nae-backend"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+strip = true
+#opt-level = "z" #optimize for size
+#lto = true
+#panic = "abort"
+
 [dependencies]
 derives = { path = "./derives" }
 lazy_static = "1.4.0"
@@ -12,8 +18,8 @@ linked_hash_set = "0.1.4"
 #bigdecimal = "0.3.0"
 rust_decimal = { version = "1.25", features = ["rkyv"] }
 #chrono = { version = "0.4.19", features = ["serde"] }
-#chrono = { version = "0.4.20", features = ["serde", "rkyv"] }
-chrono = { git = "https://github.com/chronotope/chrono", features = ["serde", "rkyv"] }
+chrono = { version = "0.4.22", features = ["serde", "rkyv"] }
+#chrono = { git = "https://github.com/chronotope/chrono", features = ["serde", "rkyv"] }
 #now = "0.1.2"
 uuid = { version = "1.1.1", features = ["v4", "serde"] }
 
@@ -26,9 +32,18 @@ bytestring = "1.1.0"
 actix = "0.13"
 actix-web = "4"
 actix-web-actors = "4.1.0"
-#actix-cors = "0.6.1"
+actix-cors = "0.6.3"
 actix-web-httpauth = "0.8.0"
 actix-files = "0.6.1"
+actix-multipart = "0.4"
+actix-interop = "0.4.0"
+thiserror = "1.0.37"
+actix-ratelimit = "0.3.1" # TODO use it
+
+futures-util = { version = "0.3.17", default-features = false, features = ["std"] }
+sanitize-filename = "0.4"
+
+qstring = "0.7.2"
 jsonwebtoken = { version = "8", default-features = false }
 pbkdf2 = "0.11.0"
 
@@ -58,7 +73,9 @@ blake2 = "0.10.4"
 #validator = { version = "0.15", features = ["derive"] }
 
 #hik
-reqwest = {version = "0.11", features = ["stream"]}
+#reqwest = { path = "./reqwest", features = ["stream", "multipart", "gzip", "brotli", "deflate"] }
+reqwest = {version = "0.11", features = ["stream", "multipart", "gzip", "brotli", "deflate"]} # , "blocking"
+
 digest_auth = "0.3"
 async-trait = "0.1"
 futures = "0.3"
@@ -69,6 +86,9 @@ mime = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "local-time"] }
 tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7.4", features = ["codec"] }
+tokio-cron-scheduler = "0.8.1"
+ureq = "2.5.0"
 
 crossbeam = "0.8"
 #crossbeam-channel = "0.5"

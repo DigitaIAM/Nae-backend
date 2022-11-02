@@ -1,20 +1,20 @@
+use actix_web::error::ParseError::Status;
+use dbase::FieldConversionError;
+use json::object::Object;
+use json::JsonValue;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::io::Write;
-use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
-use actix_web::error::ParseError::Status;
-use dbase::FieldConversionError;
-use json::JsonValue;
-use json::object::Object;
 use tantivy::HasLen;
 use uuid::Uuid;
 
-use crate::{Application, auth, ID, Memory, Services, Transformation, TransformationKey, Value};
 use crate::animo::error::DBError;
 use crate::services::{Data, Error, Params, Service};
 use crate::ws::error_general;
+use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
 
 pub struct InFiles {
   app: Application,
@@ -26,7 +26,6 @@ pub struct InFiles {
 
 impl InFiles {
   pub(crate) fn new(app: Application, path: &str, folder: &str) -> Arc<dyn Service> {
-
     // make sure folder exist
     std::fs::create_dir_all(folder).unwrap();
 
@@ -51,7 +50,7 @@ impl InFiles {
       app,
       path: Arc::new(path.to_string()),
       folder: folder.to_string(),
-      objs: Arc::new(RwLock::new(data))
+      objs: Arc::new(RwLock::new(data)),
     })
   }
 
@@ -61,26 +60,21 @@ impl InFiles {
     let mut file = std::fs::OpenOptions::new()
       .create(true)
       .write(true)
+      .truncate(true)
       .open(path.clone())
       .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
 
     let data = obj.dump();
-      // .map_err(|e| Error::IOError(format!("fail to generate json")))?;
+    // .map_err(|e| Error::IOError(format!("fail to generate json")))?;
 
-    file.write_all(data.as_bytes())
+    file
+      .write_all(data.as_bytes())
       .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
 
     let mut objs = self.objs.write().unwrap();
     objs.insert(id.clone(), obj.clone());
     Ok(())
   }
-}
-
-fn now_in_seconds() -> u128 {
-  SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH)
-    .expect("system time is likely incorrect")
-    .as_millis()
 }
 
 impl Service for InFiles {
@@ -100,24 +94,20 @@ impl Service for InFiles {
       list.push(obj.clone());
     }
 
-    Ok(
-      json::object! {
-        data: JsonValue::Array(list),
-        total: total,
-        "$skip": skip,
-      }
-    )
+    Ok(json::object! {
+      data: JsonValue::Array(list),
+      total: total,
+      "$skip": skip,
+    })
   }
 
   fn get(&self, id: String, params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
     let objs = self.objs.read().unwrap();
-    Ok(
-      match objs.get(&id) {
-        None => JsonValue::Null,
-        Some(obj) => obj.clone()
-      }
-    )
+    Ok(match objs.get(&id) {
+      None => JsonValue::Null,
+      Some(obj) => obj.clone(),
+    })
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
@@ -139,32 +129,30 @@ impl Service for InFiles {
 
       match self.save(&id, &obj) {
         Ok(_) => result.push(obj),
-        Err(e) => result.push(error_general("can't save json"))
+        Err(e) => result.push(error_general("can't save json")),
       }
     }
 
-    Ok(
-      if single {
-        if result.is_empty() {
-          JsonValue::Null
-        } else {
-          result.remove(0)
-        }
+    Ok(if single {
+      if result.is_empty() {
+        JsonValue::Null
       } else {
-        JsonValue::Array(result)
+        result.remove(0)
       }
-    )
+    } else {
+      JsonValue::Array(result)
+    })
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result{
+  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result{
+  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result{
+  fn remove(&self, id: String, params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

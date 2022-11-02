@@ -16,33 +16,51 @@ use crate::animo::error::DBError;
 use crate::hik::camera::States;
 use crate::hik::error::Error;
 use crate::hik::{camera, Camera, ConfigCamera, StatusCamera};
-use crate::services::{Data, Params, Service};
+use crate::hr::storage::{SCamera, SOrganizations};
+use crate::services::{string_to_id, Data, Params, Service};
+use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
 use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
 
-pub const PATH: &str = "./data/services/cameras/";
+type ORG = ID;
+type CAM = ID;
 
 pub struct Cameras {
   app: Application,
   path: Arc<String>,
 
-  objs: Arc<RwLock<BTreeMap<ID, Arc<Mutex<crate::hik::ConfigCamera>>>>>,
+  orgs: SOrganizations,
+
+  // organization id > camera id
+  mapping: Arc<RwLock<BTreeMap<ID, Vec<ID>>>>, // TODO switch to ordered hash set
+  objs: Arc<RwLock<BTreeMap<ID, (SCamera, Arc<Mutex<crate::hik::ConfigCamera>>)>>>,
 }
 
 impl Cameras {
-  pub(crate) fn new(app: Application, path: &str) -> Arc<dyn Service> {
-    // make sure folder exist
-    std::fs::create_dir_all(PATH).unwrap();
+  pub(crate) fn new(app: Application, path: &str, orgs: SOrganizations) -> Arc<dyn Service> {
+    let mut mapping = BTreeMap::new();
+    let mut objs = BTreeMap::new();
 
-    let mut data = BTreeMap::new();
-    // load data
-    for entry in std::fs::read_dir(PATH).unwrap() {
-      let entry = entry.unwrap();
-      let path = entry.path();
-      if path.is_dir() {
-        let contents = std::fs::read_to_string(entry.path().join("data.json")).unwrap();
+    let list = match orgs.list() {
+      Ok(list) => list,
+      Err(e) => {
+        println!("Error on loading organizations: {e}");
+        vec![]
+      },
+    };
 
-        let mut config: crate::hik::ConfigCamera = serde_json::from_str(contents.as_str()).unwrap();
+    for org in list {
+      for cam in org.cameras() {
+        println!("loading camera {cam:?}");
+        let contents = cam.data().unwrap();
+
+        let mut config: crate::hik::ConfigCamera = match serde_json::from_str(contents.as_str()) {
+          Ok(o) => o,
+          Err(e) => {
+            println!("Error on loading camera {cam:?} {e}");
+            continue;
+          },
+        };
 
         // reset state and status
         let was_on = config.state.is_on();
@@ -53,37 +71,34 @@ impl Cameras {
           config.state.force(States::Disabled);
         }
 
+        let oid = config.oid;
         let id = config.id;
+        mapping.entry(oid).or_insert(Vec::new()).push(id);
+
         let config = Arc::new(Mutex::new(config));
+        objs.entry(id).or_insert((cam.clone(), config.clone()));
 
-        data.entry(id).or_insert(config.clone());
-
-        ConfigCamera::connect(config, app.clone(), PATH.to_string());
+        ConfigCamera::connect(config, app.clone(), cam);
       }
     }
 
-    Arc::new(Cameras { app, path: Arc::new(path.to_string()), objs: Arc::new(RwLock::new(data)) })
+    Arc::new(Cameras {
+      app,
+      path: Arc::new(path.to_string()),
+      orgs,
+      mapping: Arc::new(RwLock::new(mapping)),
+      objs: Arc::new(RwLock::new(objs)),
+    })
   }
 
-  fn save(&self, config: &ConfigCamera) -> Result<(), Error> {
-    let folder = format!("{PATH}{}/", config.id.to_base64());
-    std::fs::create_dir_all(folder.clone())
-      .map_err(|e| Error::IOError(format!("can't create folder {}: {}", folder, e)))?;
+  fn save(&self, config: &crate::hik::ConfigCamera) -> crate::services::Result {
+    // let data = config.data().map_err(|e| crate::services::Error::IOError(e.to_string()))?;
+    // cam.save(data)?;
 
-    let path = format!("{folder}/data.json");
-
-    let mut file = std::fs::OpenOptions::new()
-      .create(true)
-      .write(true)
-      .open(path.clone())
-      .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
-
-    let data =
-      serde_json::to_string(config).map_err(|e| Error::IOError(format!("fail to generate json")))?;
-
-    file
-      .write_all(data.as_bytes())
-      .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))
+    let cam = self.orgs.get(&config.oid).camera(&config.id).create()?;
+    let data = config.data().map_err(|e| crate::services::Error::IOError(e.to_string()))?;
+    cam.save(data)?;
+    Ok(JsonValue::Null)
   }
 }
 
@@ -100,21 +115,29 @@ impl Service for Cameras {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
+    let oid = self.oid(&params)?;
+
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
+    let ids = {
+      let mapping = self.mapping.read().unwrap();
+      mapping.get(&oid).map(|v| v.clone()).unwrap_or_default()
+    };
+
     let objs = self.objs.read().unwrap();
-    let total = objs.len();
 
     let mut list = Vec::with_capacity(limit);
-    for (_, obj) in objs.iter().skip(skip).take(limit) {
-      let data = obj.lock().unwrap().to_json();
+    for id in ids.iter().skip(skip).take(limit) {
+      let data = objs.get(id).map(|(_, v)| v.lock().unwrap().to_json()).unwrap_or(json::object! {
+        "_id": id.to_base64()
+      });
       list.push(data);
     }
 
     Ok(json::object! {
       data: JsonValue::Array(list),
-      total: total,
+      total: ids.len(),
       "$skip": skip,
     })
   }
@@ -125,11 +148,14 @@ impl Service for Cameras {
     let objs = self.objs.read().unwrap();
     match objs.get(&id) {
       None => Err(crate::services::Error::NotFound(id.to_base64())),
-      Some(config) => Ok(config.lock().unwrap().to_json()),
+      Some((_, config)) => Ok(config.lock().unwrap().to_json()),
     }
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
+    let oid = data["oid"].as_str().unwrap_or("").trim().to_string();
+    let oid = string_to_id(oid)?;
+
     let name = data["name"].as_str().unwrap_or("").trim().to_string();
     let dev_index = data["devIndex"].as_str().unwrap_or("").trim().to_string();
     let protocol = data["protocol"].as_str().unwrap_or("").trim().to_string();
@@ -145,8 +171,13 @@ impl Service for Cameras {
       Err(_) => None,
     };
 
+    let id = ID::random();
+
+    let cam = self.orgs.get(&oid).camera(&id).create()?;
+
     let config = crate::hik::ConfigCamera {
-      id: ID::random(),
+      id,
+      oid,
       name,
       dev_index,
       protocol,
@@ -160,18 +191,21 @@ impl Service for Cameras {
       jh: None,
     };
 
-    self.save(&config).map_err(|e| crate::services::Error::IOError(e.to_string()))?;
+    self.save(&config)?;
 
-    let id = config.id;
     let json = config.to_json();
 
     let config = Arc::new(Mutex::new(config));
     {
       let mut objs = self.objs.write().unwrap();
-      objs.entry(id.clone()).or_insert(config.clone());
+      objs.entry(id).or_insert((cam.clone(), config.clone()));
+    }
+    {
+      let mut mapping = self.mapping.write().unwrap();
+      mapping.entry(oid).or_insert(Vec::new()).push(id);
     }
 
-    ConfigCamera::connect(config, self.app.clone(), PATH.to_string());
+    ConfigCamera::connect(config, self.app.clone(), cam);
 
     Ok(json)
   }
@@ -185,7 +219,7 @@ impl Service for Cameras {
 
     println!("patch {:?}", data.dump());
     let mut objs = self.objs.write().unwrap();
-    if let Some(config) = objs.get_mut(&id) {
+    if let Some((scam, config)) = objs.get_mut(&id) {
       // mutation block
       let (was_on, data) = {
         let mut config = config.lock().unwrap();
@@ -232,6 +266,9 @@ impl Service for Cameras {
             }
           }
         }
+
+        self.save(&config)?;
+
         (was_on, config.to_json())
       };
 
@@ -241,7 +278,7 @@ impl Service for Cameras {
       if was_on {
         // TODO wait for jh and set it to None
       } else {
-        ConfigCamera::connect(config.clone(), self.app.clone(), PATH.to_string());
+        ConfigCamera::connect(config.clone(), self.app.clone(), scam.clone());
       }
 
       Ok(data)

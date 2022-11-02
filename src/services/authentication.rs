@@ -1,7 +1,7 @@
-use std::sync::{Arc, RwLock};
-use json::JsonValue;
-use crate::{Application, ID, Services};
 use crate::services::{Data, Error, Params, Service};
+use crate::{Application, Services, ID};
+use json::JsonValue;
+use std::sync::{Arc, RwLock};
 
 pub(crate) struct Authentication {
   app: Application,
@@ -33,33 +33,26 @@ impl Service for Authentication {
       "jwt" => {
         let token = data["accessToken"].as_str().unwrap_or("");
         let account = crate::auth::Account::jwt(&self.app, token)
-          .map_err(|e|Error::GeneralError(e.to_string()))?;
+          .map_err(|e| Error::GeneralError(e.to_string()))?;
 
-        let user = self.app
-          .service("people")
-          .get(account.id.to_base64(), JsonValue::Null)?;
+        let user = self.app.service("users").get(account.id.to_base64(), JsonValue::Null)?;
 
         let data = json::object! {
           accessToken: token,
           user: user
         };
         Ok(data)
-      }
+      },
       "local" => {
         let email = data["email"].as_str().unwrap_or("").to_string();
         let password = data["password"].as_str().unwrap_or("").to_string();
 
-        let request = crate::auth::LoginRequest {
-          password,
-          email: email.clone(),
-          remember_me: false
-        };
+        let request =
+          crate::auth::LoginRequest { password, email: email.clone(), remember_me: false };
 
         match crate::auth::login_procedure(&self.app, request) {
           Ok((account, token)) => {
-            let user = self.app
-              .service("people")
-              .get(account.to_base64(), JsonValue::Null)?;
+            let user = self.app.service("users").get(account.to_base64(), JsonValue::Null)?;
 
             let data = json::object! {
               accessToken: token,
@@ -67,10 +60,10 @@ impl Service for Authentication {
             };
             Ok(data)
           },
-          Err(msg) => Err(Error::GeneralError(msg))
+          Err(msg) => Err(Error::GeneralError(msg)),
         }
-      }
-      _ => Err(Error::GeneralError(format!("unknown strategy '{strategy}'")))
+      },
+      _ => Err(Error::GeneralError(format!("unknown strategy '{strategy}'"))),
     }
   }
 

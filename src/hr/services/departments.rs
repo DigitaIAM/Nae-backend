@@ -1,36 +1,41 @@
-use crate::animo::error::DBError;
-use crate::services::{string_to_id, Data, Error, Params, Service};
-use crate::ws::error_general;
-use crate::{
-  auth, Application, ChangeTransformation, Memory, SOrganizations, Services, Transformation,
-  TransformationKey, Value, ID,
-};
+use actix_web::error::ParseError::Status;
+use dbase::FieldConversionError;
 use json::object::Object;
 use json::JsonValue;
+use std::collections::{BTreeMap, HashMap};
+use std::convert::Infallible;
+use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
+use std::time::SystemTime;
+use tantivy::HasLen;
+use uuid::Uuid;
 
-lazy_static::lazy_static! {
-    pub(crate) static ref PEOPLE: ID = ID::for_constant("people");
-}
+use crate::animo::error::DBError;
+use crate::services::JsonData;
+use crate::services::{Data, Error, Params, Service};
+use crate::warehouse::turnover::Organization;
+use crate::ws::error_general;
+use crate::{
+  auth, Application, Memory, SOrganizations, Services, Transformation, TransformationKey, Value, ID,
+};
 
-const PROPERTIES: [&str; 4] = ["organization", "first_name", "last_name", "email"];
-
-pub(crate) struct People {
+pub(crate) struct Departments {
   app: Application,
-  path: Arc<String>,
+  name: String,
 
   orgs: SOrganizations,
 }
 
-impl People {
+impl Departments {
   pub(crate) fn new(app: Application, orgs: SOrganizations) -> Arc<dyn Service> {
-    Arc::new(People { app, path: Arc::new("people".to_string()), orgs })
+    Arc::new(Departments { app, name: "departments".to_string(), orgs })
   }
 }
 
-impl Service for People {
+impl Service for Departments {
   fn path(&self) -> &str {
-    &self.path
+    &self.name
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
@@ -39,19 +44,10 @@ impl Service for People {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let list = self.orgs.get(&oid).people();
+    let list = self.orgs.get(&oid).departments()?;
+    let total = list.len();
 
-    let (total, list) = if let Some(search) = params[0]["$search"].as_str() {
-      let search = search.to_lowercase();
-      let list: Vec<JsonValue> = list
-        .into_iter()
-        .map(|o| o.json())
-        .filter(|d| d["name"].as_str().unwrap_or_default().to_lowercase().contains(&search))
-        .collect();
-      (list.len(), list.into_iter().skip(skip).take(limit).collect())
-    } else {
-      (list.len(), list.into_iter().skip(skip).take(limit).map(|o| o.json()).collect())
-    };
+    let list = list.into_iter().skip(skip).take(limit).map(|o| o.json()).collect();
 
     Ok(json::object! {
       data: JsonValue::Array(list),
@@ -64,7 +60,7 @@ impl Service for People {
     let oid = self.oid(&params)?;
 
     let id = crate::services::string_to_id(id)?;
-    self.orgs.get(&oid).person(&id).load()
+    self.orgs.get(&oid).department(id).load()
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
@@ -77,7 +73,7 @@ impl Service for People {
       let mut obj = data.clone();
       obj["_id"] = JsonValue::String(id.to_base64());
 
-      self.orgs.get(&oid).person(&id).save(obj.dump())?;
+      self.orgs.get(&oid).department(id).create()?.save(obj.dump());
 
       Ok(obj)
     }
@@ -93,7 +89,7 @@ impl Service for People {
       let mut obj = data.clone();
       obj["_id"] = id.to_base64().into();
 
-      self.orgs.get(&oid).person(&id).save(obj.dump())?;
+      self.orgs.get(&oid).department(id).save(obj.dump())?;
 
       Ok(obj)
     }
@@ -106,7 +102,7 @@ impl Service for People {
     } else {
       let id = crate::services::string_to_id(id)?;
 
-      let storage = self.orgs.get(&oid).person(&id);
+      let storage = self.orgs.get(&oid).department(id);
 
       let mut obj = storage.load()?;
       for (n, v) in data.entries() {
@@ -123,8 +119,8 @@ impl Service for People {
 
   fn remove(&self, id: String, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
-    let id = string_to_id(id)?;
+    let id = ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))?;
 
-    self.orgs.get(&oid).shift(id).delete()
+    self.orgs.get(&oid).department(id).delete()
   }
 }

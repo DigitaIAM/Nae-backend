@@ -25,16 +25,9 @@ use crate::hik::auth::WithDigestAuth;
 use crate::hik::data::alert_item::AlertItem;
 use crate::hik::data::triggers_parser::TriggerItem;
 use crate::hik::error::{Error, Result};
+use crate::hr::storage::SCamera;
 use crate::services::Mutation;
-
-fn now_in_seconds() -> u64 {
-  let secs = SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH)
-    .expect("system time is likely incorrect")
-    .as_secs();
-  println!("secs {secs}");
-  secs
-}
+use crate::utils::time::now_in_seconds;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 // #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -214,6 +207,8 @@ impl State {
 pub struct ConfigCamera {
   // #[serde(skip_deserializing)]
   pub id: crate::ID,
+  pub oid: crate::ID,
+
   pub name: String,
 
   pub dev_index: String,
@@ -234,7 +229,7 @@ pub struct ConfigCamera {
 }
 
 impl ConfigCamera {
-  pub(crate) fn connect(config: Arc<Mutex<ConfigCamera>>, app: Application, folder: String) {
+  pub(crate) fn connect(config: Arc<Mutex<ConfigCamera>>, app: Application, storage: SCamera) {
     let state = {
       let config = config.lock().unwrap();
       config.state.get()
@@ -242,7 +237,7 @@ impl ConfigCamera {
 
     println!("connect {state:?}");
     if state == States::Enabling {
-      crate::hik::connection(&config, app, folder);
+      crate::hik::connection(&config, app, storage);
       // {
       //   let mut config = config.lock().unwrap();
       //   // TODO config.jh = Some(Arc::new(jh));
@@ -260,6 +255,7 @@ impl ConfigCamera {
 
     let d = json::object! {
       _id: self.id.to_base64(),
+      oid: self.oid.to_base64(),
       devIndex: self.dev_index.clone(),
       name: self.name.clone(),
       protocol: self.protocol.clone(),
@@ -274,16 +270,28 @@ impl ConfigCamera {
 
     d
   }
+
+  pub(crate) fn data(&self) -> Result<String> {
+    serde_json::to_string(self).map_err(|e| Error::IOError(format!("fail to generate data json")))
+  }
 }
 
-fn send_update(app: &Application, id: ID, status: StatusCamera) {
+fn send_update(app: &Application, oid: ID, cid: ID, status: StatusCamera) {
   println!("send_update {:?}", status);
   let change = json::object! {
     status: status.to_json()
   };
   // app.service("cameras")
   //   .patch(id, change, JsonValue::Null);
-  match app.handle(Mutation::Patch("cameras".to_string(), id.to_base64(), change, JsonValue::Null)) {
+  let mutation = Mutation::Patch(
+    "cameras".into(),
+    cid.to_base64(),
+    change,
+    json::object! {
+      oid: oid.to_base64()
+    },
+  );
+  match app.handle(mutation) {
     Ok(_) => {},
     Err(e) => {
       println!("error {e}");
@@ -291,7 +299,11 @@ fn send_update(app: &Application, id: ID, status: StatusCamera) {
   }
 }
 
-pub fn connection(config: &Arc<Mutex<crate::hik::ConfigCamera>>, app: Application, path: String) {
+pub fn connection(
+  config: &Arc<Mutex<crate::hik::ConfigCamera>>,
+  app: Application,
+  storage: SCamera,
+) {
   println!("Start camera connection...");
   let config = config.clone();
   // let id = {
@@ -309,7 +321,7 @@ pub fn connection(config: &Arc<Mutex<crate::hik::ConfigCamera>>, app: Applicatio
       config.state.enabled();
     }
 
-    processing(app, config.clone(), path).await;
+    processing(app, config.clone(), storage).await;
 
     {
       let mut config = config.lock().unwrap();
@@ -321,7 +333,7 @@ pub fn connection(config: &Arc<Mutex<crate::hik::ConfigCamera>>, app: Applicatio
   // .instrument(logging_span),
 }
 
-fn should_stop(id: ID, app: &Application, config: &Arc<Mutex<crate::hik::ConfigCamera>>) -> bool {
+fn should_stop(config: &Arc<Mutex<crate::hik::ConfigCamera>>) -> bool {
   let state = {
     let config = config.lock().unwrap();
     config.state.is_off()
@@ -331,43 +343,42 @@ fn should_stop(id: ID, app: &Application, config: &Arc<Mutex<crate::hik::ConfigC
     println!("Configuration disabled, exiting");
     true
   } else {
-    println!("Configuration enabled, continue");
+    // println!("Configuration enabled, continue");
     false
   }
 }
 
-async fn wait(
-  secs: i64,
-  id: ID,
-  app: &Application,
-  config: &Arc<Mutex<crate::hik::ConfigCamera>>,
-) -> bool {
+async fn wait(secs: i64, config: &Arc<Mutex<crate::hik::ConfigCamera>>) -> bool {
   println!("wait {secs}");
   if secs > 0 {
     let wait_till = Utc::now() + chrono::Duration::seconds(secs);
     while Utc::now() <= wait_till {
       tokio::time::sleep(Duration::from_secs(1)).await;
-      if should_stop(id, app, config) {
+      if should_stop(config) {
         return true;
       }
     }
   }
-  should_stop(id, app, config)
+  should_stop(config)
 }
 
-async fn processing(app: Application, config: Arc<Mutex<crate::hik::ConfigCamera>>, path: String) {
+async fn processing(
+  app: Application,
+  config: Arc<Mutex<crate::hik::ConfigCamera>>,
+  storage: SCamera,
+) {
   // info!("Initiating camera connection...");
   println!("Initiating camera connection...");
-  let id = {
+  let (cid, oid) = {
     let config = config.lock().unwrap();
-    config.id
+    (config.id, config.oid)
   };
 
   let mut wait_on_error = 0;
 
   'outer: loop {
     // wait on error
-    if wait(wait_on_error, id, &app, &config).await {
+    if wait(wait_on_error, &config).await {
       break;
     }
 
@@ -376,10 +387,10 @@ async fn processing(app: Application, config: Arc<Mutex<crate::hik::ConfigCamera
         let config = config.lock().unwrap();
         config.clone()
       };
-      send_update(&app, id, StatusCamera::connecting());
-      match crate::hik::Camera::connect(config, path.clone()).await {
+      send_update(&app, oid, cid, StatusCamera::connecting());
+      match crate::hik::Camera::connect(config, storage.clone()).await {
         Ok(cam) => {
-          send_update(&app, id, StatusCamera::connected());
+          send_update(&app, oid, cid, StatusCamera::connected());
           wait_on_error = 0;
 
           cam
@@ -388,18 +399,22 @@ async fn processing(app: Application, config: Arc<Mutex<crate::hik::ConfigCamera
           // warn!("Camera errored: {}. Attempting reconnection...", e);
           println!("Camera errored: {}. Attempting reconnection...", e);
 
-          send_update(&app, id, StatusCamera::error(e.to_string()));
+          send_update(&app, oid, cid, StatusCamera::error(e.to_string()));
 
-          if wait_on_error < 120 {
-            wait_on_error += 15;
+          let mins15 = 15 * 60;
+          if wait_on_error < mins15 {
+            wait_on_error = mins15;
           }
+          // if wait_on_error < 120 {
+          //   wait_on_error += 15;
+          // }
           continue;
         },
       }
     };
 
     loop {
-      if wait(wait_on_error, id, &app, &config).await {
+      if wait(wait_on_error, &config).await {
         break;
       }
 
@@ -408,15 +423,16 @@ async fn processing(app: Application, config: Arc<Mutex<crate::hik::ConfigCamera
         Ok(event) => {
           println!("event: {event}");
           if !event.is_object() {
-            if wait(61, id, &app, &config).await {
+            if wait(61, &config).await {
               break 'outer;
             }
           } else {
             // TODO debounce it
-            send_update(&app, id, StatusCamera::event());
+            send_update(&app, oid, cid, StatusCamera::event());
 
             let data = json::object! {
-              cameraId: id.to_base64(),
+              oid: oid.to_base64(),
+              cid: cid.to_base64(),
               event: event
             };
 
@@ -429,10 +445,10 @@ async fn processing(app: Application, config: Arc<Mutex<crate::hik::ConfigCamera
           // warn!("Camera errored: {}. Attempting reconnection...", e);
           println!("Camera errored: {}. Attempting reconnection...", e);
 
-          send_update(&app, id, StatusCamera::error(e.to_string()));
+          send_update(&app, oid, cid, StatusCamera::error(e.to_string()));
 
-          if wait_on_error < 120 {
-            wait_on_error += 15;
+          if wait_on_error < 15 * 60 {
+            wait_on_error += 5 * 60;
           }
           break;
         },
@@ -440,11 +456,11 @@ async fn processing(app: Application, config: Arc<Mutex<crate::hik::ConfigCamera
     }
   }
 
-  send_update(&app, id, StatusCamera::disconnect());
+  send_update(&app, oid, cid, StatusCamera::disconnect());
 }
 
 pub struct Camera {
-  pub folder: String,
+  storage: SCamera,
   pub config: ConfigCamera,
   pub info: crate::hik::data::device_info::DeviceInfo,
   pub triggers: Option<Vec<TriggerItem>>,
@@ -452,7 +468,7 @@ pub struct Camera {
 }
 
 impl Camera {
-  pub async fn connect(config: ConfigCamera, folder: String) -> Result<Camera> {
+  pub async fn connect(config: ConfigCamera, storage: SCamera) -> Result<Camera> {
     let client = reqwest::Client::builder()
       .tcp_keepalive(Duration::from_secs(60))
       .danger_accept_invalid_certs(true)
@@ -465,6 +481,10 @@ impl Camera {
         .text()
         .await
         .map_err(Error::CameraInvalidResponseBody)?;
+
+      let info_text = info_text.trim().to_string();
+
+      println!("deviceInfo: '{info_text}'");
 
       crate::hik::data::device_info::DeviceInfo::parse(&info_text)
         .map_err(Error::DeviceInfoInvalid)?
@@ -511,13 +531,13 @@ impl Camera {
               > + Send,
           >,
         > = Box::pin(multipart_stream::parse(res.bytes_stream(), boundary.as_str()));
-        Box::new(EventsOnStream { stream, folder: folder.clone(), config: config.clone() })
+        Box::new(EventsOnStream { stream, storage: storage.clone(), config: config.clone() })
       } else {
         Box::new(EventsOnRequest::new(config.clone(), client))
       }
     };
 
-    Ok(Camera { folder, info, config, triggers: None, events })
+    Ok(Camera { storage, info, config, triggers: None, events })
   }
 
   pub async fn next_event(&mut self) -> Result<JsonValue> {
@@ -677,7 +697,7 @@ impl Events for EventsOnRequest {
 }
 
 struct EventsOnStream {
-  folder: String,
+  storage: SCamera,
   config: ConfigCamera,
   stream: std::pin::Pin<
     Box<
@@ -698,62 +718,31 @@ impl Events for EventsOnStream {
       .ok_or(Error::ConnectionClosed)?
       .map_err(|e| Error::StreamInvalid(format!("Couldn't get next part of stream: {}", e)))?;
     match next.headers.get(CONTENT_TYPE) {
-      Some(ct) => {
-        match ct.to_str() {
-          Ok(v) => {
-            match v {
-              "application/json; charset=\"UTF-8\"" => {
-                let part_str = String::from_utf8(next.body.to_vec()).map_err(|e| {
-                  Error::StreamInvalid(format!("Stream returned non-UTF-8 text: {}", e))
-                })?;
-                json::parse(part_str.as_str())
-                  .map_err(|e| Error::IOError(format!("fail to parse: {:?} {:?}", e, part_str)))
-              },
-              "image/jpeg" => {
-                let ts = chrono::offset::Utc::now();
-
-                let folder = format!("{}{}/", self.folder, self.config.id.to_base64());
-
-                // create folder
-                let folder = format!("{}/{:0>4}/{:0>2}/", self.folder, ts.year(), ts.month());
-                std::fs::create_dir_all(folder.clone())
-                  .map_err(|e| Error::IOError(format!("can't create folder {}: {}", folder, e)))?;
-
-                // store image
-                let mut path =
-                  format!("{folder}img_{}.jpeg", ts.to_rfc3339_opts(SecondsFormat::Millis, true));
-                for count in 0..100_0000 {
-                  if count == 90_000 {
-                    return Err(Error::IOError(format!("fail to open file: {folder}{path}")));
-                  }
-                  let mut file =
-                    match std::fs::OpenOptions::new().create(true).write(true).open(path.clone()) {
-                      Ok(file) => file,
-                      Err(_) => {
-                        path = format!(
-                          "{folder}img_{}_{count}.jpeg",
-                          ts.to_rfc3339_opts(SecondsFormat::Millis, true)
-                        );
-                        continue;
-                      },
-                    };
-
-                  file
-                    .write_all(&next.body)
-                    .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
-                }
-
-                Ok(json::object! {
-                  timestamp: ts.timestamp_millis(),
-                  contentType: "image/jpeg",
-                  path: path
-                })
-              },
-              _ => Err(Error::StreamInvalid(format!("unknown content type {:?} {:?}", v, next))),
-            }
+      Some(ct) => match ct.to_str() {
+        Ok(v) => match v {
+          "application/json; charset=\"UTF-8\"" => {
+            let part_str = String::from_utf8(next.body.to_vec())
+              .map_err(|e| Error::StreamInvalid(format!("Stream returned non-UTF-8 text: {}", e)))?;
+            json::parse(part_str.as_str())
+              .map_err(|e| Error::IOError(format!("fail to parse: {:?} {:?}", e, part_str)))
           },
-          Err(e) => Err(Error::StreamInvalid(format!("fail to get content-type: {:?}", e))),
-        }
+          "image/jpeg" => {
+            let ts = chrono::offset::Utc::now();
+
+            let path = self
+              .storage
+              .save_binary(ts, "img_", ".jpeg", &next.body)
+              .map_err(|e| Error::IOError(e.to_string()))?;
+
+            Ok(json::object! {
+              timestamp: ts.timestamp_millis(),
+              contentType: "image/jpeg",
+              path: path.to_string_lossy().to_string(),
+            })
+          },
+          _ => Err(Error::StreamInvalid(format!("unknown content type {:?} {:?}", v, next))),
+        },
+        Err(e) => Err(Error::StreamInvalid(format!("fail to get content-type: {:?}", e))),
       },
       None => Err(Error::StreamInvalid(format!("no content-type case: {:?}", next))),
     }

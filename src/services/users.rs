@@ -1,12 +1,12 @@
+use crate::animo::error::DBError;
+use crate::services::{string_to_id, Data, Error, Mutation, Params, Service};
+use crate::ws::error_general;
+use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
+use json::object::Object;
+use json::JsonValue;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::{Arc, RwLock};
-use json::JsonValue;
-use json::object::Object;
-use crate::{Application, auth, ID, Memory, Services, Transformation, TransformationKey, Value};
-use crate::animo::error::DBError;
-use crate::services::{Data, Error, Params, Service, Mutation};
-use crate::ws::error_general;
 
 pub const PATH: &str = "./data/services/users/";
 
@@ -28,15 +28,17 @@ impl Users {
     for entry in std::fs::read_dir(PATH).unwrap() {
       let entry = entry.unwrap();
       let path = entry.path();
-      if path.is_file() && path.ends_with(".json") {
-        let contents = std::fs::read_to_string(path).unwrap();
+      if path.is_file() {
+        if entry.file_name().to_string_lossy().ends_with(".json") {
+          let contents = std::fs::read_to_string(path).unwrap();
 
-        let obj = json::parse(contents.as_str()).unwrap();
+          let obj = json::parse(contents.as_str()).unwrap();
 
-        let id = obj["_id"].as_str().unwrap();
-        let id = ID::from(id);
+          let id = obj["_id"].as_str().unwrap_or("").to_string();
+          let id = string_to_id(id).unwrap();
 
-        data.entry(id).or_insert(obj);
+          data.entry(id).or_insert(obj);
+        }
       }
     }
 
@@ -44,7 +46,7 @@ impl Users {
       app,
       path: Arc::new(path.to_string()),
       folder: PATH.to_string(),
-      objs: Arc::new(RwLock::new(data))
+      objs: Arc::new(RwLock::new(data)),
     })
   }
 
@@ -54,13 +56,15 @@ impl Users {
     let mut file = std::fs::OpenOptions::new()
       .create(true)
       .write(true)
+      .truncate(true)
       .open(path.clone())
       .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
 
     let data = obj.dump();
     // .map_err(|e| Error::IOError(format!("fail to generate json")))?;
 
-    file.write_all(data.as_bytes())
+    file
+      .write_all(data.as_bytes())
       .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
 
     let mut objs = self.objs.write().unwrap();
@@ -86,27 +90,24 @@ impl Service for Users {
       list.push(obj.clone());
     }
 
-    Ok(
-      json::object! {
-        data: JsonValue::Array(list),
-        total: total,
-        "$skip": skip,
-      }
-    )
+    Ok(json::object! {
+      data: JsonValue::Array(list),
+      total: total,
+      "$skip": skip,
+    })
   }
 
   fn get(&self, id: String, params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
     let names = ["label", "email", "avatar"];
-    let keys = names.iter()
-      .map(|name|TransformationKey::simple(id, name))
-      .collect();
+    let keys = names.iter().map(|name| TransformationKey::simple(id, name)).collect();
     match self.app.db.query(keys) {
       Ok(records) => {
         let mut obj = Object::with_capacity(names.len() + 1);
 
-        names.iter()
+        names
+          .iter()
           .zip(records.iter())
           .filter(|(n, v)| v.into != Value::Nothing)
           .for_each(|(n, v)| obj.insert(n, v.into.to_json()));
@@ -117,7 +118,7 @@ impl Service for Users {
           obj.insert("_id", id.to_base64().into());
           Ok(JsonValue::Object(obj))
         }
-      }
+      },
       Err(msg) => Err(Error::IOError(msg.to_string())),
     }
   }
@@ -130,7 +131,7 @@ impl Service for Users {
 
     match self.save(&id, &obj) {
       Ok(_) => {},
-      Err(e) => return Err(Error::IOError(e.to_string()))
+      Err(e) => return Err(Error::IOError(e.to_string())),
     }
 
     let email = data["email"].as_str().unwrap_or("").to_string();
@@ -139,16 +140,12 @@ impl Service for Users {
     let signup = crate::auth::SignUpRequest { email: email.clone(), password };
 
     match auth::signup_procedure(&self.app, signup) {
-      Ok((account, token)) => {
-        Ok(
-          json::object! {
-            _id: account.to_base64(),
-            accessToken: token,
-            email: email,
-          }
-        )
-      }
-      Err(msg) => Err(Error::IOError(msg))
+      Ok((account, token)) => Ok(json::object! {
+        _id: account.to_base64(),
+        accessToken: token,
+        email: email,
+      }),
+      Err(msg) => Err(Error::IOError(msg)),
     }
   }
 

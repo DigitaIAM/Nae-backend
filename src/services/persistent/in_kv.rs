@@ -1,10 +1,13 @@
-use std::sync::{Arc, RwLock};
-use json::JsonValue;
-use json::object::Object;
-use crate::{Application, auth, ChangeTransformation, ID, Memory, Services, Transformation, TransformationKey, Value};
 use crate::animo::error::DBError;
 use crate::services::{Data, Error, Params, Service};
 use crate::ws::error_general;
+use crate::{
+  auth, Application, ChangeTransformation, Memory, Services, Transformation, TransformationKey,
+  Value, ID,
+};
+use json::object::Object;
+use json::JsonValue;
+use std::sync::{Arc, RwLock};
 
 pub(crate) struct InKV {
   app: Application,
@@ -15,7 +18,12 @@ pub(crate) struct InKV {
 }
 
 impl InKV {
-  pub(crate) fn new(app: Application, path: &str, zone: ID, properties: Vec<String>) -> Arc<dyn Service> {
+  pub(crate) fn new(
+    app: Application,
+    path: &str,
+    zone: ID,
+    properties: Vec<String>,
+  ) -> Arc<dyn Service> {
     Arc::new(InKV { app, path: Arc::new(path.to_string()), zone, properties: Arc::new(properties) })
   }
 
@@ -23,7 +31,9 @@ impl InKV {
     let mut result = Object::with_capacity(self.properties.len() + 1);
 
     // prepare changes
-    let mutations = self.properties.iter()
+    let mutations = self
+      .properties
+      .iter()
       .map(|name| {
         let value = match data[name].as_str() {
           None => Value::Nothing,
@@ -31,7 +41,7 @@ impl InKV {
         };
         (name, value)
       })
-      .filter(|(n,v)| v.is_string())
+      .filter(|(n, v)| v.is_string())
       .map(|(name, value)| {
         result.insert(&name, value.as_string().unwrap_or_default().into());
         ChangeTransformation::create(self.zone, id, &name, value)
@@ -39,8 +49,7 @@ impl InKV {
       .collect();
 
     // store
-    self.app.db.modify(mutations)
-      .map_err(|e| Error::GeneralError(e.to_string()))?;
+    self.app.db.modify(mutations).map_err(|e| Error::GeneralError(e.to_string()))?;
 
     result.insert("_id", id.to_base64().into());
     Ok(JsonValue::Object(result))
@@ -78,14 +87,14 @@ impl Service for InKV {
   fn get(&self, id: String, params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
-    let keys = self.properties.iter()
-      .map(|name|TransformationKey::simple(id, name))
-      .collect();
+    let keys = self.properties.iter().map(|name| TransformationKey::simple(id, name)).collect();
     match self.app.db.query(keys) {
       Ok(records) => {
         let mut obj = Object::with_capacity(self.properties.len() + 1);
 
-        self.properties.iter()
+        self
+          .properties
+          .iter()
           .zip(records.iter())
           .filter(|(n, v)| v.into != Value::Nothing)
           .for_each(|(n, v)| obj.insert(n, v.into.to_json()));
@@ -96,8 +105,8 @@ impl Service for InKV {
           obj.insert("_id", id.to_base64().into());
           Ok(JsonValue::Object(obj))
         }
-      }
-      Err(msg) => Err(Error::IOError(msg.to_string()))
+      },
+      Err(msg) => Err(Error::IOError(msg.to_string())),
     }
   }
 
@@ -107,8 +116,7 @@ impl Service for InKV {
   }
 
   fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    let id = ID::from_base64(id.as_bytes())
-      .map_err(|e| Error::GeneralError(e.to_string()))?;
+    let id = ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))?;
 
     // TODO check that record exist
 
@@ -116,8 +124,7 @@ impl Service for InKV {
   }
 
   fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    let id = ID::from_base64(id.as_bytes())
-      .map_err(|e| Error::GeneralError(e.to_string()))?;
+    let id = ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))?;
 
     // TODO check that record exist
 
