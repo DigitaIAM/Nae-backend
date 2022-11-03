@@ -293,7 +293,7 @@ pub struct HttpClient {
 
 impl HttpClient {
   pub fn new(app: Application) -> Self {
-    let proxy = reqwest::Proxy::http("http://localhost:8080").unwrap();
+    // let proxy = reqwest::Proxy::http("http://localhost:8080").unwrap();
 
     let client = reqwest::Client::builder() // reqwest::blocking::Client::builder()
       .http1_title_case_headers()
@@ -302,7 +302,7 @@ impl HttpClient {
       // .brotli(true)
       // .tcp_keepalive(Duration::from_secs(60))
       .danger_accept_invalid_certs(true)
-      .proxy(proxy)
+      // .proxy(proxy)
       .build()
       .unwrap();
 
