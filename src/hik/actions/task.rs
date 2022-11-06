@@ -99,6 +99,8 @@ impl CommandMeta {
   pub fn to_json(&self) -> JsonValue {
     let mut o = json::object! {
       "_id": self.id.to_base64(),
+      "command": self.command.clone(),
+      "params": self.params.clone(),
       state: self.state.to_json(),
     };
 

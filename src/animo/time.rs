@@ -5,7 +5,7 @@ use crate::animo::error::DBError;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use chrono::{
   DateTime, Datelike, Duration, Month, NaiveDate, NaiveDateTime, NaiveTime, ParseError, TimeZone,
-  Timelike, Utc, MIN_DATETIME,
+  Timelike, Utc,
 };
 use rust_decimal::Decimal;
 use std::cmp::Ordering;

@@ -412,7 +412,10 @@ impl ID {
   }
 
   pub(crate) fn to_clear(&self) -> String {
-    base64::encode_config(self.0, base64::URL_SAFE_NO_PAD).replace("_", "")[..12].to_string()
+    base64::encode_config(self.0, base64::URL_SAFE_NO_PAD)
+      .replace("_", "")
+      .replace("-", "")[..12]
+      .to_string()
   }
 
   // TODO make `const`

@@ -134,9 +134,8 @@ impl Service for Actions {
 
         Ok(answer)
       },
-      "create_user" => {
+      "hikvision-create_user" => {
         let id = ID::random();
-        let mut sub = vec![];
 
         let oid = self.oid(&params)?;
         let cid = self.cid(&params)?;
@@ -151,27 +150,13 @@ impl Service for Actions {
           .service("people")
           .get(pid.to_base64(), json::object! { "oid": oid.to_base64() })?;
 
-        // for camera in cameras {
-        // let cid = camera.id;
-
         let dev_index = &camera.dev_index;
         let name = person["name"].string();
 
         let mgmt = DeviceMgmt::new(&camera);
         let request = mgmt.create_user(id, dev_index, pid, name).map_err(Error::CameraError)?;
 
-        let aid = ID::random();
-        sub.push(aid.clone());
-
-        let params = JsonValue::Null;
-        // TODO fix it
-        // json::object! {
-        //   "oid": oid.to_base64(),
-        //   "cid", cid,
-        //   "pid": pid.to_base64()
-        // };
-
-        let meta = CommandMeta::sub(id, aid, command.clone(), params);
+        let meta = CommandMeta::new(id, command.clone(), params);
         let answer = meta.to_json();
         {
           let mut tasks = self.tasks.write().unwrap();
@@ -179,63 +164,42 @@ impl Service for Actions {
         }
 
         self.actor.do_send(request);
-        // }
 
         Ok(answer)
       },
-      "register_picture" => {
+      "hikvision-register_image" => {
         let id = ID::random();
-        let mut sub = vec![];
 
         let oid = self.oid(&params)?;
+        let cid = self.cid(&params)?;
         let pid = self.pid(&params)?;
 
-        let mut cameras = self.app.storage.as_ref().unwrap().get(&oid).camera_configs();
+        // let mut cameras = self.app.storage.as_ref().unwrap().get(&oid).camera_configs();
+        let camera = self.app.storage.as_ref().unwrap().get(&oid).camera(&cid).config()?;
 
         let person = self
           .app
           .service("people")
           .get(pid.to_base64(), json::object! { "oid": oid.to_base64() })?;
 
-        for camera in cameras {
-          let dev_index = camera.dev_index.clone();
-          let name = person["name"].string();
+        let dev_index = camera.dev_index.clone();
+        let name = person["name"].string();
 
-          let picture_path = self.orgs.get(&oid).person(&pid).picture().path();
+        let picture_path = self.orgs.get(&oid).person(&pid).picture().path();
 
-          let mgmt = DeviceMgmt::new(&camera);
-          let request = mgmt
-            .register_picture(id, dev_index, pid, picture_path)
-            .map_err(Error::CameraError)?;
+        let mgmt = DeviceMgmt::new(&camera);
+        let request = mgmt
+          .register_picture(id, dev_index, pid, picture_path)
+          .map_err(Error::CameraError)?;
 
-          let aid = ID::random();
-          sub.push(aid.clone());
-
-          let params = JsonValue::Null;
-          // TODO fix it
-          // json::object! {
-          //   "oid": oid.to_base64(),
-          //   "cid", cid,
-          //   "pid": pid.to_base64()
-          // };
-
-          let meta = CommandMeta::sub(id, aid, command.clone(), params);
-          {
-            let mut tasks = self.tasks.write().unwrap();
-            tasks.insert(id, meta);
-          }
-
-          self.actor.do_send(request);
-
-          // break;
-        }
-
-        let meta = CommandMeta::master(id, sub, command, params);
+        let meta = CommandMeta::new(id, command.clone(), params);
         let answer = meta.to_json();
         {
           let mut tasks = self.tasks.write().unwrap();
           tasks.insert(id, meta);
         }
+
+        self.actor.do_send(request);
 
         Ok(answer)
       },
