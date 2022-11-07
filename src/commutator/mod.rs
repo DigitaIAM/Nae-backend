@@ -110,14 +110,14 @@ impl Application {
   fn emit(&self, event: Event) {
     println!("event {:?}", event);
 
-    // workaround to close authentication service
+    // workaround to close authentication & users service
     let service_name = match &event {
       Event::Created(name, _) => name,
       Event::Updated(name, _) => name,
       Event::Patched(name, _) => name,
       Event::Removed(name, _) => name,
     };
-    if service_name == "authentication" {
+    if service_name == "authentication" || service_name == "users" {
       return;
     }
 

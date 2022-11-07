@@ -235,7 +235,7 @@ impl DeviceMgmt {
         ]
     };
 
-    println!("body: {}", body.dump());
+    // println!("body: {}", body.dump());
 
     Ok(PostRequest {
       id,
@@ -259,19 +259,20 @@ impl DeviceMgmt {
     let path = format!("/ISAPI/Intelligent/FDLib/FDSetUp?format=json&devIndex={dev_index}");
 
     let url = format!("{protocol}://{ip}{port}{path}");
-    println!("url {url}");
+    // println!("url {url}");
     let url = Url::parse(url.as_str()).map_err(|e| Error::UrlError(e.to_string()))?;
 
-    // let record = json::object! {
-    //   "faceLibType": "blackFD",
-    //   "FDID": "1",
-    //   "FPID": employee.to_clear()
-    // };
+    let record = json::object! {
+      "faceLibType": "blackFD",
+      "FDID": "1",
+      "FPID": employee.to_clear()
+    };
+    let json = record.dump();
 
     // let record = json::object! {"faceLibType":"blackFD","FDID":"1","FPID":"1"};
     // let json = record.dump();
     // println!("json: {json}");
-    let json = "{\"faceLibType\":\"blackFD\",\"FDID\":\"1\",\"FPID\":\"1\"}".to_string();
+    // let json = "{\"faceLibType\":\"blackFD\",\"FDID\":\"1\",\"FPID\":\"1\"}".to_string();
 
     // let picture_path = std::fs::canonicalize(picture_path)?;
 
