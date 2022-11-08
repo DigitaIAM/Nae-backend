@@ -206,6 +206,7 @@ impl DeviceMgmt {
     dev_index: &String,
     employee: ID,
     name: String,
+    gender: String,
   ) -> Result<PostRequest, Error> {
     let protocol = &self.protocol;
     let ip = &self.ip;
@@ -224,7 +225,7 @@ impl DeviceMgmt {
                 "employeeNo": employee.to_clear(),
                 "name": name.clone(),
                 "userType": "normal",
-                "gender": "male",
+                "gender": gender.clone(),
                 "Valid": {
                     "enable": true,
                     "beginTime": begin_time.clone(), // clone() is workaround

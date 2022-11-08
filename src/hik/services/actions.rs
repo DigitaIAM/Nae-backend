@@ -152,9 +152,11 @@ impl Service for Actions {
 
         let dev_index = &camera.dev_index;
         let name = person["name"].string();
+        let gender = person["gender"].string_or_none().unwrap_or("male".into());
 
         let mgmt = DeviceMgmt::new(&camera);
-        let request = mgmt.create_user(id, dev_index, pid, name).map_err(Error::CameraError)?;
+        let request =
+          mgmt.create_user(id, dev_index, pid, name, gender).map_err(Error::CameraError)?;
 
         let meta = CommandMeta::new(id, command.clone(), params);
         let answer = meta.to_json();
