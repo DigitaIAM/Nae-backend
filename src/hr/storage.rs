@@ -509,7 +509,7 @@ impl SCamera {
 }
 
 pub(crate) struct SEvent {
-  id: String,
+  pub(crate) id: String,
   oid: ID,
   cid: ID,
 

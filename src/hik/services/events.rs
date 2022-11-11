@@ -17,6 +17,7 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::animo::error::DBError;
+use crate::hr::storage::SEvent;
 use crate::services::{string_to_id, Data, Error, Params, Service};
 use crate::ws::error_general;
 use crate::{
@@ -49,17 +50,24 @@ impl Service for Events {
 
   fn find(&self, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
-    let cid = self.cid(&params)?;
+    // let cid = self.cid(&params)?;
 
-    let date = self.date(&params)?;
+    let date = Utc::now(); // self.date(&params)?;
 
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let cam = self.orgs.get(&oid).camera(&cid);
+    let mut list: Vec<SEvent> = vec![];
 
-    let list = cam.events(date, skip, limit);
+    let cams = self.orgs.get(&oid).cameras();
+    for cam in cams {
+      let events = cam.events(date, skip, limit);
+      list.extend(events);
+    }
     let total = list.len();
+
+    // order by timestamp
+    list.sort_by(|a, b| b.id.cmp(&a.id));
 
     let list = list.into_iter().skip(skip).take(limit).map(|o| o.json()).collect();
 

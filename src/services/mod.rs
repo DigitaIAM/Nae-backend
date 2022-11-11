@@ -96,8 +96,12 @@ pub trait Service: Send + Sync {
       }
     };
 
-    if let Some(limit) = params["date"].as_str() {
-      todo!()
+    if let Some(date) = params["date"].as_str() {
+      if date == "today" {
+        Ok(Utc::now())
+      } else {
+        todo!()
+      }
     } else {
       Err(Error::GeneralError("date not found".into()))
     }
