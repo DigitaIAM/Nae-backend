@@ -51,6 +51,7 @@ use crate::animo::{Animo, Time, Topology};
 use crate::hik::error::Error;
 use crate::hik::services::actions::Actions;
 use crate::hik::services::{Cameras, Events};
+use crate::hr::services::attendance_report::AttendanceReport;
 use crate::hr::services::companies::Companies;
 use crate::hr::services::departments::Departments;
 use crate::hr::services::shifts::Shifts;
@@ -162,6 +163,7 @@ async fn startup() -> std::io::Result<()> {
   app.register(Departments::new(app.clone(), storage.clone()));
   app.register(People::new(app.clone(), storage.clone()));
   app.register(Shifts::new(app.clone(), storage.clone()));
+  app.register(AttendanceReport::new(app.clone(), storage.clone()));
 
   app.register(Cameras::new(app.clone(), "cameras", storage.clone()));
   app.register(Events::new(app.clone(), "events", storage.clone()));

@@ -52,7 +52,7 @@ impl Service for Events {
     let oid = self.oid(&params)?;
     // let cid = self.cid(&params)?;
 
-    let date = Utc::now(); // self.date(&params)?;
+    let date = Utc::today(); // self.date(&params)?;
 
     let limit = self.limit(&params);
     let skip = self.skip(&params);
@@ -61,7 +61,7 @@ impl Service for Events {
 
     let cams = self.orgs.get(&oid).cameras();
     for cam in cams {
-      let events = cam.events(date, skip, limit);
+      let events = cam.events_month(date);
       list.extend(events);
     }
     let total = list.len();

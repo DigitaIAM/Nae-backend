@@ -5,7 +5,7 @@ mod users;
 
 use crate::ID;
 use actix_web::web::Json;
-use chrono::{DateTime, Utc};
+use chrono::{Date, DateTime, NaiveDate, ParseResult, Utc};
 use json::JsonValue;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -87,7 +87,7 @@ pub trait Service: Send + Sync {
     }
   }
 
-  fn date(&self, params: &Params) -> std::result::Result<DateTime<Utc>, Error> {
+  fn date(&self, params: &Params) -> std::result::Result<Date<Utc>, Error> {
     let params = {
       if params.is_array() {
         &params[0]
@@ -98,9 +98,12 @@ pub trait Service: Send + Sync {
 
     if let Some(date) = params["date"].as_str() {
       if date == "today" {
-        Ok(Utc::now())
+        todo!() // Ok(Utc::now().into())
       } else {
-        todo!()
+        match NaiveDate::parse_from_str(date, "%Y-%m-%d") {
+          Ok(d) => Ok(Date::<Utc>::from_utc(d, Utc)),
+          Err(e) => Err(Error::GeneralError(e.to_string())),
+        }
       }
     } else {
       Err(Error::GeneralError("date not found".into()))
@@ -136,6 +139,14 @@ pub trait Service: Send + Sync {
       usize::try_from(skip).unwrap_or(0)
     } else {
       0
+    }
+  }
+
+  fn params<'a>(&self, params: &'a Params) -> &'a JsonValue {
+    if params.is_array() {
+      &params[0]
+    } else {
+      params
     }
   }
 }

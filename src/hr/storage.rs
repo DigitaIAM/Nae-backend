@@ -4,7 +4,7 @@ use crate::services::{Error, JsonData, Params};
 use crate::warehouse::turnover::Organization;
 use crate::ID;
 use chrono::SecondsFormat::Millis;
-use chrono::{DateTime, Datelike, SecondsFormat, Utc};
+use chrono::{Date, DateTime, Datelike, SecondsFormat, Utc};
 use json::JsonValue;
 use serde_json::json;
 use std::io::Write;
@@ -469,7 +469,7 @@ impl SCamera {
     }
   }
 
-  pub(crate) fn events(&self, ts: DateTime<Utc>, skip: usize, limit: usize) -> Vec<SEvent> {
+  pub(crate) fn events_month(&self, ts: Date<Utc>) -> Vec<SEvent> {
     let mut result = Vec::new();
 
     let mut folder = self.folder.clone();
@@ -493,6 +493,43 @@ impl SCamera {
         }
       }
     }
+
+    result.sort_by(|a, b| b.id.cmp(&a.id));
+
+    result
+  }
+
+  pub(crate) fn events_on_date(&self, ts: Date<Utc>) -> Vec<SEvent> {
+    let mut result = Vec::new();
+
+    let mut folder = self.folder.clone();
+    folder.push(format!("{:0>4}/{:0>2}/", ts.year(), ts.month()));
+
+    let entries = match std::fs::read_dir(&folder) {
+      Ok(entries) => entries,
+      Err(e) => {
+        println!("fail to read folder {}: {e}", folder.to_string_lossy());
+        return vec![];
+      },
+    };
+
+    let date = ts.and_hms(0, 0, 0).to_rfc3339_opts(SecondsFormat::Millis, true);
+    let date: &str = &date.as_str()[..10];
+
+    for entry in entries {
+      let entry = entry.unwrap();
+      let path = entry.path();
+      if path.is_file() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if let Some(id) = name.strip_suffix("_event.json") {
+          if id.starts_with(date) {
+            result.push(SEvent { id: id.to_string(), oid: self.oid, cid: self.id.clone(), path });
+          }
+        }
+      }
+    }
+
+    result.sort_by(|a, b| a.id.cmp(&b.id));
 
     result
   }
@@ -536,7 +573,7 @@ impl SEvent {
 }
 
 pub(crate) struct SPerson {
-  id: ID,
+  pub(crate) id: ID,
   oid: ID,
 
   folder: PathBuf,
