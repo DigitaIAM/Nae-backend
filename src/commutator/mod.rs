@@ -117,7 +117,8 @@ impl Application {
       Event::Patched(name, _) => name,
       Event::Removed(name, _) => name,
     };
-    if service_name == "authentication" || service_name == "users" || service_name == "actions" {
+    if service_name == "authentication" || service_name == "users" {
+      // TODO || service_name == "actions" {
       return;
     }
 
