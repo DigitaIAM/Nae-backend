@@ -1,7 +1,7 @@
+use crate::ws::{engine_io, socket_io};
 use actix::prelude::*;
 use json::JsonValue;
 use uuid::Uuid;
-use crate::ws::{engine_io, socket_io};
 
 #[derive(Message)]
 #[rtype(result = "()")]
@@ -12,7 +12,6 @@ pub(crate) struct WsMessage {
 }
 
 impl WsMessage {
-
   pub(crate) fn open(sid: &Uuid) -> Self {
     let data = format!(
       "{{\"sid\":\"{}\",\"upgrades\":[\"websocket\"],\"pingInterval\":{},\"pingTimeout\":{}}}",
@@ -23,9 +22,22 @@ impl WsMessage {
     WsMessage { data, engine_code: engine_io::OPEN.into(), socket_code: None }
   }
 
+  pub(crate) fn connect(sid: &Uuid) -> Self {
+    let data = format!("{{\"sid\":\"{}\"}}", sid.to_string());
+    WsMessage {
+      data,
+      engine_code: engine_io::MESSAGE.into(),
+      socket_code: Some(socket_io::CONNECT.into()),
+    }
+  }
+
   pub(crate) fn event<S: Convertable>(response: S) -> Self {
     let data = response.data();
-    WsMessage { data, engine_code: engine_io::MESSAGE.into(), socket_code: Some(socket_io::EVENT.into()) }
+    WsMessage {
+      data,
+      engine_code: engine_io::MESSAGE.into(),
+      socket_code: Some(socket_io::EVENT.into()),
+    }
   }
 
   pub(crate) fn ack<S: Convertable>(event_id: String, response: S) -> Self {
@@ -35,16 +47,15 @@ impl WsMessage {
     } else {
       format!("{}[{}]", event_id, response)
     };
-    WsMessage { data, engine_code: engine_io::MESSAGE.into(), socket_code: Some(socket_io::ACK.into()) }
+    WsMessage {
+      data,
+      engine_code: engine_io::MESSAGE.into(),
+      socket_code: Some(socket_io::ACK.into()),
+    }
   }
 
   pub(crate) fn data(self) -> String {
-    format!(
-      "{}{}{}",
-      self.engine_code,
-      self.socket_code.unwrap_or("".into()),
-      self.data,
-    )
+    format!("{}{}{}", self.engine_code, self.socket_code.unwrap_or("".into()), self.data,)
   }
 }
 
@@ -93,4 +104,3 @@ impl Convertable for JsonValue {
     self.to_string()
   }
 }
-

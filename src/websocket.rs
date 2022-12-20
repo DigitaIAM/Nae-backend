@@ -1,15 +1,18 @@
-use std::process::Command;
-use std::time::{Duration, Instant};
-use actix::{fut, Actor, ActorContext, Addr, AsyncContext, Running, StreamHandler, WrapFuture, ActorFutureExt, ContextFutureSpawner, Handler};
-use actix_web::{get, web, Error, HttpRequest, HttpResponse};
+use crate::animo::error::DBError;
+use crate::ws::{engine_io, error_general, socket_io, Connect, Disconnect, Event, WsMessage};
+use crate::{Commutator, ID};
+use actix::{
+  fut, Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
+  Running, StreamHandler, WrapFuture,
+};
 use actix_web::web::Data;
+use actix_web::{get, web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use bytestring::ByteString;
 use serde_json::Value;
+use std::process::Command;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
-use crate::animo::error::DBError;
-use crate::{Commutator, ID};
-use crate::ws::{Disconnect, Event, Connect, WsMessage, error_general, engine_io, socket_io};
 
 const CHECKS_INTERVAL: Duration = Duration::from_secs(11);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(29);
@@ -26,11 +29,7 @@ pub(crate) struct WsConn {
 
 impl WsConn {
   pub(crate) fn new(com: Addr<Commutator>) -> Self {
-    WsConn {
-      id: Uuid::new_v4(),
-      hb: Instant::now(),
-      com,
-    }
+    WsConn { id: Uuid::new_v4(), hb: Instant::now(), com }
   }
 
   fn hb(&self, ctx: &mut ws::WebsocketContext<Self>) {
@@ -52,7 +51,8 @@ impl Actor for WsConn {
 
   fn started(&mut self, ctx: &mut Self::Context) {
     let addr = ctx.address();
-    self.com
+    self
+      .com
       .send(Connect { socket: addr.recipient(), sid: self.id })
       .into_actor(self)
       .then(|res, _, ctx| {
@@ -86,14 +86,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
           engine_io::PING => {
             self.hb = Instant::now();
             ctx.text(engine_io::PONG);
-          }
+          },
           engine_io::PONG => {
             self.hb = Instant::now();
-          }
+          },
           engine_io::MESSAGE => {
             let code = &data[..1];
             let data = &data[1..];
             match code {
+              socket_io::CONNECT => {
+                ctx.text(WsMessage::connect(&self.id).data());
+              },
+              socket_io::DISCONNECT => todo!(),
               socket_io::EVENT => {
                 println!("data: {:?}", data);
                 // "16[\"create\",\"authentication\",{\"strategy\":\"local\",\"email\":\"admin\",\"password\":\"111\"},{}]"
@@ -105,62 +109,51 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
                     match json::parse(data) {
                       Ok(mut data) => {
                         if !data.is_array() {
-                          ctx.text(WsMessage::ack(
-                            event_id,
-                            error_general("unsupported event"),
-                          ).data());
+                          ctx.text(
+                            WsMessage::ack(event_id, error_general("unsupported event")).data(),
+                          );
                           return;
                         }
 
                         let command = if let Some(str) = data.array_remove(0).as_str() {
                           str.to_string()
                         } else {
-                          ctx.text(WsMessage::ack(
-                              event_id,
-                              error_general("command is missing"),
-                          ).data());
+                          ctx.text(
+                            WsMessage::ack(event_id, error_general("command is missing")).data(),
+                          );
                           return;
                         };
 
                         let path = if let Some(str) = data.array_remove(0).as_str() {
                           str.to_string()
                         } else {
-                          ctx.text(WsMessage::ack(
-                            event_id,
-                            error_general("service path is missing"),
-                          ).data());
+                          ctx.text(
+                            WsMessage::ack(event_id, error_general("service path is missing"))
+                              .data(),
+                          );
                           return;
                         };
 
-                        self.com.do_send(Event {
-                          sid: self.id,
-                          event_id,
-                          path,
-                          command,
-                          data,
-                        });
-                      }
+                        self.com.do_send(Event { sid: self.id, event_id, path, command, data });
+                      },
                       Err(msg) => {
-                        ctx.text(WsMessage::ack(
-                          event_id,
-                          error_general(msg.to_string()),
-                        ).data());
-                      }
+                        ctx.text(WsMessage::ack(event_id, error_general(msg.to_string())).data());
+                      },
                     }
                   }
                 }
-              }
+              },
               engine_io::UPGRADE => todo!(),
               engine_io::NOON => todo!(),
               _ => todo!("handle error"),
             }
-          }
+          },
           _ => todo!("handle unknown message"),
         }
-      }
+      },
       Ok(ws::Message::Binary(bin)) => {
         todo!("binary {:?}", bin);
-      }
+      },
       _ => (),
     }
   }
