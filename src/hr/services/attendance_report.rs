@@ -15,7 +15,8 @@ use tantivy::HasLen;
 use uuid::Uuid;
 
 use crate::animo::error::DBError;
-use crate::hr::storage::SEvent;
+use crate::hik::ConfigCamera;
+use crate::hr::storage::{SCamera, SEvent};
 use crate::services::JsonData;
 use crate::services::{Data, Error, Params, Service};
 use crate::utils::json::JsonParams;
@@ -37,28 +38,27 @@ impl AttendanceReport {
     Arc::new(AttendanceReport { app, name: "attendance-report".to_string(), orgs })
   }
 
-  fn events(
-    &self,
-    oid: ID,
-    cid: &str,
-    date: Date<Utc>,
-    event_type: &str,
-    events: &mut Vec<(String, JsonValue)>,
-  ) {
-    let cid = ID::from_base64(cid.as_bytes()).unwrap();
-    let mut evs: Vec<(String, JsonValue)> = self
-      .orgs
-      .get(&oid)
-      .camera(&cid)
+  fn events(&self, camera: SCamera, date: Date<Utc>, events: &mut Vec<(String, JsonValue)>) {
+    let mut evs: Vec<(String, JsonValue)> = camera
       .events_on_date(date)
       .iter()
       .map(|e| (e.id.clone(), e.load().unwrap_or(JsonValue::Null)))
       .filter(|(_, e)| e.is_object())
       .collect();
 
-    evs
-      .iter_mut()
-      .for_each(|(_, e)| e["event"]["event_type"] = JsonValue::String(event_type.to_string()));
+    let event_type = match camera.config() {
+      Ok(config) => config.event_type,
+      Err(_) => "".into(),
+    };
+
+    evs.iter_mut().for_each(|(_, e)| {
+      let event_type = match e["event"]["attendanceStatus"].string().as_str() {
+        "checkIn" => JsonValue::String("in".into()),
+        "checkOut" => JsonValue::String("out".into()),
+        _ => JsonValue::String(event_type.to_string()),
+      };
+      e["event"]["event_type"] = event_type;
+    });
 
     events.extend(evs);
   }
@@ -122,8 +122,12 @@ impl Service for AttendanceReport {
     let mut mapping = HashMap::with_capacity(people.len());
     let mut statuses = HashMap::new();
 
-    people.iter().for_each(|(id, _)| {
-      mapping.insert(id.to_clear(), id);
+    people.iter().for_each(|(id, data)| {
+      let camera_id = match data["employeeNoString"].string_or_none() {
+        None => id.to_clear(),
+        Some(str) => str,
+      };
+      mapping.insert(camera_id, id);
     });
     println!("mapping {}", mapping.len());
 
@@ -146,8 +150,9 @@ impl Service for AttendanceReport {
 
     let mut events: Vec<(String, JsonValue)> = Vec::with_capacity(100_000);
 
-    self.events(oid, "GmFPOZhz7UY-YblCkVoymVXNeVjAh3cjIbLcLBI_lrQ", date, "in", &mut events);
-    self.events(oid, "RZqvsRCm7BhJFywq-kgLegBdE1X-eIpKpNoBmEa64rQ", date, "out", &mut events);
+    for camera in self.orgs.get(&oid).cameras() {
+      self.events(camera, date, &mut events);
+    }
 
     events.sort_by(|(a, _), (b, _)| a.cmp(b));
 

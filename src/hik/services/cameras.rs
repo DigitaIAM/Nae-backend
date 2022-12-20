@@ -157,6 +157,7 @@ impl Service for Cameras {
     let oid = string_to_id(oid)?;
 
     let name = data["name"].as_str().unwrap_or("").trim().to_string();
+    let event_type = data["eventType"].as_str().unwrap_or("").trim().to_string();
     let dev_index = data["devIndex"].as_str().unwrap_or("").trim().to_string();
     let protocol = data["protocol"].as_str().unwrap_or("").trim().to_string();
     let ip = data["ip"].as_str().unwrap_or("").trim().to_string();
@@ -179,6 +180,7 @@ impl Service for Cameras {
       id,
       oid,
       name,
+      event_type,
       dev_index,
       protocol,
       ip,

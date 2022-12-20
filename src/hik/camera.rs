@@ -212,6 +212,7 @@ pub struct ConfigCamera {
   pub name: String,
 
   pub dev_index: String,
+  pub event_type: String,
 
   pub protocol: String,
   pub ip: String,
