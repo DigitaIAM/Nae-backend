@@ -151,7 +151,6 @@ impl Service for Users {
   }
 
   fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    let oid = self.oid(&data)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -172,7 +171,6 @@ impl Service for Users {
   }
 
   fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
