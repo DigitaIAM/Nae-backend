@@ -101,27 +101,37 @@ impl Service for Users {
   fn get(&self, id: String, params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
-    let names = ["label", "email", "avatar"];
-    let keys = names.iter().map(|name| TransformationKey::simple(id, name)).collect();
-    match self.app.db.query(keys) {
-      Ok(records) => {
-        let mut obj = Object::with_capacity(names.len() + 1);
+    let obj = {
+      let objs = self.objs.read().unwrap();
+      match objs.get(&id) {
+        None => return Err(Error::GeneralError("not found".into())),
+        Some(obj) => obj.clone(),
+      }
+    };
 
-        names
-          .iter()
-          .zip(records.iter())
-          .filter(|(n, v)| v.into != Value::Nothing)
-          .for_each(|(n, v)| obj.insert(n, v.into.to_json()));
+    Ok(obj)
 
-        if obj.len() == 0 {
-          Err(Error::NotFound(id.to_base64()))
-        } else {
-          obj.insert("_id", id.to_base64().into());
-          Ok(JsonValue::Object(obj))
-        }
-      },
-      Err(msg) => Err(Error::IOError(msg.to_string())),
-    }
+    // let names = ["label", "email", "avatar"];
+    // let keys = names.iter().map(|name| TransformationKey::simple(id, name)).collect();
+    // match self.app.db.query(keys) {
+    //   Ok(records) => {
+    //     let mut obj = Object::with_capacity(names.len() + 1);
+    //
+    //     names
+    //       .iter()
+    //       .zip(records.iter())
+    //       .filter(|(n, v)| v.into != Value::Nothing)
+    //       .for_each(|(n, v)| obj.insert(n, v.into.to_json()));
+    //
+    //     if obj.len() == 0 {
+    //       Err(Error::NotFound(id.to_base64()))
+    //     } else {
+    //       obj.insert("_id", id.to_base64().into());
+    //       Ok(JsonValue::Object(obj))
+    //     }
+    //   },
+    //   Err(msg) => Err(Error::IOError(msg.to_string())),
+    // }
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
