@@ -68,8 +68,12 @@ impl Users {
       .write_all(data.as_bytes())
       .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
 
+    // do not store password
+    let mut obj = obj.clone();
+    obj.remove("password");
+
     let mut objs = self.objs.write().unwrap();
-    objs.insert(id.clone(), obj.clone());
+    objs.insert(id.clone(), obj);
     Ok(())
   }
 }
