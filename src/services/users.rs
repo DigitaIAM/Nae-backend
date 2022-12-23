@@ -108,7 +108,7 @@ impl Service for Users {
     let obj = {
       let objs = self.objs.read().unwrap();
       match objs.get(&id) {
-        None => return Err(Error::GeneralError("not found".into())),
+        None => return Err(Error::GeneralError(format!("not found {}", id.to_base64()))),
         Some(obj) => obj.clone(),
       }
     };
@@ -193,7 +193,7 @@ impl Service for Users {
       let mut obj = {
         let mut objs = self.objs.write().unwrap();
         match objs.get(&id) {
-          None => return Err(Error::GeneralError("not found".into())),
+          None => return Err(Error::GeneralError(format!("not found {}", id.to_base64()))),
           Some(obj) => obj.clone(),
         }
       };
