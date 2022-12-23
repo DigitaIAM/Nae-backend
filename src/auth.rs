@@ -220,7 +220,7 @@ pub(crate) fn login_procedure(
     .map_err(|e| e.to_string())?
   {
     Value::String(hash) => hash,
-    _ => return Err("".to_string()),
+    _ => return Err("not found".to_string()),
   };
 
   let password_hash = PasswordHash::new(hash.as_str()).map_err(|e| e.to_string())?;
