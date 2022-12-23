@@ -1,4 +1,5 @@
 use crate::animo::error::DBError;
+use crate::services::Error::GeneralError;
 use crate::services::{string_to_id, Data, Error, Mutation, Params, Service};
 use crate::ws::error_general;
 use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
@@ -150,11 +151,56 @@ impl Service for Users {
   }
 
   fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    Err(Error::NotImplemented)
+    let oid = self.oid(&data)?;
+    if !data.is_object() {
+      Err(Error::GeneralError("only object allowed".into()))
+    } else {
+      let id = crate::services::string_to_id(id)?;
+
+      let mut obj = data.clone();
+      obj["_id"] = id.to_base64().into();
+
+      // TODO update password
+
+      match self.save(&id, &obj) {
+        Ok(_) => {},
+        Err(e) => return Err(Error::IOError(e.to_string())),
+      }
+
+      Ok(obj)
+    }
   }
 
   fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    Err(Error::NotImplemented)
+    let oid = self.oid(&params)?;
+    if !data.is_object() {
+      Err(Error::GeneralError("only object allowed".into()))
+    } else {
+      let id = crate::services::string_to_id(id)?;
+
+      let mut obj = {
+        let mut objs = self.objs.write().unwrap();
+        match objs.get(&id) {
+          None => return Err(Error::GeneralError("not found".into())),
+          Some(obj) => obj.clone(),
+        }
+      };
+
+      for (n, v) in data.entries() {
+        if n == "password" {
+          // TODO update password
+        } else if n != "_id" {
+          obj[n] = v.clone();
+        }
+      }
+
+      match self.save(&id, &obj) {
+        Ok(_) => {},
+        Err(e) => return Err(Error::IOError(e.to_string())),
+      }
+
+      Ok(obj)
+    }
   }
 
   fn remove(&self, id: String, params: Params) -> crate::services::Result {
