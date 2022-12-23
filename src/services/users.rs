@@ -139,7 +139,11 @@ impl Service for Users {
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
-    let id = ID::random();
+    let email = data["email"].as_str().unwrap_or("").to_string();
+    let password = data["password"].as_str().unwrap_or("").to_string();
+
+    // let id = ID::random();
+    let id = ID::from(email.as_str());
     let mut obj = data.clone();
 
     obj["_id"] = JsonValue::String(id.to_base64());
@@ -148,9 +152,6 @@ impl Service for Users {
       Ok(_) => {},
       Err(e) => return Err(Error::IOError(e.to_string())),
     }
-
-    let email = data["email"].as_str().unwrap_or("").to_string();
-    let password = data["password"].as_str().unwrap_or("").to_string();
 
     let signup = crate::auth::SignUpRequest { email: email.clone(), password };
 
