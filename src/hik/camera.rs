@@ -254,9 +254,10 @@ impl ConfigCamera {
       States::Disabling => false,
     };
 
-    let d = json::object! {
+    json::object! {
       _id: self.id.to_base64(),
       oid: self.oid.to_base64(),
+      eventType: self.event_type.clone(),
       devIndex: self.dev_index.clone(),
       name: self.name.clone(),
       protocol: self.protocol.clone(),
@@ -265,11 +266,7 @@ impl ConfigCamera {
       username: self.username.clone(),
       status: self.status.to_json(),
       enabled: enabled,
-    };
-
-    println!("{d}");
-
-    d
+    }
   }
 
   pub(crate) fn data(&self) -> Result<String> {
