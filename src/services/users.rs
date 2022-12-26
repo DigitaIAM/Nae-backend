@@ -139,8 +139,15 @@ impl Service for Users {
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
-    let email = data["email"].as_str().unwrap_or("").to_string();
-    let password = data["password"].as_str().unwrap_or("").to_string();
+    let email = data["email"].as_str().unwrap_or("").trim().to_lowercase();
+    let password = data["password"].as_str().unwrap_or("").trim().to_string();
+
+    if email.is_empty() {
+      return Err(Error::GeneralError("email can't be empty".into()));
+    }
+    if password.is_empty() {
+      return Err(Error::GeneralError("password can't be empty".into()));
+    }
 
     // let id = ID::random();
     let id = ID::from(email.as_str());

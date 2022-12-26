@@ -44,7 +44,7 @@ impl Service for Authentication {
         Ok(data)
       },
       "local" => {
-        let email = data["email"].as_str().unwrap_or("").to_string();
+        let email = data["email"].as_str().unwrap_or("").trim().to_lowercase();
         let password = data["password"].as_str().unwrap_or("").to_string();
 
         let request =

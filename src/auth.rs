@@ -209,6 +209,13 @@ pub(crate) fn login_procedure(
   app: &Application,
   data: LoginRequest,
 ) -> Result<(ID, String), String> {
+  if data.email.is_empty() {
+    return Err("email can't be empty".into());
+  }
+  if data.password.is_empty() {
+    return Err("password can't be empty".into());
+  }
+
   // data.validate()
   //   .map_err(|e| e.to_string())?;
 
