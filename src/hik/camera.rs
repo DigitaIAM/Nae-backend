@@ -236,8 +236,8 @@ impl ConfigCamera {
       config.state.get()
     };
 
-    println!("connect {state:?}");
     if state == States::Enabling {
+      println!("connect {state:?}");
       crate::hik::connection(&config, app, storage);
       // {
       //   let mut config = config.lock().unwrap();

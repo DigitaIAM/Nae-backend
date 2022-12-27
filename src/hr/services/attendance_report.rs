@@ -107,27 +107,27 @@ impl Service for AttendanceReport {
 
     let people = self.orgs.get(&oid).people();
 
+    let people: Vec<(ID, JsonValue)> = {
+      let mut it = people.iter().map(|p| (p.id, p.load().unwrap())).filter(|(_, p)| p.is_object());
+
+      let division = self.params(&params)["division"].string();
+      if division.is_empty() {
+        it.collect()
+      } else {
+        it.filter(|(_, p)| p["division"].string() == division).collect()
+      }
+    };
+
     println!("people {}", people.len());
-
-    let division = self.params(&params)["division"].string();
-
-    let people: Vec<(ID, JsonValue)> = people
-      .iter()
-      .map(|p| (p.id, p.load().unwrap()))
-      .filter(|(_, p)| p.is_object())
-      .filter(|(_, p)| p["division"].string() == division)
-      .collect();
 
     // mapping from short id to long one
     let mut mapping = HashMap::with_capacity(people.len());
     let mut statuses = HashMap::new();
 
     people.iter().for_each(|(id, data)| {
-      let camera_id = match data["employeeNoString"].string_or_none() {
-        None => id.to_clear(),
-        Some(str) => str,
-      };
-      mapping.insert(camera_id, id);
+      let str = data["employeeNoString"].string();
+      let id_on_camera = if str.is_empty() { id.to_clear() } else { str };
+      mapping.insert(id_on_camera, id);
     });
     println!("mapping {}", mapping.len());
 
