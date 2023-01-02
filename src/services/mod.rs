@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::animo::error::DBError;
+use crate::utils::time::DateRange;
 pub(crate) use authentication::Authentication;
 pub(crate) use people::People;
 pub(crate) use users::Users;
@@ -87,7 +88,14 @@ pub trait Service: Send + Sync {
     }
   }
 
-  fn date(&self, params: &Params) -> std::result::Result<Date<Utc>, Error> {
+  fn parse_date(&self, str: &str) -> std::result::Result<Date<Utc>, Error> {
+    match NaiveDate::parse_from_str(str, "%Y-%m-%d") {
+      Ok(d) => Ok(Date::<Utc>::from_utc(d, Utc)),
+      Err(e) => Err(Error::GeneralError(e.to_string())),
+    }
+  }
+
+  fn date(&self, params: &Params) -> std::result::Result<Option<Date<Utc>>, Error> {
     let params = {
       if params.is_array() {
         &params[0]
@@ -97,16 +105,40 @@ pub trait Service: Send + Sync {
     };
 
     if let Some(date) = params["date"].as_str() {
-      if date == "today" {
-        todo!() // Ok(Utc::now().into())
+      // if date == "today" {
+      //   todo!() // Ok(Utc::now().into())
+      // } else {
+      let date = self.parse_date(date)?;
+      Ok(Some(date))
+      // }
+    } else {
+      Ok(None)
+    }
+  }
+
+  fn date_range(&self, params: &Params) -> std::result::Result<Option<DateRange>, Error> {
+    let params = {
+      if params.is_array() {
+        &params[0]
       } else {
-        match NaiveDate::parse_from_str(date, "%Y-%m-%d") {
-          Ok(d) => Ok(Date::<Utc>::from_utc(d, Utc)),
-          Err(e) => Err(Error::GeneralError(e.to_string())),
-        }
+        params
+      }
+    };
+
+    let dates = &params["dates"];
+
+    if let Some(date) = dates["from"].as_str() {
+      let from = self.parse_date(date)?;
+
+      if let Some(date) = dates["till"].as_str() {
+        let till = self.parse_date(date)?;
+
+        Ok(Some(DateRange(from, till)))
+      } else {
+        return Err(Error::GeneralError("dates require `till`".into()));
       }
     } else {
-      Err(Error::GeneralError("date not found".into()))
+      Ok(None)
     }
   }
 

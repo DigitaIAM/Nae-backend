@@ -20,6 +20,7 @@ use crate::hr::storage::{SCamera, SEvent};
 use crate::services::JsonData;
 use crate::services::{Data, Error, Params, Service};
 use crate::utils::json::JsonParams;
+use crate::utils::time::DateRange;
 use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
 use crate::{
@@ -146,7 +147,21 @@ impl Service for AttendanceReport {
     // list of expected events ?
 
     // data
-    let date = self.date(&params)?; // Utc.ymd(2022, 11, 11);
+    // let date = if let Some(d) = self.date(&params)? {
+    //   // Utc.ymd(2022, 11, 11);
+    //   DateRange(d, d)
+    // } else {
+    //   if let Some(dr) = self.date_range(&params)? {
+    //     dr
+    //   } else {
+    //     return Err(Error::GeneralError("`date` or `dates` required".into()))
+    //   }
+    // };
+    let date = if let Some(date) = self.date(&params)? {
+      date
+    } else {
+      return Err(Error::GeneralError("`date` required".into()));
+    };
 
     let mut events: Vec<(String, JsonValue)> = Vec::with_capacity(100_000);
 
