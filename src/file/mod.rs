@@ -32,21 +32,9 @@ pub(crate) async fn get_file(
     Err(e) => return Ok(HttpResponse::from_error(e)),
   };
 
-  println!("get_file {oid} {pid}");
-
   let path = app.storage.as_ref().unwrap().get(&oid).person(&pid).picture().path();
 
-  println!("path {path:?}");
-
   let file = actix_files::NamedFile::open_async(path).await?;
-
-  // let reader = chunked::new_chunked_read(file.metadata().len(), 0, file.file());
-  // Ok(
-  //   HttpResponse::Ok()
-  //     .content_type(ContentType::jpeg())
-  //     .insert_header(ContentDisposition::attachment(filename))
-  //     .streaming(reader),
-  // )
 
   Ok(file.into_response(&req))
 }
@@ -69,7 +57,6 @@ pub(crate) async fn post_file(
     Err(e) => return Ok(HttpResponse::from_error(e)),
   };
 
-  println!("put_file {oid} {pid}");
   let mut action = JsonValue::Null;
 
   // iterate over multipart stream
@@ -81,8 +68,6 @@ pub(crate) async fn post_file(
       .get_filename()
       .map_or_else(|| Uuid::new_v4().to_string(), sanitize_filename::sanitize);
 
-    println!("filename {filename}");
-
     let path = app.storage.as_ref().unwrap().get(&oid).person(&pid).picture().path();
 
     let folder = match path.parent() {
@@ -90,17 +75,14 @@ pub(crate) async fn post_file(
       Some(folder) => folder,
     };
 
-    println!("create folder");
     match std::fs::create_dir_all(folder) {
       Err(e) => return Ok(HttpResponse::InternalServerError().finish()),
       Ok(_) => {},
     }
 
-    println!("create file");
     // File::create is blocking operation, use threadpool
     let mut f = web::block(|| std::fs::File::create(path)).await??;
 
-    println!("save file");
     // Field in turn is stream of *Bytes* object
     while let Some(chunk) = field.try_next().await? {
       // filesystem operations are blocking, we have to use threadpool
