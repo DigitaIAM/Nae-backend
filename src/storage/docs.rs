@@ -46,6 +46,13 @@ impl SDocs {
     let mut path_current = folder.clone();
     path_current.push(format!("{id}.json"));
 
+    // ["warehouse", "receive"]
+    // ["warehouse", "issue"]
+    // ["warehouse", "transfer"]
+    // TODO handles[self.ctx].apply()
+    // data = { _id: "", date: "2023-01-11", storage: "uuid", goods: [{goods: "", uom: "", qty: 0, price: 0, cost: 0, _tid: ""}]}
+    // cost = qty * price
+
     save(&path_current, data.dump())?;
 
     // 2023/01/2023-01-06T12:43:15Z/latest.json
