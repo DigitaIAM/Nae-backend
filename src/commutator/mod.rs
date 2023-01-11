@@ -198,18 +198,23 @@ impl Commutator {
     com
   }
 
-  fn open(&self, id_to: &Uuid) {
+  fn open(&self, sid: &Uuid) {
     let sessions = self.sessions.read().unwrap();
-    if let Some(socket) = sessions.get(id_to) {
-      socket.do_send(WsMessage::open(id_to));
+    if let Some(socket) = sessions.get(sid) {
+      socket.do_send(WsMessage::open(sid));
 
-      // version 3: "0"
       // version 4: "0{\"sid\":\"...\"}"
       socket.do_send(WsMessage {
-        data: "".to_string(),
+        data: format!("{{\"sid\":\"{}\"}}", sid.to_string()),
         engine_code: engine_io::MESSAGE.to_string(),
         socket_code: Some(socket_io::CONNECT.to_string()),
       });
+      // version 3: "0"
+      // socket.do_send(WsMessage {
+      //   data: "".to_string(),
+      //   engine_code: engine_io::MESSAGE.to_string(),
+      //   socket_code: Some(socket_io::CONNECT.to_string()),
+      // });
     } else {
       println!("attempting to send message but couldn't find user id.");
     }

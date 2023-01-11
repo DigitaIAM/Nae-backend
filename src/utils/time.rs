@@ -1,4 +1,5 @@
-use chrono::{Date, Duration, Utc};
+use crate::services::Error;
+use chrono::{Date, DateTime, Duration, SecondsFormat, Utc};
 use std::mem;
 use std::time::SystemTime;
 
@@ -25,6 +26,16 @@ impl Iterator for DateRangeIter {
       None
     }
   }
+}
+
+pub fn string_to_time<S: AsRef<str>>(data: S) -> Result<DateTime<Utc>, Error> {
+  DateTime::parse_from_rfc3339(data.as_ref())
+    .map(|ts| ts.into())
+    .map_err(|e| Error::GeneralError(e.to_string()))
+}
+
+pub fn time_to_string(time: DateTime<Utc>) -> String {
+  time.to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
 pub fn now_in_seconds() -> u64 {

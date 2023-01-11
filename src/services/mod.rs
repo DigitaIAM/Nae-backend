@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::animo::error::DBError;
+use crate::utils::json::JsonParams;
 use crate::utils::time::DateRange;
 pub(crate) use authentication::Authentication;
 pub(crate) use people::People;
@@ -62,6 +63,24 @@ pub trait Service: Send + Sync {
     } else {
       Err(Error::GeneralError(format!("{name} not found")))
     }
+  }
+
+  fn doc_type(&self, params: &Params) -> Vec<String> {
+    self.params(params)["document"]
+      .members()
+      .map(|j| j.string_or_none())
+      .filter(|v| v.is_some())
+      .map(|v| v.unwrap_or_default())
+      .collect()
+  }
+
+  fn ref_type(&self, params: &Params) -> Vec<String> {
+    self.params(params)["reference"]
+      .members()
+      .map(|j| j.string_or_none())
+      .filter(|v| v.is_some())
+      .map(|v| v.unwrap_or_default())
+      .collect()
   }
 
   fn oid(&self, params: &Params) -> std::result::Result<ID, Error> {
@@ -262,6 +281,12 @@ quick_error! {
       display("{}", error.to_string())
     }
     NotImplemented
+  }
+}
+
+impl std::convert::From<std::io::Error> for Error {
+  fn from(e: std::io::Error) -> Self {
+    Error::IOError(e.to_string())
   }
 }
 

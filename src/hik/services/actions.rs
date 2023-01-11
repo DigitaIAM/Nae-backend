@@ -67,12 +67,6 @@ impl Actions {
   }
 }
 
-fn string_to_time<S: AsRef<str>>(data: S) -> Result<DateTime<Utc>, Error> {
-  DateTime::parse_from_rfc3339(data.as_ref())
-    .map(|ts| ts.into())
-    .map_err(|e| Error::GeneralError(e.to_string()))
-}
-
 impl Service for Actions {
   fn path(&self) -> &str {
     &self.path

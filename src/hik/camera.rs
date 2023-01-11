@@ -25,8 +25,8 @@ use crate::hik::auth::WithDigestAuth;
 use crate::hik::data::alert_item::AlertItem;
 use crate::hik::data::triggers_parser::TriggerItem;
 use crate::hik::error::{Error, Result};
-use crate::hr::storage::SCamera;
 use crate::services::Mutation;
+use crate::storage::SCamera;
 use crate::utils::time::now_in_seconds;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -24,6 +24,7 @@ impl WsMessage {
 
   pub(crate) fn connect(sid: &Uuid) -> Self {
     let data = format!("{{\"sid\":\"{}\"}}", sid.to_string());
+    println!("connect {data}");
     WsMessage {
       data,
       engine_code: engine_io::MESSAGE.into(),

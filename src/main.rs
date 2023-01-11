@@ -31,6 +31,7 @@ mod commutator;
 mod file;
 mod services;
 mod settings;
+mod storage;
 mod utils;
 mod websocket;
 mod ws;
@@ -38,6 +39,7 @@ mod ws;
 mod accounts;
 mod animo;
 mod api;
+mod docs;
 mod hr;
 mod text_search;
 mod use_cases;
@@ -48,6 +50,7 @@ mod hik;
 use crate::animo::memory::*;
 use crate::animo::shared::*;
 use crate::animo::{Animo, Time, Topology};
+use crate::docs::{DocsFiles, ReferencesFiles};
 use crate::hik::error::Error;
 use crate::hik::services::actions::Actions;
 use crate::hik::services::{Cameras, Events};
@@ -55,9 +58,9 @@ use crate::hr::services::attendance_report::AttendanceReport;
 use crate::hr::services::companies::Companies;
 use crate::hr::services::departments::Departments;
 use crate::hr::services::shifts::Shifts;
-use crate::hr::storage::SOrganizations;
 use crate::services::{People, Services};
 use crate::settings::Settings;
+use crate::storage::SOrganizations;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
 use animo::db::AnimoDB;
@@ -167,6 +170,10 @@ async fn startup() -> std::io::Result<()> {
 
   app.register(Cameras::new(app.clone(), "cameras", storage.clone()));
   app.register(Events::new(app.clone(), "events", storage.clone()));
+
+  app.register(DocsFiles::new(app.clone(), "docs", storage.clone()));
+  app.register(ReferencesFiles::new(app.clone(), "refs", storage.clone()));
+
   println!("app started up");
 
   println!("com starting up");

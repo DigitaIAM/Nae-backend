@@ -17,8 +17,9 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::animo::error::DBError;
-use crate::hr::storage::SEvent;
 use crate::services::{string_to_id, Data, Error, Params, Service};
+use crate::storage::SEvent;
+use crate::utils::time::string_to_time;
 use crate::ws::error_general;
 use crate::{
   auth, Application, Memory, SOrganizations, Services, Transformation, TransformationKey, Value, ID,
@@ -35,12 +36,6 @@ impl Events {
   pub(crate) fn new(app: Application, path: &str, orgs: SOrganizations) -> Arc<dyn Service> {
     Arc::new(Events { app, path: Arc::new(path.to_string()), orgs })
   }
-}
-
-fn string_to_time<S: AsRef<str>>(data: S) -> Result<DateTime<Utc>, Error> {
-  DateTime::parse_from_rfc3339(data.as_ref())
-    .map(|ts| ts.into())
-    .map_err(|e| Error::GeneralError(e.to_string()))
 }
 
 impl Service for Events {
