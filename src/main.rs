@@ -44,6 +44,7 @@ mod hr;
 mod text_search;
 mod use_cases;
 pub mod warehouse;
+pub mod store;
 
 mod hik;
 

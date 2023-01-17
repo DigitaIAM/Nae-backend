@@ -1,10 +1,14 @@
 use crate::animo::memory::ID;
+use crate::commutator::Application;
 use crate::services::{Data, Error};
 use crate::storage::{json, load, save};
+use crate::store::{dt, receive_data, Document, NumberForGoods, OpMutation, SOperation};
 use crate::utils::time::time_to_string;
 use chrono::{DateTime, Utc};
 use json::JsonValue;
+use rust_decimal::Decimal;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 pub(crate) struct SDocs {
   pub(crate) oid: ID,
@@ -17,6 +21,7 @@ pub(crate) struct SDocs {
 impl SDocs {
   fn save(
     &self,
+    app: &Application,
     id: String,
     create: bool,
     time: DateTime<Utc>,
@@ -46,30 +51,42 @@ impl SDocs {
     let mut path_current = folder.clone();
     path_current.push(format!("{id}.json"));
 
+    // 2023/01/2023-01-06T12:43:15Z/latest.json
+    let mut path_latest = folder.clone();
+    path_latest.push("latest.json");
+
     // ["warehouse", "receive"]
     // ["warehouse", "issue"]
     // ["warehouse", "transfer"]
     // TODO handles[self.ctx].apply()
-    // data = { _id: "", date: "2023-01-11", storage: "uuid", goods: [{goods: "", uom: "", qty: 0, price: 0, cost: 0, _tid: ""}]}
+    // data = { _id: "", date: "2023-01-11", storage: "uuid", goods: [{goods: "", uom: "", qty: 0, price: 0, cost: 0, _tid: ""}, ...]}
     // cost = qty * price
 
-    save(&path_current, data.dump())?;
+    let before = match load(&path_latest) {
+      Ok(x) => x,
+      Err(_) => JsonValue::Null,
+    };
 
-    // 2023/01/2023-01-06T12:43:15Z/latest.json
-    let mut path_latest = folder.clone();
-    path_latest.push("latest.json");
+    let data = receive_data(app, time, data, &self.ctx, before)?;
+
+    save(&path_current, data.dump())?;
 
     symlink::symlink_file(path_current, path_latest)?;
 
     Ok(data)
   }
 
-  pub(crate) fn create(&self, id: DateTime<Utc>, mut data: JsonValue) -> Result<JsonValue, Error> {
+  pub(crate) fn create(
+    &self,
+    app: &Application,
+    id: DateTime<Utc>,
+    mut data: JsonValue,
+  ) -> Result<JsonValue, Error> {
     let id = time_to_string(id);
 
     data["_id"] = id.clone().into();
 
-    self.save(id, true, Utc::now(), data)
+    self.save(app, id, true, Utc::now(), data)
   }
 
   pub(crate) fn get(&self, id: &String) -> SDoc {

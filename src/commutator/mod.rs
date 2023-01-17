@@ -1,5 +1,6 @@
 use crate::animo::memory::ChangeTransformation;
 use crate::services::{Error, Event, Mutation, Service, Services};
+use crate::store::WHStorage;
 use crate::ws::{engine_io, error_general, socket_io, Connect, Disconnect, WsMessage};
 use crate::{ws, SOrganizations};
 use crate::{AnimoDB, Settings, ID};
@@ -24,6 +25,7 @@ pub struct Application {
   services: Arc<RwLock<HashMap<String, Arc<dyn Service>>>>,
 
   pub(crate) storage: Option<SOrganizations>,
+  pub(crate) warehouse: WHStorage,
 
   // background dispatcher
   stop: Arc<AtomicBool>,
@@ -53,6 +55,7 @@ impl Application {
       job_scheduler,
       services,
       storage: None,
+      warehouse: WHStorage::new()?,
       // channels: Arc::new(HashMap::new()),
       stop: stop.clone(),
       events: events_sender,

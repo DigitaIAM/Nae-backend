@@ -77,7 +77,7 @@ impl Service for DocsFiles {
 
     let docs = self.orgs.get(&oid).docs(ctx);
 
-    docs.create(chrono::Utc::now(), data)
+    docs.create(&self.app, chrono::Utc::now(), data)
   }
 
   fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
