@@ -18,23 +18,48 @@ pub(crate) struct SDocs {
   pub(crate) folder: PathBuf,
 }
 
+fn save_data(
+  app: &Application,
+  folder: &PathBuf,
+  ctx: &Vec<String>,
+  id: &String,
+  time: DateTime<Utc>,
+  data: JsonValue,
+) -> Result<JsonValue, Error> {
+  let mut path_current = folder.clone();
+  path_current.push(format!("{id}.json"));
+
+  // 2023/01/2023-01-06T12:43:15Z/latest.json
+  let mut path_latest = folder.clone();
+  path_latest.push("latest.json");
+
+  // ["warehouse", "receive"]
+  // ["warehouse", "issue"]
+  // ["warehouse", "transfer"]
+  // TODO handles[self.ctx].apply()
+  // data = { _id: "", date: "2023-01-11", storage: "uuid", goods: [{goods: "", uom: "", qty: 0, price: 0, cost: 0, _tid: ""}, ...]}
+  // cost = qty * price
+
+  let before = match load(&path_latest) {
+    Ok(x) => x,
+    Err(_) => JsonValue::Null,
+  };
+
+  let data = receive_data(app, time, data, ctx, before)?;
+
+  save(&path_current, data.dump())?;
+
+  symlink::symlink_file(path_current, path_latest)?;
+
+  Ok(data)
+}
+
 impl SDocs {
-  fn save(
-    &self,
-    app: &Application,
-    id: String,
-    create: bool,
-    time: DateTime<Utc>,
-    mut data: JsonValue,
-  ) -> Result<JsonValue, Error> {
+  fn folder(&self, id: &String) -> PathBuf {
     let year = &id[0..4];
     let month = &id[6..8];
 
     println!("create id {id} year {year} month {month}");
-
-    if data["_id"] != id {
-      return Err(Error::IOError(format!(")")));
-    }
 
     // 2023/01/2023-01-06T12:43:15Z/
     let mut folder = self.folder.clone();
@@ -42,51 +67,39 @@ impl SDocs {
     folder.push(month);
     folder.push(&id);
 
-    if create {
-      std::fs::create_dir_all(&folder).map_err(|e| {
-        Error::IOError(format!("can't create folder {}: {}", folder.to_string_lossy(), e))
-      })?;
-    }
-
-    let mut path_current = folder.clone();
-    path_current.push(format!("{id}.json"));
-
-    // 2023/01/2023-01-06T12:43:15Z/latest.json
-    let mut path_latest = folder.clone();
-    path_latest.push("latest.json");
-
-    // ["warehouse", "receive"]
-    // ["warehouse", "issue"]
-    // ["warehouse", "transfer"]
-    // TODO handles[self.ctx].apply()
-    // data = { _id: "", date: "2023-01-11", storage: "uuid", goods: [{goods: "", uom: "", qty: 0, price: 0, cost: 0, _tid: ""}, ...]}
-    // cost = qty * price
-
-    let before = match load(&path_latest) {
-      Ok(x) => x,
-      Err(_) => JsonValue::Null,
-    };
-
-    let data = receive_data(app, time, data, &self.ctx, before)?;
-
-    save(&path_current, data.dump())?;
-
-    symlink::symlink_file(path_current, path_latest)?;
-
-    Ok(data)
+    folder
   }
 
   pub(crate) fn create(
     &self,
     app: &Application,
-    id: DateTime<Utc>,
+    time: DateTime<Utc>,
     mut data: JsonValue,
   ) -> Result<JsonValue, Error> {
-    let id = time_to_string(id);
+    let id = time_to_string(time);
 
-    data["_id"] = id.clone().into();
+    // if data["_id"] != id {
+    //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data["_id"])));
+    // }
 
-    self.save(app, id, true, Utc::now(), data)
+    // 2023/01/2023-01-06T12:43:15Z/
+    let mut folder = self.folder(&id);
+
+    std::fs::create_dir_all(&folder).map_err(|e| {
+      Error::IOError(format!("can't create folder {}: {}", folder.to_string_lossy(), e))
+    })?;
+
+    save_data(app, &folder, &self.ctx, &id, time, data)
+  }
+
+  pub(crate) fn update(
+    &self,
+    app: &Application,
+    id: String,
+    data: Data,
+  ) -> Result<JsonValue, Error> {
+    let time = Utc::now();
+    save_data(app, &self.folder, &self.ctx, &id, time, data)
   }
 
   pub(crate) fn get(&self, id: &String) -> SDoc {
@@ -156,10 +169,6 @@ pub(crate) struct SDoc {
 }
 
 impl SDoc {
-  pub(crate) fn update(&self, data: Data) -> Result<JsonValue, Error> {
-    todo!()
-  }
-
   pub(crate) fn json(&self) -> Result<JsonValue, Error> {
     load(&self.path)
   }

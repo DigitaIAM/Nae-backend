@@ -13,7 +13,6 @@ use std::{
   str::FromStr,
   sync::Arc,
 };
-use tempfile::TempDir;
 use uuid::{uuid, Uuid};
 
 // use crate::error::WHError;
@@ -1542,6 +1541,7 @@ mod tests {
   use actix_web::{http::header::ContentType, test, web, App};
   use json::object;
   use rocksdb::{ColumnFamilyDescriptor, Options};
+  use tempfile::TempDir;
   use uuid::Uuid;
 
   #[actix_web::test]
@@ -1600,7 +1600,7 @@ mod tests {
     };
 
     let req = test::TestRequest::post()
-      .uri(&format!("/api/docs?oid={}&document=warehouse,receive", oid.to_base64()))
+      .uri(&format!("/api/docs?oid={}&ctx=warehouse,receive", oid.to_base64()))
       .set_payload(data1.dump())
       .insert_header(ContentType::json())
       // .param("oid", oid.to_base64())
@@ -1617,1152 +1617,1153 @@ mod tests {
   }
 
   #[actix_web::test]
-    async fn store_test_receive_ops() {
-      let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
+  async fn store_test_receive_ops() {
+    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
 
-      let mut opts = Options::default();
-      let mut cfs = Vec::new();
+    let mut opts = Options::default();
+    let mut cfs = Vec::new();
 
-      let cf_names: Vec<&str> = vec![
-        STORE_DATE_TYPE_PARTY_ID,
-        DATE_TYPE_STORE_PARTY_ID,
-        CHECK_DATE_STORE_PARTY,
-        CHECK_PARTY_STORE_DATE,
-      ];
+    let cf_names: Vec<&str> = vec![
+      STORE_DATE_TYPE_PARTY_ID,
+      DATE_TYPE_STORE_PARTY_ID,
+      CHECK_DATE_STORE_PARTY,
+      CHECK_PARTY_STORE_DATE,
+    ];
 
-      for name in cf_names {
-        let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-        cfs.push(cf);
-      }
-
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db {
-        db: Arc::new(
-          DB::open_cf_descriptors(&opts, &tmpdir, cfs).expect("Can't open db in test_receive_ops"),
-        ),
-      };
-
-      let op_d = dt("2022-10-10").expect("test_receive_ops");
-      let check_d = dt("2022-11-01").expect("test_receive_ops");
-      let w1 = Uuid::new_v4();
-      let party = Document { id: Uuid::new_v4().to_string(), date: op_d };
-
-      let id1 = Uuid::from_u128(101);
-      let id2 = Uuid::from_u128(102);
-      let id3 = Uuid::from_u128(103);
-      let id4 = Uuid::from_u128(104);
-
-      let ops = vec![
-        OpMutation::new(
-          id1,
-          op_d,
-          w1,
-          G1,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
-        ),
-        OpMutation::new(
-          id2,
-          op_d,
-          w1,
-          G1,
-          party.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
-        ),
-        OpMutation::new(
-          id3,
-          op_d,
-          w1,
-          G2,
-          party.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
-        ),
-        OpMutation::new(
-          id4,
-          op_d,
-          w1,
-          G2,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
-        ),
-      ];
-
-      db.record_ops(&ops).expect("test_receive_ops");
-
-      let balance = Balance {
-        date: check_d,
-        store: w1,
-        goods: G1,
-        document: party,
-        number: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-      };
-
-      let b1 = db.find_checkpoint(&ops[0], CHECK_DATE_STORE_PARTY).expect("test_receive_ops");
-      assert_eq!(b1, Some(balance.clone()));
-
-      let b2 = db.find_checkpoint(&ops[0], CHECK_PARTY_STORE_DATE).expect("test_receive_ops");
-      assert_eq!(b2, Some(balance));
-
-      let b3 = db.find_checkpoint(&ops[2], CHECK_DATE_STORE_PARTY).expect("test_receive_ops");
-      assert_eq!(b3, None);
-
-      let b4 = db.find_checkpoint(&ops[2], CHECK_PARTY_STORE_DATE).expect("test_receive_ops");
-      assert_eq!(b4, None);
-
-      tmpdir.close().expect("Can't close tmp dir in test_receive_ops");
+    for name in cf_names {
+      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
+      cfs.push(cf);
     }
 
-    #[actix_web::test]
-    async fn store_test_neg_balance_date_type_store_goods_id() {
-      let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_neg_balance");
-      let mut opts = Options::default();
-      let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_PARTY_ID, opts.clone());
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db {
-        db: Arc::new(
-          DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])
-            .expect("Can't open db in test_get_neg_balance"),
-        ),
-      };
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db {
+      db: Arc::new(
+        DB::open_cf_descriptors(&opts, &tmpdir, cfs).expect("Can't open db in test_receive_ops"),
+      ),
+    };
 
-      let op_d = dt("2022-10-10").expect("test_get_neg_balance");
-      let check_d = dt("2022-10-11").expect("test_get_neg_balance");
-      let w1 = Uuid::new_v4();
-      let party = Document { id: Uuid::new_v4().to_string(), date: op_d };
+    let op_d = dt("2022-10-10").expect("test_receive_ops");
+    let check_d = dt("2022-11-01").expect("test_receive_ops");
+    let w1 = Uuid::new_v4();
+    let party = Document { id: Uuid::new_v4().to_string(), date: op_d };
 
-      let id1 = Uuid::from_u128(101);
+    let id1 = Uuid::from_u128(101);
+    let id2 = Uuid::from_u128(102);
+    let id3 = Uuid::from_u128(103);
+    let id4 = Uuid::from_u128(104);
 
-      let ops = vec![OpMutation::new(
+    let ops = vec![
+      OpMutation::new(
         id1,
         op_d,
         w1,
         G1,
         party.clone(),
         None,
+        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+      ),
+      OpMutation::new(
+        id2,
+        op_d,
+        w1,
+        G1,
+        party.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+      ),
+      OpMutation::new(
+        id3,
+        op_d,
+        w1,
+        G2,
+        party.clone(),
+        None,
         Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
-      )];
+      ),
+      OpMutation::new(
+        id4,
+        op_d,
+        w1,
+        G2,
+        party.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+      ),
+    ];
 
-      db.record_ops(&ops).expect("test_get_neg_balance");
+    db.record_ops(&ops).expect("test_receive_ops");
 
-      let agr = AgregationStoreGoods {
-        store: Some(w1),
-        goods: Some(G1),
-        document: Some(party.clone()),
-        open_balance: NumberForGoods::default(),
-        receive: NumberForGoods::default(),
-        issue: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-        close_balance: NumberForGoods { qty: (-2).into(), cost: Some((-2000).into()) },
-      };
+    let balance = Balance {
+      date: check_d,
+      store: w1,
+      goods: G1,
+      document: party,
+      number: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
+    };
 
-      let st = DateTypeStoreGoodsId();
-      let res = st.get_report(op_d, check_d, w1, &mut db).expect("test_get_neg_balance");
+    let b1 = db.find_checkpoint(&ops[0], CHECK_DATE_STORE_PARTY).expect("test_receive_ops");
+    assert_eq!(b1, Some(balance.clone()));
 
-      assert_eq!(res.items.1[0], agr);
+    let b2 = db.find_checkpoint(&ops[0], CHECK_PARTY_STORE_DATE).expect("test_receive_ops");
+    assert_eq!(b2, Some(balance));
 
-      tmpdir.close().expect("Can't close tmp dir in test_get_neg_balance");
+    let b3 = db.find_checkpoint(&ops[2], CHECK_DATE_STORE_PARTY).expect("test_receive_ops");
+    assert_eq!(b3, None);
+
+    let b4 = db.find_checkpoint(&ops[2], CHECK_PARTY_STORE_DATE).expect("test_receive_ops");
+    assert_eq!(b4, None);
+
+    tmpdir.close().expect("Can't close tmp dir in test_receive_ops");
+  }
+
+  #[actix_web::test]
+  async fn store_test_neg_balance_date_type_store_goods_id() {
+    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_neg_balance");
+    let mut opts = Options::default();
+    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_PARTY_ID, opts.clone());
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db {
+      db: Arc::new(
+        DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])
+          .expect("Can't open db in test_get_neg_balance"),
+      ),
+    };
+
+    let op_d = dt("2022-10-10").expect("test_get_neg_balance");
+    let check_d = dt("2022-10-11").expect("test_get_neg_balance");
+    let w1 = Uuid::new_v4();
+    let party = Document { id: Uuid::new_v4().to_string(), date: op_d };
+
+    let id1 = Uuid::from_u128(101);
+
+    let ops = vec![OpMutation::new(
+      id1,
+      op_d,
+      w1,
+      G1,
+      party.clone(),
+      None,
+      Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+    )];
+
+    db.record_ops(&ops).expect("test_get_neg_balance");
+
+    let agr = AgregationStoreGoods {
+      store: Some(w1),
+      goods: Some(G1),
+      document: Some(party.clone()),
+      open_balance: NumberForGoods::default(),
+      receive: NumberForGoods::default(),
+      issue: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
+      close_balance: NumberForGoods { qty: (-2).into(), cost: Some((-2000).into()) },
+    };
+
+    let st = DateTypeStoreGoodsId();
+    let res = st.get_report(op_d, check_d, w1, &mut db).expect("test_get_neg_balance");
+
+    assert_eq!(res.items.1[0], agr);
+
+    tmpdir.close().expect("Can't close tmp dir in test_get_neg_balance");
+  }
+
+  #[actix_web::test]
+  async fn store_test_zero_balance_date_type_store_goods_id() {
+    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_zero_balance");
+    let mut opts = Options::default();
+    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_PARTY_ID, opts.clone());
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db {
+      db: Arc::new(
+        DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])
+          .expect("Can't open db in test_get_zero_balance"),
+      ),
+    };
+
+    let start_d = dt("2022-10-10").expect("test_get_zero_balance");
+    let end_d = dt("2022-10-11").expect("test_get_zero_balance");
+    let w1 = Uuid::new_v4();
+    let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
+
+    let id1 = Uuid::from_u128(101);
+    let id2 = Uuid::from_u128(102);
+
+    let ops = vec![
+      OpMutation::new(
+        id1,
+        start_d,
+        w1,
+        G1,
+        party.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+      ),
+      OpMutation::new(
+        id2,
+        start_d,
+        w1,
+        G1,
+        party.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+      ),
+    ];
+
+    db.record_ops(&ops);
+
+    let st = DateTypeStoreGoodsId();
+    let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_get_zero_balance");
+
+    let agr = AgregationStoreGoods {
+      store: Some(w1),
+      goods: Some(G1),
+      document: Some(party.clone()),
+      open_balance: NumberForGoods::default(),
+      receive: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
+      issue: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
+      close_balance: NumberForGoods::default(),
+    };
+
+    assert_eq!(res.items.1[0], agr);
+
+    tmpdir.close().expect("Can't close tmp dir in test_get_zero_balance");
+  }
+
+  #[actix_web::test]
+  async fn store_test_get_wh_ops_date_type_store_goods_id() {
+    get_wh_ops(DateTypeStoreGoodsId()).expect("test_get_wh_ops_date_type_store_goods_id");
+  }
+
+  #[actix_web::test]
+  async fn store_test_get_wh_ops_store_date_type_goods_id() {
+    get_wh_ops(StoreDateTypeGoodsId()).expect("test_get_wh_ops_store_date_type_goods_id");
+  }
+
+  fn get_wh_ops(key: impl WareHouse) -> Result<(), WHError> {
+    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
+    let mut opts = Options::default();
+    let cf = key.create_cf(opts.clone());
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let db = Db { db: Arc::new(DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])?) };
+
+    let start_d = dt("2022-10-10")?;
+    let end_d = dt("2022-10-11")?;
+    let w1 = Uuid::new_v4();
+    let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
+
+    let id1 = Uuid::from_u128(101);
+    let id2 = Uuid::from_u128(102);
+
+    let ops = vec![
+      OpMutation::new(
+        id1,
+        start_d,
+        w1,
+        G1,
+        party.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+      ),
+      OpMutation::new(
+        id2,
+        start_d,
+        w1,
+        G1,
+        party.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+      ),
+    ];
+
+    for op in &ops {
+      key.put_op(op, &db)?;
     }
 
-    #[actix_web::test]
-    async fn store_test_zero_balance_date_type_store_goods_id() {
-      let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_zero_balance");
-      let mut opts = Options::default();
-      let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_PARTY_ID, opts.clone());
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db {
-        db: Arc::new(
-          DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])
-            .expect("Can't open db in test_get_zero_balance"),
-        ),
-      };
+    let res = key.get_ops(start_d, end_d, w1, &db)?;
 
-      let start_d = dt("2022-10-10").expect("test_get_zero_balance");
-      let end_d = dt("2022-10-11").expect("test_get_zero_balance");
-      let w1 = Uuid::new_v4();
-      let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    for i in 0..ops.len() {
+      assert_eq!(ops[i], res[i]);
+    }
 
-      let id1 = Uuid::from_u128(101);
-      let id2 = Uuid::from_u128(102);
+    Ok(())
+  }
 
-      let ops = vec![
-        OpMutation::new(
-          id1,
-          start_d,
-          w1,
-          G1,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
-        ),
-        OpMutation::new(
-          id2,
-          start_d,
-          w1,
-          G1,
-          party.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
-        ),
-      ];
+  #[actix_web::test]
+  async fn store_test_get_agregations_without_checkpoints_date_type_store_goods_id() {
+    get_agregations_without_checkpoints(DateTypeStoreGoodsId()).expect("test_get_agregations");
+  }
 
-      db.record_ops(&ops);
+  #[actix_web::test]
+  async fn store_test_get_agregations_without_checkpoints_store_date_type_goods_id() {
+    get_agregations_without_checkpoints(StoreDateTypeGoodsId()).expect("test_get_agregations");
+  }
 
-      let st = DateTypeStoreGoodsId();
-      let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_get_zero_balance");
+  fn get_agregations_without_checkpoints(key: impl WareHouse) -> Result<(), WHError> {
+    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
+    let mut opts = Options::default();
+    let cf = key.create_cf(opts.clone());
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db { db: Arc::new(DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])?) };
 
-      let agr = AgregationStoreGoods {
+    let op_d = dt("2022-10-10")?;
+    let check_d = dt("2022-10-11")?;
+    let w1 = Uuid::new_v4();
+    let doc1 = Document { id: Uuid::new_v4().to_string(), date: dt("2022-10-09")? };
+    let doc2 = Document { id: Uuid::new_v4().to_string(), date: op_d };
+
+    let id1 = Uuid::from_u128(101);
+    let id2 = Uuid::from_u128(102);
+    let id3 = Uuid::from_u128(103);
+    let id4 = Uuid::from_u128(104);
+
+    let ops = vec![
+      OpMutation::new(
+        id1,
+        op_d,
+        w1,
+        G1,
+        doc1.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+      ),
+      OpMutation::new(
+        id2,
+        op_d,
+        w1,
+        G1,
+        doc1.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+      ),
+      OpMutation::new(
+        id3,
+        op_d,
+        w1,
+        G2,
+        doc2.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+      ),
+      OpMutation::new(
+        id4,
+        op_d,
+        w1,
+        G2,
+        doc2.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+      ),
+    ];
+
+    for op in &ops {
+      key.put_op(op, &db)?;
+    }
+
+    let agregations = vec![
+      AgregationStoreGoods {
+        store: Some(w1),
+        goods: Some(G1),
+        document: Some(doc1.clone()),
+        open_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
+        receive: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
+        issue: NumberForGoods { qty: 1.into(), cost: Some(1000.into()) },
+        close_balance: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
+      },
+      AgregationStoreGoods {
+        store: Some(w1),
+        goods: Some(G2),
+        document: Some(doc2.clone()),
+        open_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
+        receive: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
+        issue: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
+        close_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
+      },
+    ];
+
+    let res = key.get_report(op_d, check_d, w1, &mut db)?;
+    let mut iter = res.items.1.into_iter();
+
+    // println!("MANY BALANCES: {:#?}", res);
+
+    for agr in agregations {
+      assert_eq!(iter.next().expect("option in get_agregations"), agr);
+    }
+    assert_eq!(iter.next(), None);
+
+    tmpdir.close().expect("Can't close tmp dir in store_test_get_wh_balance");
+
+    Ok(())
+  }
+
+  #[actix_web::test]
+  async fn store_test_op_iter() {
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_op_iter");
+
+    let db = Db { db: Arc::new(DB::open_default(&tmp_dir).expect("test_op_iter")) };
+
+    let start_d = dt("2022-11-01").expect("test_op_iter");
+    let w1 = Uuid::new_v4();
+    let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
+
+    let id1 = Uuid::from_u128(101);
+    let id2 = Uuid::from_u128(102);
+    let id3 = Uuid::from_u128(103);
+    let id4 = Uuid::from_u128(104);
+
+    let ops = vec![
+      OpMutation::new(
+        id3,
+        start_d,
+        w1,
+        G2,
+        party.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+      ),
+      OpMutation::new(
+        id4,
+        start_d,
+        w1,
+        G2,
+        party.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+      ),
+      OpMutation::new(
+        id1,
+        start_d,
+        w1,
+        G3,
+        party.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods {
+          qty: Decimal::from_str("0.5").unwrap(),
+          cost: Some(1500.into()),
+        })),
+      ),
+      OpMutation::new(
+        id2,
+        start_d,
+        w1,
+        G3,
+        party.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods {
+          qty: Decimal::from_str("0.5").unwrap(),
+          cost: Some(1500.into()),
+        })),
+      ),
+    ];
+
+    for op in &ops {
+      db.put(&op.store_date_type_party_id(), &op.value().expect("test_op_iter"))
+        .expect("Can't put op in db in test_op_iter");
+    }
+
+    let iter = db.db.iterator(IteratorMode::Start);
+
+    let mut res = Vec::new();
+
+    for item in iter {
+      let (_, v) = item.unwrap();
+      let op = serde_json::from_slice(&v).unwrap();
+      res.push(op);
+    }
+
+    for i in 0..ops.len() {
+      assert_eq!(ops[i], res[i]);
+    }
+
+    tmp_dir.close().expect("Can't remove tmp dir in test_op_iter");
+  }
+
+  #[actix_web::test]
+  async fn store_test_report() {
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_report");
+
+    let key1 = DateTypeStoreGoodsId();
+    let key2 = StoreDateTypeGoodsId();
+
+    let mut opts = Options::default();
+    let mut cfs = Vec::new();
+
+    let cf_names: Vec<&str> = vec![
+      STORE_DATE_TYPE_PARTY_ID,
+      DATE_TYPE_STORE_PARTY_ID,
+      CHECK_DATE_STORE_PARTY,
+      CHECK_PARTY_STORE_DATE,
+    ];
+
+    for name in cf_names {
+      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
+      cfs.push(cf);
+    }
+
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db {
+      db: Arc::new(
+        DB::open_cf_descriptors(&opts, &tmp_dir, cfs).expect("Can't open db in test_report"),
+      ),
+    };
+
+    let start_d = dt("2022-11-07").expect("test_report");
+    let end_d = dt("2022-11-08").expect("test_report");
+    let w1 = Uuid::new_v4();
+    let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
+
+    let ops = vec![
+      OpMutation::new(
+        Uuid::new_v4(),
+        dt("2022-10-30").expect("test_report"),
+        w1,
+        G1,
+        party.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(4000.into()) })),
+      ),
+      OpMutation::new(
+        Uuid::new_v4(),
+        dt("2022-11-03").expect("test_report"),
+        w1,
+        G3,
+        party.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(6000.into()) })),
+      ),
+      OpMutation::new(
+        Uuid::new_v4(),
+        start_d,
+        w1,
+        G2,
+        party.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+      ),
+      OpMutation::new(
+        Uuid::new_v4(),
+        start_d,
+        w1,
+        G2,
+        party.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+      ),
+      OpMutation::new(
+        Uuid::new_v4(),
+        start_d,
+        w1,
+        G3,
+        party.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods {
+          qty: Decimal::from_str("0.5").unwrap(),
+          cost: Some(1500.into()),
+        })),
+      ),
+      OpMutation::new(
+        Uuid::new_v4(),
+        start_d,
+        w1,
+        G3,
+        party.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods {
+          qty: Decimal::from_str("0.5").unwrap(),
+          cost: Some(1500.into()),
+        })),
+      ),
+    ];
+
+    db.record_ops(&ops).expect("test_report");
+
+    let agr_store = AgregationStore {
+      store: Some(w1),
+      open_balance: 10000.into(),
+      receive: 2000.into(),
+      issue: 3000.into(),
+      close_balance: 9000.into(),
+    };
+
+    let ex_items = vec![
+      AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G1),
         document: Some(party.clone()),
+        open_balance: NumberForGoods { qty: 4.into(), cost: Some(4000.into()) },
+        receive: NumberForGoods::default(),
+        issue: NumberForGoods::default(),
+        close_balance: NumberForGoods { qty: 4.into(), cost: Some(4000.into()) },
+      },
+      AgregationStoreGoods {
+        store: Some(w1),
+        goods: Some(G2),
+        document: Some(party.clone()),
+        open_balance: NumberForGoods::default(),
+        receive: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
+        issue: NumberForGoods::default(),
+        close_balance: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
+      },
+      AgregationStoreGoods {
+        store: Some(w1),
+        goods: Some(G3),
+        document: Some(party.clone()),
+        open_balance: NumberForGoods { qty: 2.into(), cost: Some(6000.into()) },
+        receive: NumberForGoods::default(),
+        issue: NumberForGoods { qty: 1.into(), cost: Some(3000.into()) },
+        close_balance: NumberForGoods { qty: 1.into(), cost: Some(3000.into()) },
+      },
+    ];
+
+    let mut ex_map: HashMap<Goods, AgregationStoreGoods> = HashMap::new();
+
+    for agr in ex_items.clone() {
+      ex_map.insert(agr.goods.unwrap(), agr);
+    }
+
+    let report1 = key1.get_report(start_d, end_d, w1, &mut db).expect("test_report");
+    let report2 = key2.get_report(start_d, end_d, w1, &mut db).expect("test_report");
+
+    // println!("ITEMS: {:#?}", report1.items);
+
+    assert_eq!(report1, report2);
+
+    assert_eq!(report1.items.0, agr_store);
+    assert_eq!(report1.items.1, ex_items);
+
+    for item in report2.items.1 {
+      assert_eq!(&item, ex_map.get(&item.goods.unwrap()).unwrap());
+    }
+
+    tmp_dir.close().expect("Can't remove tmp dir in test_report");
+  }
+
+  #[actix_web::test]
+  async fn store_test_parties_date_type_store_goods_id() {
+    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_parties");
+    let mut opts = Options::default();
+    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_PARTY_ID, opts.clone());
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db {
+      db: Arc::new(
+        DB::open_cf_descriptors(&opts, &tmpdir, vec![cf]).expect("Can't open db in test_parties"),
+      ),
+    };
+
+    let start_d = dt("2022-10-10").expect("test_parties");
+    let end_d = dt("2022-10-11").expect("test_parties");
+    let w1 = Uuid::new_v4();
+    let doc1 =
+      Document { id: Uuid::new_v4().to_string(), date: dt("2022-10-08").expect("test_parties") };
+    let doc2 = Document { id: Uuid::new_v4().to_string(), date: start_d };
+
+    let id1 = Uuid::from_u128(101);
+    let id2 = Uuid::from_u128(102);
+    let id3 = Uuid::from_u128(102);
+
+    let ops = vec![
+      OpMutation::new(
+        id1,
+        start_d,
+        w1,
+        G1,
+        doc1.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+      ),
+      OpMutation::new(
+        id2,
+        start_d,
+        w1,
+        G1,
+        doc2.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
+      ),
+      OpMutation::new(
+        id3,
+        start_d,
+        w1,
+        G1,
+        doc2.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(500.into()) })),
+      ),
+    ];
+
+    db.record_ops(&ops).expect("test_parties");
+
+    let st = DateTypeStoreGoodsId();
+    let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_parties");
+
+    let agrs = vec![
+      AgregationStoreGoods {
+        store: Some(w1),
+        goods: Some(G1),
+        document: Some(doc1.clone()),
         open_balance: NumberForGoods::default(),
         receive: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
-        issue: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
-        close_balance: NumberForGoods::default(),
-      };
-
-      assert_eq!(res.items.1[0], agr);
-
-      tmpdir.close().expect("Can't close tmp dir in test_get_zero_balance");
-    }
-
-    #[actix_web::test]
-    async fn store_test_get_wh_ops_date_type_store_goods_id() {
-      get_wh_ops(DateTypeStoreGoodsId()).expect("test_get_wh_ops_date_type_store_goods_id");
-    }
-
-    #[actix_web::test]
-    async fn store_test_get_wh_ops_store_date_type_goods_id() {
-      get_wh_ops(StoreDateTypeGoodsId()).expect("test_get_wh_ops_store_date_type_goods_id");
-    }
-
-    fn get_wh_ops(key: impl WareHouse) -> Result<(), WHError> {
-      let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
-      let mut opts = Options::default();
-      let cf = key.create_cf(opts.clone());
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let db = Db { db: Arc::new(DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])?) };
-
-      let start_d = dt("2022-10-10")?;
-      let end_d = dt("2022-10-11")?;
-      let w1 = Uuid::new_v4();
-      let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
-
-      let id1 = Uuid::from_u128(101);
-      let id2 = Uuid::from_u128(102);
-
-      let ops = vec![
-        OpMutation::new(
-          id1,
-          start_d,
-          w1,
-          G1,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
-        ),
-        OpMutation::new(
-          id2,
-          start_d,
-          w1,
-          G1,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
-        ),
-      ];
-
-      for op in &ops {
-        key.put_op(op, &db)?;
-      }
-
-      let res = key.get_ops(start_d, end_d, w1, &db)?;
-
-      for i in 0..ops.len() {
-        assert_eq!(ops[i], res[i]);
-      }
-
-      Ok(())
-    }
-
-    #[actix_web::test]
-    async fn store_test_get_agregations_without_checkpoints_date_type_store_goods_id() {
-      get_agregations_without_checkpoints(DateTypeStoreGoodsId()).expect("test_get_agregations");
-    }
-
-    #[actix_web::test]
-    async fn store_test_get_agregations_without_checkpoints_store_date_type_goods_id() {
-      get_agregations_without_checkpoints(StoreDateTypeGoodsId()).expect("test_get_agregations");
-    }
-
-    fn get_agregations_without_checkpoints(key: impl WareHouse) -> Result<(), WHError> {
-      let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
-      let mut opts = Options::default();
-      let cf = key.create_cf(opts.clone());
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db { db: Arc::new(DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])?) };
-
-      let op_d = dt("2022-10-10")?;
-      let check_d = dt("2022-10-11")?;
-      let w1 = Uuid::new_v4();
-      let doc1 = Document { id: Uuid::new_v4().to_string(), date: dt("2022-10-09")? };
-      let doc2 = Document { id: Uuid::new_v4().to_string(), date: op_d };
-
-      let id1 = Uuid::from_u128(101);
-      let id2 = Uuid::from_u128(102);
-      let id3 = Uuid::from_u128(103);
-      let id4 = Uuid::from_u128(104);
-
-      let ops = vec![
-        OpMutation::new(
-          id1,
-          op_d,
-          w1,
-          G1,
-          doc1.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
-        ),
-        OpMutation::new(
-          id2,
-          op_d,
-          w1,
-          G1,
-          doc1.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
-        ),
-        OpMutation::new(
-          id3,
-          op_d,
-          w1,
-          G2,
-          doc2.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
-        ),
-        OpMutation::new(
-          id4,
-          op_d,
-          w1,
-          G2,
-          doc2.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
-        ),
-      ];
-
-      for op in &ops {
-        key.put_op(op, &db)?;
-      }
-
-      let agregations = vec![
-        AgregationStoreGoods {
-          store: Some(w1),
-          goods: Some(G1),
-          document: Some(doc1.clone()),
-          open_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-          receive: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
-          issue: NumberForGoods { qty: 1.into(), cost: Some(1000.into()) },
-          close_balance: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-        },
-        AgregationStoreGoods {
-          store: Some(w1),
-          goods: Some(G2),
-          document: Some(doc2.clone()),
-          open_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-          receive: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-          issue: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-          close_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-        },
-      ];
-
-      let res = key.get_report(op_d, check_d, w1, &mut db)?;
-      let mut iter = res.items.1.into_iter();
-
-      // println!("MANY BALANCES: {:#?}", res);
-
-      for agr in agregations {
-        assert_eq!(iter.next().expect("option in get_agregations"), agr);
-      }
-      assert_eq!(iter.next(), None);
-
-      tmpdir.close().expect("Can't close tmp dir in store_test_get_wh_balance");
-
-      Ok(())
-    }
-
-    #[actix_web::test]
-    async fn store_test_op_iter() {
-      let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_op_iter");
-
-      let db = Db { db: Arc::new(DB::open_default(&tmp_dir).expect("test_op_iter")) };
-
-      let start_d = dt("2022-11-01").expect("test_op_iter");
-      let w1 = Uuid::new_v4();
-      let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
-
-      let id1 = Uuid::from_u128(101);
-      let id2 = Uuid::from_u128(102);
-      let id3 = Uuid::from_u128(103);
-      let id4 = Uuid::from_u128(104);
-
-      let ops = vec![
-        OpMutation::new(
-          id3,
-          start_d,
-          w1,
-          G2,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
-        ),
-        OpMutation::new(
-          id4,
-          start_d,
-          w1,
-          G2,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
-        ),
-        OpMutation::new(
-          id1,
-          start_d,
-          w1,
-          G3,
-          party.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods {
-            qty: Decimal::from_str("0.5").unwrap(),
-            cost: Some(1500.into()),
-          })),
-        ),
-        OpMutation::new(
-          id2,
-          start_d,
-          w1,
-          G3,
-          party.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods {
-            qty: Decimal::from_str("0.5").unwrap(),
-            cost: Some(1500.into()),
-          })),
-        ),
-      ];
-
-      for op in &ops {
-        db.put(&op.store_date_type_party_id(), &op.value().expect("test_op_iter"))
-          .expect("Can't put op in db in test_op_iter");
-      }
-
-      let iter = db.db.iterator(IteratorMode::Start);
-
-      let mut res = Vec::new();
-
-      for item in iter {
-        let (_, v) = item.unwrap();
-        let op = serde_json::from_slice(&v).unwrap();
-        res.push(op);
-      }
-
-      for i in 0..ops.len() {
-        assert_eq!(ops[i], res[i]);
-      }
-
-      tmp_dir.close().expect("Can't remove tmp dir in test_op_iter");
-    }
-
-    #[actix_web::test]
-    async fn store_test_report() {
-      let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_report");
-
-      let key1 = DateTypeStoreGoodsId();
-      let key2 = StoreDateTypeGoodsId();
-
-      let mut opts = Options::default();
-      let mut cfs = Vec::new();
-
-      let cf_names: Vec<&str> = vec![
-        STORE_DATE_TYPE_PARTY_ID,
-        DATE_TYPE_STORE_PARTY_ID,
-        CHECK_DATE_STORE_PARTY,
-        CHECK_PARTY_STORE_DATE,
-      ];
-
-      for name in cf_names {
-        let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-        cfs.push(cf);
-      }
-
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db {
-        db: Arc::new(
-          DB::open_cf_descriptors(&opts, &tmp_dir, cfs).expect("Can't open db in test_report"),
-        ),
-      };
-
-      let start_d = dt("2022-11-07").expect("test_report");
-      let end_d = dt("2022-11-08").expect("test_report");
-      let w1 = Uuid::new_v4();
-      let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
-
-      let ops = vec![
-        OpMutation::new(
-          Uuid::new_v4(),
-          dt("2022-10-30").expect("test_report"),
-          w1,
-          G1,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(4000.into()) })),
-        ),
-        OpMutation::new(
-          Uuid::new_v4(),
-          dt("2022-11-03").expect("test_report"),
-          w1,
-          G3,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(6000.into()) })),
-        ),
-        OpMutation::new(
-          Uuid::new_v4(),
-          start_d,
-          w1,
-          G2,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
-        ),
-        OpMutation::new(
-          Uuid::new_v4(),
-          start_d,
-          w1,
-          G2,
-          party.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
-        ),
-        OpMutation::new(
-          Uuid::new_v4(),
-          start_d,
-          w1,
-          G3,
-          party.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods {
-            qty: Decimal::from_str("0.5").unwrap(),
-            cost: Some(1500.into()),
-          })),
-        ),
-        OpMutation::new(
-          Uuid::new_v4(),
-          start_d,
-          w1,
-          G3,
-          party.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods {
-            qty: Decimal::from_str("0.5").unwrap(),
-            cost: Some(1500.into()),
-          })),
-        ),
-      ];
-
-      db.record_ops(&ops).expect("test_report");
-
-      let agr_store = AgregationStore {
-        store: Some(w1),
-        open_balance: 10000.into(),
-        receive: 2000.into(),
-        issue: 3000.into(),
-        close_balance: 9000.into(),
-      };
-
-      let ex_items = vec![
-        AgregationStoreGoods {
-          store: Some(w1),
-          goods: Some(G1),
-          document: Some(party.clone()),
-          open_balance: NumberForGoods { qty: 4.into(), cost: Some(4000.into()) },
-          receive: NumberForGoods::default(),
-          issue: NumberForGoods::default(),
-          close_balance: NumberForGoods { qty: 4.into(), cost: Some(4000.into()) },
-        },
-        AgregationStoreGoods {
-          store: Some(w1),
-          goods: Some(G2),
-          document: Some(party.clone()),
-          open_balance: NumberForGoods::default(),
-          receive: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-          issue: NumberForGoods::default(),
-          close_balance: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-        },
-        AgregationStoreGoods {
-          store: Some(w1),
-          goods: Some(G3),
-          document: Some(party.clone()),
-          open_balance: NumberForGoods { qty: 2.into(), cost: Some(6000.into()) },
-          receive: NumberForGoods::default(),
-          issue: NumberForGoods { qty: 1.into(), cost: Some(3000.into()) },
-          close_balance: NumberForGoods { qty: 1.into(), cost: Some(3000.into()) },
-        },
-      ];
-
-      let mut ex_map: HashMap<Goods, AgregationStoreGoods> = HashMap::new();
-
-      for agr in ex_items.clone() {
-        ex_map.insert(agr.goods.unwrap(), agr);
-      }
-
-      let report1 = key1.get_report(start_d, end_d, w1, &mut db).expect("test_report");
-      let report2 = key2.get_report(start_d, end_d, w1, &mut db).expect("test_report");
-
-      // println!("ITEMS: {:#?}", report1.items);
-
-      assert_eq!(report1, report2);
-
-      assert_eq!(report1.items.0, agr_store);
-      assert_eq!(report1.items.1, ex_items);
-
-      for item in report2.items.1 {
-        assert_eq!(&item, ex_map.get(&item.goods.unwrap()).unwrap());
-      }
-
-      tmp_dir.close().expect("Can't remove tmp dir in test_report");
-    }
-
-    #[actix_web::test]
-    async fn store_test_parties_date_type_store_goods_id() {
-      let tmpdir = TempDir::new().expect("Can't create tmp dir in test_parties");
-      let mut opts = Options::default();
-      let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_PARTY_ID, opts.clone());
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db {
-        db: Arc::new(
-          DB::open_cf_descriptors(&opts, &tmpdir, vec![cf]).expect("Can't open db in test_parties"),
-        ),
-      };
-
-      let start_d = dt("2022-10-10").expect("test_parties");
-      let end_d = dt("2022-10-11").expect("test_parties");
-      let w1 = Uuid::new_v4();
-      let doc1 = Document { id: Uuid::new_v4().to_string(), date: dt("2022-10-08").expect("test_parties") };
-      let doc2 = Document { id: Uuid::new_v4().to_string(), date: start_d };
-
-      let id1 = Uuid::from_u128(101);
-      let id2 = Uuid::from_u128(102);
-      let id3 = Uuid::from_u128(102);
-
-      let ops = vec![
-        OpMutation::new(
-          id1,
-          start_d,
-          w1,
-          G1,
-          doc1.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
-        ),
-        OpMutation::new(
-          id2,
-          start_d,
-          w1,
-          G1,
-          doc2.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
-        ),
-        OpMutation::new(
-          id3,
-          start_d,
-          w1,
-          G1,
-          doc2.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(500.into()) })),
-        ),
-      ];
-
-      db.record_ops(&ops).expect("test_parties");
-
-      let st = DateTypeStoreGoodsId();
-      let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_parties");
-
-      let agrs = vec![
-        AgregationStoreGoods {
-          store: Some(w1),
-          goods: Some(G1),
-          document: Some(doc1.clone()),
-          open_balance: NumberForGoods::default(),
-          receive: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
-          issue: NumberForGoods::default(),
-          close_balance: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
-        },
-        AgregationStoreGoods {
-          store: Some(w1),
-          goods: Some(G1),
-          document: Some(doc2.clone()),
-          open_balance: NumberForGoods::default(),
-          receive: NumberForGoods { qty: 4.into(), cost: Some(2000.into()) },
-          issue: NumberForGoods { qty: 1.into(), cost: Some(500.into()) },
-          close_balance: NumberForGoods { qty: 3.into(), cost: Some(1500.into()) },
-        },
-      ];
-
-      assert_eq!(res.items.1[0], agrs[0]);
-      assert_eq!(res.items.1[1], agrs[1]);
-
-      tmpdir.close().expect("Can't close tmp dir in test_parties");
-    }
-
-    #[actix_web::test]
-    async fn store_test_issue_cost_none() {
-      let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_issue_cost_none");
-
-      let mut opts = Options::default();
-      let mut cfs = Vec::new();
-
-      let cf_names: Vec<&str> = vec![
-        STORE_DATE_TYPE_PARTY_ID,
-        DATE_TYPE_STORE_PARTY_ID,
-        CHECK_DATE_STORE_PARTY,
-        CHECK_PARTY_STORE_DATE,
-      ];
-
-      for name in cf_names {
-        let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-        cfs.push(cf);
-      }
-
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db {
-        db: Arc::new(
-          DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
-            .expect("Can't open db in test_issue_cost_none"),
-        ),
-      };
-
-      let start_d = dt("2022-10-10").expect("test_issue_cost_none");
-      let end_d = dt("2022-10-11").expect("test_issue_cost_none");
-      let w1 = Uuid::new_v4();
-
-      let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
-
-      let id1 = Uuid::from_u128(101);
-      let id2 = Uuid::from_u128(102);
-
-      let ops = vec![
-        OpMutation::new(
-          id1,
-          start_d,
-          w1,
-          G1,
-          doc.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
-        ),
-        OpMutation::new(
-          id2,
-          start_d,
-          w1,
-          G1,
-          doc.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: None })),
-        ),
-      ];
-
-      db.record_ops(&ops).expect("test_issue_cost_none");
-
-      let st = DateTypeStoreGoodsId();
-      let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_issue_cost_none");
-
-      let agr = AgregationStoreGoods {
+        issue: NumberForGoods::default(),
+        close_balance: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
+      },
+      AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G1),
-        document: Some(doc.clone()),
+        document: Some(doc2.clone()),
         open_balance: NumberForGoods::default(),
         receive: NumberForGoods { qty: 4.into(), cost: Some(2000.into()) },
         issue: NumberForGoods { qty: 1.into(), cost: Some(500.into()) },
         close_balance: NumberForGoods { qty: 3.into(), cost: Some(1500.into()) },
-      };
+      },
+    ];
 
-      assert_eq!(agr, res.items.1[0]);
+    assert_eq!(res.items.1[0], agrs[0]);
+    assert_eq!(res.items.1[1], agrs[1]);
 
-      tmp_dir.close().expect("Can't remove tmp dir in test_issue_cost_none");
+    tmpdir.close().expect("Can't close tmp dir in test_parties");
+  }
+
+  #[actix_web::test]
+  async fn store_test_issue_cost_none() {
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_issue_cost_none");
+
+    let mut opts = Options::default();
+    let mut cfs = Vec::new();
+
+    let cf_names: Vec<&str> = vec![
+      STORE_DATE_TYPE_PARTY_ID,
+      DATE_TYPE_STORE_PARTY_ID,
+      CHECK_DATE_STORE_PARTY,
+      CHECK_PARTY_STORE_DATE,
+    ];
+
+    for name in cf_names {
+      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
+      cfs.push(cf);
     }
 
-    #[actix_web::test]
-    async fn store_test_receive_cost_none() {
-      let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_receive_cost_none");
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db {
+      db: Arc::new(
+        DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
+          .expect("Can't open db in test_issue_cost_none"),
+      ),
+    };
 
-      let mut opts = Options::default();
-      let mut cfs = Vec::new();
+    let start_d = dt("2022-10-10").expect("test_issue_cost_none");
+    let end_d = dt("2022-10-11").expect("test_issue_cost_none");
+    let w1 = Uuid::new_v4();
 
-      let cf_names: Vec<&str> = vec![
-        STORE_DATE_TYPE_PARTY_ID,
-        DATE_TYPE_STORE_PARTY_ID,
-        CHECK_DATE_STORE_PARTY,
-        CHECK_PARTY_STORE_DATE,
-      ];
+    let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
 
-      for name in cf_names {
-        let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-        cfs.push(cf);
-      }
+    let id1 = Uuid::from_u128(101);
+    let id2 = Uuid::from_u128(102);
 
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db {
-        db: Arc::new(
-          DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
-            .expect("Can't open db in test_receive_cost_none"),
-        ),
-      };
+    let ops = vec![
+      OpMutation::new(
+        id1,
+        start_d,
+        w1,
+        G1,
+        doc.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
+      ),
+      OpMutation::new(
+        id2,
+        start_d,
+        w1,
+        G1,
+        doc.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: None })),
+      ),
+    ];
 
-      let start_d = dt("2022-10-10").expect("test_receive_cost_none");
-      let end_d = dt("2022-10-11").expect("test_receive_cost_none");
-      let w1 = Uuid::new_v4();
+    db.record_ops(&ops).expect("test_issue_cost_none");
 
-      let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let st = DateTypeStoreGoodsId();
+    let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_issue_cost_none");
 
-      let id1 = Uuid::from_u128(101);
-      let id2 = Uuid::from_u128(102);
+    let agr = AgregationStoreGoods {
+      store: Some(w1),
+      goods: Some(G1),
+      document: Some(doc.clone()),
+      open_balance: NumberForGoods::default(),
+      receive: NumberForGoods { qty: 4.into(), cost: Some(2000.into()) },
+      issue: NumberForGoods { qty: 1.into(), cost: Some(500.into()) },
+      close_balance: NumberForGoods { qty: 3.into(), cost: Some(1500.into()) },
+    };
 
-      let ops = vec![
-        OpMutation::new(
-          id1,
-          start_d,
-          w1,
-          G1,
-          doc.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
-        ),
-        OpMutation::new(
-          id2,
-          start_d,
-          w1,
-          G1,
-          doc.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: None })),
-        ),
-      ];
+    assert_eq!(agr, res.items.1[0]);
 
-      db.record_ops(&ops).expect("test_receive_cost_none");
+    tmp_dir.close().expect("Can't remove tmp dir in test_issue_cost_none");
+  }
 
-      let st = DateTypeStoreGoodsId();
-      let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_receive_cost_none");
+  #[actix_web::test]
+  async fn store_test_receive_cost_none() {
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_receive_cost_none");
 
-      let agr = AgregationStoreGoods {
-        store: Some(w1),
-        goods: Some(G1),
-        document: Some(doc.clone()),
-        open_balance: NumberForGoods::default(),
-        receive: NumberForGoods { qty: 5.into(), cost: Some(2000.into()) },
-        issue: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-        close_balance: NumberForGoods { qty: 5.into(), cost: Some(2000.into()) },
-      };
+    let mut opts = Options::default();
+    let mut cfs = Vec::new();
 
-      assert_eq!(agr, res.items.1[0]);
+    let cf_names: Vec<&str> = vec![
+      STORE_DATE_TYPE_PARTY_ID,
+      DATE_TYPE_STORE_PARTY_ID,
+      CHECK_DATE_STORE_PARTY,
+      CHECK_PARTY_STORE_DATE,
+    ];
 
-      tmp_dir.close().expect("Can't remove tmp dir in test_receive_cost_none");
+    for name in cf_names {
+      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
+      cfs.push(cf);
     }
 
-    #[actix_web::test]
-    async fn store_test_issue_remainder() {
-      let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_issue_remainder");
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db {
+      db: Arc::new(
+        DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
+          .expect("Can't open db in test_receive_cost_none"),
+      ),
+    };
 
-      let mut opts = Options::default();
-      let mut cfs = Vec::new();
+    let start_d = dt("2022-10-10").expect("test_receive_cost_none");
+    let end_d = dt("2022-10-11").expect("test_receive_cost_none");
+    let w1 = Uuid::new_v4();
 
-      let cf_names: Vec<&str> = vec![
-        STORE_DATE_TYPE_PARTY_ID,
-        DATE_TYPE_STORE_PARTY_ID,
-        CHECK_DATE_STORE_PARTY,
-        CHECK_PARTY_STORE_DATE,
-      ];
+    let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
 
-      for name in cf_names {
-        let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-        cfs.push(cf);
-      }
+    let id1 = Uuid::from_u128(101);
+    let id2 = Uuid::from_u128(102);
 
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db {
-        db: Arc::new(
-          DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
-            .expect("Can't open db in test_issue_remainder"),
-        ),
-      };
+    let ops = vec![
+      OpMutation::new(
+        id1,
+        start_d,
+        w1,
+        G1,
+        doc.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
+      ),
+      OpMutation::new(
+        id2,
+        start_d,
+        w1,
+        G1,
+        doc.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: None })),
+      ),
+    ];
 
-      let start_d = dt("2022-10-10").expect("test_issue_remainder");
-      let end_d = dt("2022-10-11").expect("test_issue_remainder");
-      let w1 = Uuid::new_v4();
+    db.record_ops(&ops).expect("test_receive_cost_none");
 
-      let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let st = DateTypeStoreGoodsId();
+    let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_receive_cost_none");
 
-      let id1 = Uuid::from_u128(101);
-      let id2 = Uuid::from_u128(102);
-      let id3 = Uuid::from_u128(103);
+    let agr = AgregationStoreGoods {
+      store: Some(w1),
+      goods: Some(G1),
+      document: Some(doc.clone()),
+      open_balance: NumberForGoods::default(),
+      receive: NumberForGoods { qty: 5.into(), cost: Some(2000.into()) },
+      issue: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
+      close_balance: NumberForGoods { qty: 5.into(), cost: Some(2000.into()) },
+    };
 
-      println!("{id1}");
-      println!("{id2}");
+    assert_eq!(agr, res.items.1[0]);
 
-      let ops = vec![
-        OpMutation::new(
-          id1,
-          start_d,
-          w1,
-          G1,
-          doc.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
-        ),
-        OpMutation::new(
-          id2,
-          start_d,
-          w1,
-          G1,
-          doc.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: None })),
-        ),
-        OpMutation::new(
-          id3,
-          start_d,
-          w1,
-          G1,
-          doc.clone(),
-          None,
-          Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: None })),
-        ),
-      ];
+    tmp_dir.close().expect("Can't remove tmp dir in test_receive_cost_none");
+  }
 
-      db.record_ops(&ops).expect("test_issue_remainder");
+  #[actix_web::test]
+  async fn store_test_issue_remainder() {
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_issue_remainder");
 
-      let st = DateTypeStoreGoodsId();
-      let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_issue_remainder");
+    let mut opts = Options::default();
+    let mut cfs = Vec::new();
 
-      // println!("HELLO: {:#?}", res.items.1);
+    let cf_names: Vec<&str> = vec![
+      STORE_DATE_TYPE_PARTY_ID,
+      DATE_TYPE_STORE_PARTY_ID,
+      CHECK_DATE_STORE_PARTY,
+      CHECK_PARTY_STORE_DATE,
+    ];
 
-      let agr = AgregationStoreGoods {
-        store: Some(w1),
-        goods: Some(G1),
-        document: Some(doc.clone()),
-        open_balance: NumberForGoods::default(),
-        receive: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
-        issue: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
-        close_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-      };
-
-      assert_eq!(agr, res.items.1[0]);
-
-      tmp_dir.close().expect("Can't remove tmp dir in test_issue_remainder");
+    for name in cf_names {
+      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
+      cfs.push(cf);
     }
 
-    #[actix_web::test]
-    async fn store_test_issue_op_none() {
-      let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_issue_op_none");
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db {
+      db: Arc::new(
+        DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
+          .expect("Can't open db in test_issue_remainder"),
+      ),
+    };
 
-      let mut opts = Options::default();
-      let mut cfs = Vec::new();
+    let start_d = dt("2022-10-10").expect("test_issue_remainder");
+    let end_d = dt("2022-10-11").expect("test_issue_remainder");
+    let w1 = Uuid::new_v4();
 
-      let cf_names: Vec<&str> = vec![
-        STORE_DATE_TYPE_PARTY_ID,
-        DATE_TYPE_STORE_PARTY_ID,
-        CHECK_DATE_STORE_PARTY,
-        CHECK_PARTY_STORE_DATE,
-      ];
+    let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
 
-      for name in cf_names {
-        let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-        cfs.push(cf);
-      }
+    let id1 = Uuid::from_u128(101);
+    let id2 = Uuid::from_u128(102);
+    let id3 = Uuid::from_u128(103);
 
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db {
-        db: Arc::new(
-          DB::open_cf_descriptors(&opts, &tmp_dir, cfs).expect("Can't open db in test_issue_op_none"),
-        ),
-      };
+    println!("{id1}");
+    println!("{id2}");
 
-      let start_d = dt("2022-10-10").expect("test_issue_op_none");
-      let end_d = dt("2022-10-11").expect("test_issue_op_none");
-      let w1 = Uuid::new_v4();
+    let ops = vec![
+      OpMutation::new(
+        id1,
+        start_d,
+        w1,
+        G1,
+        doc.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
+      ),
+      OpMutation::new(
+        id2,
+        start_d,
+        w1,
+        G1,
+        doc.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: None })),
+      ),
+      OpMutation::new(
+        id3,
+        start_d,
+        w1,
+        G1,
+        doc.clone(),
+        None,
+        Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: None })),
+      ),
+    ];
 
-      let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    db.record_ops(&ops).expect("test_issue_remainder");
 
-      let id1 = Uuid::from_u128(101);
-      let id2 = Uuid::from_u128(102);
-      let id3 = Uuid::from_u128(103);
+    let st = DateTypeStoreGoodsId();
+    let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_issue_remainder");
 
-      let ops = vec![
-        OpMutation::new(
-          id1,
-          start_d,
-          w1,
-          G1,
-          doc.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
-        ),
-        // КОРРЕКТНАЯ ОПЕРАЦИЯ С ДВУМЯ NONE?
-        OpMutation::new(id3, start_d, w1, G1, doc.clone(), None, None),
-      ];
+    // println!("HELLO: {:#?}", res.items.1);
 
-      db.record_ops(&ops).expect("test_issue_op_none");
+    let agr = AgregationStoreGoods {
+      store: Some(w1),
+      goods: Some(G1),
+      document: Some(doc.clone()),
+      open_balance: NumberForGoods::default(),
+      receive: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
+      issue: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
+      close_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
+    };
 
-      let st = DateTypeStoreGoodsId();
-      let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_issue_op_none");
+    assert_eq!(agr, res.items.1[0]);
 
-      let agr = AgregationStoreGoods {
-        store: Some(w1),
-        goods: Some(G1),
-        document: Some(doc.clone()),
-        open_balance: NumberForGoods::default(),
-        receive: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
-        issue: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
-        close_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-      };
+    tmp_dir.close().expect("Can't remove tmp dir in test_issue_remainder");
+  }
 
-      assert_eq!(agr, res.items.1[0]);
+  #[actix_web::test]
+  async fn store_test_issue_op_none() {
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_issue_op_none");
 
-      tmp_dir.close().expect("Can't remove tmp dir in test_issue_op_none");
+    let mut opts = Options::default();
+    let mut cfs = Vec::new();
+
+    let cf_names: Vec<&str> = vec![
+      STORE_DATE_TYPE_PARTY_ID,
+      DATE_TYPE_STORE_PARTY_ID,
+      CHECK_DATE_STORE_PARTY,
+      CHECK_PARTY_STORE_DATE,
+    ];
+
+    for name in cf_names {
+      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
+      cfs.push(cf);
     }
 
-    #[actix_web::test]
-    async fn store_test_receive_change_op() {
-      let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_receive_change_op");
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db {
+      db: Arc::new(
+        DB::open_cf_descriptors(&opts, &tmp_dir, cfs).expect("Can't open db in test_issue_op_none"),
+      ),
+    };
 
-      let mut opts = Options::default();
-      let mut cfs = Vec::new();
+    let start_d = dt("2022-10-10").expect("test_issue_op_none");
+    let end_d = dt("2022-10-11").expect("test_issue_op_none");
+    let w1 = Uuid::new_v4();
 
-      let cf_names: Vec<&str> = vec![
-        STORE_DATE_TYPE_PARTY_ID,
-        DATE_TYPE_STORE_PARTY_ID,
-        CHECK_DATE_STORE_PARTY,
-        CHECK_PARTY_STORE_DATE,
-      ];
+    let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
 
-      for name in cf_names {
-        let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-        cfs.push(cf);
-      }
+    let id1 = Uuid::from_u128(101);
+    let id2 = Uuid::from_u128(102);
+    let id3 = Uuid::from_u128(103);
 
-      opts.create_if_missing(true);
-      opts.create_missing_column_families(true);
-      let mut db = Db {
-        db: Arc::new(
-          DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
-            .expect("Can't open db in test_receive_change_op"),
-        ),
-      };
+    let ops = vec![
+      OpMutation::new(
+        id1,
+        start_d,
+        w1,
+        G1,
+        doc.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
+      ),
+      // КОРРЕКТНАЯ ОПЕРАЦИЯ С ДВУМЯ NONE?
+      OpMutation::new(id3, start_d, w1, G1, doc.clone(), None, None),
+    ];
 
-      let start_d = dt("2022-10-10").expect("test_receive_change_op");
-      let end_d = dt("2022-10-11").expect("test_receive_change_op");
-      let w1 = Uuid::new_v4();
+    db.record_ops(&ops).expect("test_issue_op_none");
 
-      let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let st = DateTypeStoreGoodsId();
+    let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_issue_op_none");
 
-      let id1 = Uuid::from_u128(101);
+    let agr = AgregationStoreGoods {
+      store: Some(w1),
+      goods: Some(G1),
+      document: Some(doc.clone()),
+      open_balance: NumberForGoods::default(),
+      receive: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
+      issue: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
+      close_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
+    };
 
-      let ops_old = vec![
-        OpMutation::new(
-          id1,
-          dt("2022-08-25").expect("test_receive_change_op"),
-          w1,
-          G1,
-          doc.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
-        ),
-        OpMutation::new(
-          id1,
-          dt("2022-09-20").expect("test_receive_change_op"),
-          w1,
-          G1,
-          doc.clone(),
-          None,
-          Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(30.into()) })),
-        ),
-      ];
+    assert_eq!(agr, res.items.1[0]);
 
-      db.record_ops(&ops_old).expect("test_receive_change_op");
+    tmp_dir.close().expect("Can't remove tmp dir in test_issue_op_none");
+  }
 
-      let old_check = Balance {
-        date: dt("2022-10-01").expect("test_receive_change_op"),
-        store: w1,
-        goods: G1,
-        document: doc.clone(),
-        number: NumberForGoods { qty: 4.into(), cost: Some(40.into()) },
-      };
+  #[actix_web::test]
+  async fn store_test_receive_change_op() {
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_receive_change_op");
 
-      let mut old_checkpoints = db
-        .search_last_checkpoints(start_d, w1)
-        .expect("test_receive_change_op")
-        .into_iter();
+    let mut opts = Options::default();
+    let mut cfs = Vec::new();
 
-      assert_eq!(Some(old_check), old_checkpoints.next());
+    let cf_names: Vec<&str> = vec![
+      STORE_DATE_TYPE_PARTY_ID,
+      DATE_TYPE_STORE_PARTY_ID,
+      CHECK_DATE_STORE_PARTY,
+      CHECK_PARTY_STORE_DATE,
+    ];
 
-      let ops_new = vec![OpMutation::new(
+    for name in cf_names {
+      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
+      cfs.push(cf);
+    }
+
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+    let mut db = Db {
+      db: Arc::new(
+        DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
+          .expect("Can't open db in test_receive_change_op"),
+      ),
+    };
+
+    let start_d = dt("2022-10-10").expect("test_receive_change_op");
+    let end_d = dt("2022-10-11").expect("test_receive_change_op");
+    let w1 = Uuid::new_v4();
+
+    let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
+
+    let id1 = Uuid::from_u128(101);
+
+    let ops_old = vec![
+      OpMutation::new(
         id1,
         dt("2022-08-25").expect("test_receive_change_op"),
         w1,
         G1,
         doc.clone(),
+        None,
         Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
-        Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(100.into()) })),
-      )];
+      ),
+      OpMutation::new(
+        id1,
+        dt("2022-09-20").expect("test_receive_change_op"),
+        w1,
+        G1,
+        doc.clone(),
+        None,
+        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(30.into()) })),
+      ),
+    ];
 
-      db.record_ops(&ops_new).expect("test_receive_change_op");
+    db.record_ops(&ops_old).expect("test_receive_change_op");
 
-      let new_check = Balance {
-        date: dt("2022-10-01").expect("test_receive_change_op"),
-        store: w1,
-        goods: G1,
-        document: doc.clone(),
-        number: NumberForGoods { qty: 5.into(), cost: Some(130.into()) },
-      };
+    let old_check = Balance {
+      date: dt("2022-10-01").expect("test_receive_change_op"),
+      store: w1,
+      goods: G1,
+      document: doc.clone(),
+      number: NumberForGoods { qty: 4.into(), cost: Some(40.into()) },
+    };
 
-      let mut new_checkpoints = db
-        .search_last_checkpoints(start_d, w1)
-        .expect("test_receive_change_op")
-        .into_iter();
+    let mut old_checkpoints = db
+      .search_last_checkpoints(start_d, w1)
+      .expect("test_receive_change_op")
+      .into_iter();
 
-      assert_eq!(Some(new_check), new_checkpoints.next());
+    assert_eq!(Some(old_check), old_checkpoints.next());
 
-      let st = DateTypeStoreGoodsId();
-      let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_receive_change_op");
+    let ops_new = vec![OpMutation::new(
+      id1,
+      dt("2022-08-25").expect("test_receive_change_op"),
+      w1,
+      G1,
+      doc.clone(),
+      Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
+      Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(100.into()) })),
+    )];
 
-      let agr = AgregationStoreGoods {
-        store: Some(w1),
-        goods: Some(G1),
-        document: Some(doc.clone()),
-        open_balance: NumberForGoods { qty: 5.into(), cost: Some(130.into()) },
-        receive: NumberForGoods::default(),
-        issue: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-        close_balance: NumberForGoods { qty: 5.into(), cost: Some(130.into()) },
-      };
+    db.record_ops(&ops_new).expect("test_receive_change_op");
 
-      assert_eq!(res.items.1[0], agr);
+    let new_check = Balance {
+      date: dt("2022-10-01").expect("test_receive_change_op"),
+      store: w1,
+      goods: G1,
+      document: doc.clone(),
+      number: NumberForGoods { qty: 5.into(), cost: Some(130.into()) },
+    };
 
-      tmp_dir.close().expect("Can't remove tmp dir in test_receive_change_op");
-    }
+    let mut new_checkpoints = db
+      .search_last_checkpoints(start_d, w1)
+      .expect("test_receive_change_op")
+      .into_iter();
+
+    assert_eq!(Some(new_check), new_checkpoints.next());
+
+    let st = DateTypeStoreGoodsId();
+    let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_receive_change_op");
+
+    let agr = AgregationStoreGoods {
+      store: Some(w1),
+      goods: Some(G1),
+      document: Some(doc.clone()),
+      open_balance: NumberForGoods { qty: 5.into(), cost: Some(130.into()) },
+      receive: NumberForGoods::default(),
+      issue: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
+      close_balance: NumberForGoods { qty: 5.into(), cost: Some(130.into()) },
+    };
+
+    assert_eq!(res.items.1[0], agr);
+
+    tmp_dir.close().expect("Can't remove tmp dir in test_receive_change_op");
+  }
 }

@@ -17,7 +17,7 @@ symlink = "0.1.0"
 
 linked_hash_set = "0.1.4"
 #bigdecimal = "0.3.0"
-rust_decimal = { version = "1.26.1", features = ["rkyv", "serde_json"] }
+rust_decimal = { version = "1.26", features = ["rkyv", "serde_json"] }
 #chrono = { version = "0.4.19", features = ["serde"] }
 chrono = { version = "0.4.22", features = ["serde", "rkyv"] }
 #chrono = { git = "https://github.com/chronotope/chrono", features = ["serde", "rkyv"] }
@@ -56,9 +56,9 @@ rand = "0.8.5"
 rkyv = { version = "0.7.38", features = ["validation"] }
 bytecheck = "0.6.8"
 
-serde = { version = "1.0.147", features = ["derive", "rc"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_bytes = "0.11"
-serde_json = "1.0.87"
+serde_json = "1.0"
 json = "0.12.4" # replacement for serde_json ?
 #bson = "0.14.1"
 #simd-json = "0.5.0"
@@ -104,7 +104,7 @@ csv = "1.1.6"
 
 profiling = "1.0.6"
 
-rust_decimal_macros = "1.26"
+#rust_decimal_macros = "1.26"
 
 [dev-dependencies]
 tempfile = "3.3.0"

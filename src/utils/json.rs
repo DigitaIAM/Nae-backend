@@ -68,3 +68,30 @@ impl JsonParams for JsonValue {
     Ok(dt)
   }
 }
+
+pub trait JsonMerge {
+  fn merge(&self, patch: &JsonValue) -> JsonValue;
+}
+
+impl JsonMerge for JsonValue {
+  fn merge(&self, patch: &JsonValue) -> JsonValue {
+    if !patch.is_object() {
+      return patch.clone();
+    }
+
+    let mut obj = self.clone();
+    if !obj.is_object() {
+      obj = JsonValue::new_object();
+    }
+    for (key, value) in patch.entries() {
+      if value.is_null() {
+        obj.remove(key);
+      } else {
+        // data.entry(key).or_insert(JsonValue::Null).merge(value);
+        obj[key] = obj[key].merge(value);
+      }
+    }
+
+    obj
+  }
+}

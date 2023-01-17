@@ -49,16 +49,41 @@ pub(crate) async fn docs_create(
 ) -> Result<HttpResponse, Error> {
   let data = json::parse(&data.0.to_string()).unwrap();
 
-  let doc: Vec<String> = params["document"].split(",").map(|s| s.to_string()).collect();
+  let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
   let oid = params["oid"].clone();
 
-  let params: JsonValue = object! {"document": doc, "oid": oid};
+  let params: JsonValue = object! {"ctx": ctx, "oid": oid};
 
   let result = web::block(move || app.service("docs").create(data, params))
     .await?
     .map_err(actix_web::error::ErrorInternalServerError)?;
 
-    let result: serde_json::Value = serde_json::from_str(&result.dump()).unwrap();
+  let result: serde_json::Value = serde_json::from_str(&result.dump()).unwrap();
+
+  Ok(HttpResponse::Ok().json(result))
+}
+
+#[post("/api/docs/{id}")]
+pub(crate) async fn docs_update(
+  path: web::Path<(String)>,
+  app: web::Data<Application>,
+  data: web::Json<serde_json::Value>,
+  params: web::Query<HashMap<String, String>>,
+) -> Result<HttpResponse, Error> {
+  let (id) = path.into_inner();
+
+  let data = json::parse(&data.0.to_string()).unwrap();
+
+  let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
+  let oid = params["oid"].clone();
+
+  let params: JsonValue = object! {"ctx": ctx, "oid": oid};
+
+  let result = web::block(move || app.service("docs").update(id, data, params))
+    .await?
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
+  let result: serde_json::Value = serde_json::from_str(&result.dump()).unwrap();
 
   Ok(HttpResponse::Ok().json(result))
 }

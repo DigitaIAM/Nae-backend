@@ -65,17 +65,8 @@ pub trait Service: Send + Sync {
     }
   }
 
-  fn doc_type(&self, params: &Params) -> Vec<String> {
-    self.params(params)["document"]
-      .members()
-      .map(|j| j.string_or_none())
-      .filter(|v| v.is_some())
-      .map(|v| v.unwrap_or_default())
-      .collect()
-  }
-
-  fn ref_type(&self, params: &Params) -> Vec<String> {
-    self.params(params)["reference"]
+  fn ctx(&self, params: &Params) -> Vec<String> {
+    self.params(params)["ctx"]
       .members()
       .map(|j| j.string_or_none())
       .filter(|v| v.is_some())

@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::animo::error::DBError;
 use crate::services::{Data, Error, Params, Service};
 use crate::storage::SOrganizations;
+use crate::utils::json::JsonMerge;
 use crate::ws::error_general;
 use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
 
@@ -40,7 +41,7 @@ impl Service for ReferencesFiles {
 
   fn find(&self, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
-    let ctx = self.ref_type(&params);
+    let ctx = self.ctx(&params);
 
     let limit = self.limit(&params);
     let skip = self.skip(&params);
@@ -65,7 +66,7 @@ impl Service for ReferencesFiles {
 
   fn get(&self, id: String, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
-    let ctx = self.ref_type(&params);
+    let ctx = self.ctx(&params);
 
     let refs = self.orgs.get(&oid).refs(ctx).get(&id);
     refs.json()
@@ -73,7 +74,7 @@ impl Service for ReferencesFiles {
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
-    let ctx = self.ref_type(&params);
+    let ctx = self.ctx(&params);
 
     let refs = self.orgs.get(&oid).refs(ctx);
 
@@ -85,7 +86,7 @@ impl Service for ReferencesFiles {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
       let oid = self.oid(&params)?;
-      let ctx = self.ref_type(&params);
+      let ctx = self.ctx(&params);
 
       let refs = self.orgs.get(&oid).refs(ctx);
 
@@ -95,22 +96,28 @@ impl Service for ReferencesFiles {
 
   fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
-    let ctx = self.ref_type(&params);
+    let ctx = self.ctx(&params);
 
     let refs = self.orgs.get(&oid).refs(ctx);
 
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
-      let r = refs.get(&id);
-      let mut obj = r.json()?;
-      for (n, v) in data.entries() {
-        if n != "_id" {
-          obj[n] = v.clone();
-        }
-      }
+      let doc = refs.get(&id);
+      let mut obj = doc.json()?;
 
-      r.update(data)
+      let mut patch = data.clone();
+      patch.remove("_id"); // TODO check id?
+
+      obj.merge(&patch);
+
+      // for (n, v) in data.entries() {
+      //   if n != "_id" {
+      //     obj[n] = v.clone();
+      //   }
+      // }
+
+      doc.update(obj)
     }
   }
 

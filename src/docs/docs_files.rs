@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::animo::error::DBError;
 use crate::services::{Data, Error, Params, Service};
 use crate::storage::SOrganizations;
+use crate::utils::json::JsonMerge;
 use crate::ws::error_general;
 use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
 
@@ -40,7 +41,7 @@ impl Service for DocsFiles {
 
   fn find(&self, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
-    let ctx = self.doc_type(&params);
+    let ctx = self.ctx(&params);
 
     let limit = self.limit(&params);
     let skip = self.skip(&params);
@@ -65,7 +66,7 @@ impl Service for DocsFiles {
 
   fn get(&self, id: String, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
-    let ctx = self.doc_type(&params);
+    let ctx = self.ctx(&params);
 
     let docs = self.orgs.get(&oid).docs(ctx).get(&id);
     docs.json()
@@ -73,7 +74,7 @@ impl Service for DocsFiles {
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
-    let ctx = self.doc_type(&params);
+    let ctx = self.ctx(&params);
 
     let docs = self.orgs.get(&oid).docs(ctx);
 
@@ -85,17 +86,17 @@ impl Service for DocsFiles {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
       let oid = self.oid(&params)?;
-      let ctx = self.doc_type(&params);
+      let ctx = self.ctx(&params);
 
       let docs = self.orgs.get(&oid).docs(ctx);
 
-      docs.get(&id).update(data)
+      docs.update(&self.app, id, data)
     }
   }
 
   fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
-    let ctx = self.doc_type(&params);
+    let ctx = self.ctx(&params);
 
     let docs = self.orgs.get(&oid).docs(ctx);
 
@@ -103,15 +104,20 @@ impl Service for DocsFiles {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
       let doc = docs.get(&id);
-
       let mut obj = doc.json()?;
-      for (n, v) in data.entries() {
-        if n != "_id" {
-          obj[n] = v.clone();
-        }
-      }
 
-      doc.update(data)
+      let mut patch = data.clone();
+      patch.remove("_id"); // TODO check id?
+
+      obj.merge(&patch);
+
+      // for (n, v) in data.entries() {
+      //   if n != "_id" {
+      //     obj[n] = v.clone();
+      //   }
+      // }
+
+      docs.update(&self.app, id, obj)
     }
   }
 

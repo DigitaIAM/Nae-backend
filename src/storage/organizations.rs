@@ -96,6 +96,10 @@ impl SOrganization {
     folder.push("docs");
     ctx.iter().for_each(|name| folder.push(name.as_str()));
 
+    // workaround because of first request fail with none existing folder
+    // TODO remove it from here
+    std::fs::create_dir_all(&folder);
+
     SDocs { oid: self.id.clone(), ctx, folder }
   }
 
@@ -103,6 +107,10 @@ impl SOrganization {
     let mut folder = self.folder.clone();
     folder.push("docs");
     ctx.iter().for_each(|name| folder.push(name.as_str()));
+
+    // workaround because of first request fail with none existing folder
+    // TODO remove it from here
+    std::fs::create_dir_all(&folder);
 
     SRefs { oid: self.id.clone(), ctx, folder }
   }
