@@ -1,9 +1,26 @@
+use std::str::FromStr;
+
+use chrono::{DateTime, Utc};
 use json::JsonValue;
+use rust_decimal::Decimal;
+use uuid::Uuid;
+
+use crate::services::Error;
 
 pub trait JsonParams {
   fn string(&self) -> String;
 
   fn string_or_none(&self) -> Option<String>;
+
+  fn uuid(&self) -> Uuid;
+
+  // fn uuid_from_datetime(&self) -> Uuid;
+
+  fn uuid_or_none(&self) -> Option<Uuid>;
+
+  fn number(&self) -> Decimal;
+
+  fn date(&self) -> Result<DateTime<Utc>, Error>;
 }
 
 impl JsonParams for JsonValue {
@@ -13,5 +30,41 @@ impl JsonParams for JsonValue {
 
   fn string_or_none(&self) -> Option<String> {
     self.as_str().map(|s| s.to_string())
+  }
+
+  fn uuid(&self) -> Uuid {
+    Uuid::try_parse(&self.string()).unwrap_or_default()
+  }
+
+  // fn uuid_from_datetime(&self) -> Uuid {
+  //   let dt: DateTime<Utc> = DateTime::parse_from_rfc3339(format!("{}", self.string()).as_str()).unwrap_or_default().into();
+  //   // Uuid::try_from(dt).unwrap_or_default()
+  // }
+
+  fn uuid_or_none(&self) -> Option<Uuid> {
+    if let Some(s) = self.string_or_none() {
+      if &s == "null" || &s == "" {
+        None
+      } else {
+        if let Ok(res) = Uuid::try_parse(&s) {
+          Some(res)
+        } else {
+          None
+        }
+      }
+    } else {
+      None
+    }
+  }
+
+  fn number(&self) -> Decimal {
+    Decimal::from_str(self.as_str().unwrap_or("0")).expect("These error can't occur")
+  }
+
+  fn date(&self) -> Result<DateTime<Utc>, Error> {
+    let s = self.string();
+    let dt = DateTime::parse_from_rfc3339(format!("{s}T00:00:00Z").as_str())?.into();
+
+    Ok(dt)
   }
 }

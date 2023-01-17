@@ -3,7 +3,7 @@ mod people;
 pub(crate) mod persistent;
 mod users;
 
-use crate::ID;
+use crate::{store, ID};
 use actix_web::web::Json;
 use chrono::{Date, DateTime, NaiveDate, ParseResult, Utc};
 use json::JsonValue;
@@ -287,6 +287,24 @@ quick_error! {
 impl std::convert::From<std::io::Error> for Error {
   fn from(e: std::io::Error) -> Self {
     Error::IOError(e.to_string())
+  }
+}
+
+impl std::convert::From<chrono::ParseError> for Error {
+  fn from(e: chrono::ParseError) -> Self {
+    Error::IOError(e.to_string())
+  }
+}
+
+impl std::convert::From<uuid::Error> for Error {
+  fn from(e: uuid::Error) -> Self {
+    Error::IOError(e.to_string())
+  }
+}
+
+impl std::convert::From<store::WHError> for Error {
+  fn from(e: store::WHError) -> Self {
+    Error::IOError(e.message())
   }
 }
 

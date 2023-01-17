@@ -36,7 +36,7 @@ impl<'a,O: FromBytes<O> + Debug> Iterator for LightIterator<'a,O> {
     fn next(&mut self) -> Option<(Vec<u8>, O)> {
         match self.0.next() {
             None => None,
-            Some((k, v)) => {
+            Some(Ok((k, v))) => {
                 // log::debug!("next {:?}", k);
                 if self.1.len() <= k.len() && self.1 == &k[0..self.1.len()] {
                     let record = O::from_bytes(&*v).unwrap();
@@ -44,7 +44,8 @@ impl<'a,O: FromBytes<O> + Debug> Iterator for LightIterator<'a,O> {
                 } else {
                     None
                 }
-            }
+            },
+            Some(Err(_)) => None
         }
     }
 }
@@ -63,7 +64,7 @@ impl<'a,O: FromKVBytes<O>> Iterator for HeavyIterator<'a,O> {
         loop {
             match self.it.next() {
                 None => break None,
-                Some((k, v)) => {
+                Some(Ok((k, v))) => {
                     // log::debug!("next {:?}", k);
                     if self.prefix.len() <= k.len() && self.prefix == &k[0..self.prefix.len()] {
                         if self.suffix.1.len() == 0
@@ -79,7 +80,8 @@ impl<'a,O: FromKVBytes<O>> Iterator for HeavyIterator<'a,O> {
                     } else {
                         break None;
                     }
-                }
+                },
+                Some(Err(_)) => break None
             }
         }
     }
