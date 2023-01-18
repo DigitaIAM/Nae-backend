@@ -23,7 +23,7 @@ impl SRefs {
     mut data: JsonValue,
   ) -> Result<JsonValue, Error> {
     let year = &id[0..4];
-    let month = &id[6..8];
+    let month = &id[5..7];
 
     println!("create id {id} year {year} month {month}");
 
