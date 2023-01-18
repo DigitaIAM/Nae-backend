@@ -1614,6 +1614,39 @@ mod tests {
 
     assert_ne!("", result["goods"][0]["_tid"].as_str().unwrap());
     assert_ne!("", result["goods"][1]["_tid"].as_str().unwrap());
+
+
+    let id = result["_id"].as_str().unwrap();
+
+    println!("id = {id:?}");
+
+    let mut data2: JsonValue = object! {
+      _id: id.clone(),
+      date: "2023-01-11",
+      storage: storage1.to_string(),
+      goods: [
+          {
+              goods: goods1.to_string(),
+              uom: "",
+              qty: 2,
+              price: 10,
+              cost: 20,
+              _tid: result["goods"][0]["_tid"].as_str().unwrap(),
+          }
+      ]
+  };
+
+  let req = test::TestRequest::post()
+    .uri(&format!("/api/docs/{id}?oid={}&ctx=warehouse,receive", oid.to_base64()))
+    .set_payload(data1.dump())
+    .insert_header(ContentType::json())
+    .to_request();
+
+  let response = test::call_and_read_body(&app, req).await;
+
+  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+  println!("NEW RESULT: {result:?}");
   }
 
   #[actix_web::test]
