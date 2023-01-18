@@ -26,6 +26,10 @@ fn save_data(
   time: DateTime<Utc>,
   data: JsonValue,
 ) -> Result<JsonValue, Error> {
+  // if data["_id"] != id {
+  //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data["_id"])));
+  // }
+
   let mut path_current = folder.clone();
   path_current.push(format!("{id}.json"));
 
@@ -57,7 +61,7 @@ fn save_data(
 impl SDocs {
   fn folder(&self, id: &String) -> PathBuf {
     let year = &id[0..4];
-    let month = &id[6..8];
+    let month = &id[5..7];
 
     println!("create id {id} year {year} month {month}");
 
@@ -78,9 +82,7 @@ impl SDocs {
   ) -> Result<JsonValue, Error> {
     let id = time_to_string(time);
 
-    // if data["_id"] != id {
-    //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data["_id"])));
-    // }
+    data["_id"] = id.clone().into();
 
     // 2023/01/2023-01-06T12:43:15Z/
     let mut folder = self.folder(&id);
