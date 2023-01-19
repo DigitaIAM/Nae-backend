@@ -47,9 +47,6 @@ pub(crate) async fn docs_create(
   data: web::Json<serde_json::Value>,
   params: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
-
-  println!("CALL fn docs_create");
-
   let data = json::parse(&data.0.to_string()).unwrap();
 
   let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
@@ -73,9 +70,6 @@ pub(crate) async fn docs_update(
   data: web::Json<serde_json::Value>,
   params: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
-
-  println!("CALL fn docs_update");
-
   let (id) = path.into_inner();
 
   let data = json::parse(&data.0.to_string()).unwrap();
