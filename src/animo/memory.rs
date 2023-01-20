@@ -6,6 +6,7 @@ use std::array::TryFromSliceError;
 use std::cmp::Ordering;
 use std::fmt::Formatter;
 use std::ops::{Add, Sub};
+use std::path::PathBuf;
 
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::animo::error::DBError;
@@ -469,7 +470,7 @@ impl Context {
 }
 
 pub(crate) trait Memory {
-  fn init(folder: &str) -> Result<Self, DBError>
+  fn init(folder: PathBuf) -> Result<Self, DBError>
   where
     Self: Sized;
 

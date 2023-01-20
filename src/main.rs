@@ -41,10 +41,10 @@ mod animo;
 mod api;
 mod docs;
 mod hr;
+pub mod store;
 mod text_search;
 mod use_cases;
 pub mod warehouse;
-pub mod store;
 
 mod hik;
 
@@ -147,7 +147,7 @@ async fn startup() -> std::io::Result<()> {
 
   let settings = std::sync::Arc::new(Settings::new().unwrap());
   println!("db starting up");
-  let db: AnimoDB = Memory::init(&settings.database.folder).unwrap();
+  let db: AnimoDB = Memory::init(settings.database.folder.clone()).unwrap();
   println!("db started up");
 
   println!("app starting up");

@@ -9,6 +9,7 @@ use crossbeam::channel::{Receiver, RecvError, Sender};
 use futures::SinkExt;
 use json::{array, JsonValue};
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -50,12 +51,12 @@ impl Application {
     let stop = Arc::new(AtomicBool::new(false));
 
     let app = Application {
-      settings,
+      settings: settings.clone(),
       db,
       job_scheduler,
       services,
       storage: None,
-      warehouse: WHStorage::new()?,
+      warehouse: WHStorage::new(settings)?,
       // channels: Arc::new(HashMap::new()),
       stop: stop.clone(),
       events: events_sender,

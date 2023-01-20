@@ -5,7 +5,7 @@ use crate::storage::old_references::{SDepartment, SLocation, SPerson, SShift};
 use crate::storage::references::SRefs;
 use crate::storage::{json, load, save, SCamera};
 use json::JsonValue;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SOrganizations {
@@ -13,9 +13,11 @@ pub(crate) struct SOrganizations {
 }
 
 impl SOrganizations {
-  pub(crate) fn new<S: Into<String>>(folder: S) -> Self {
-    let folder = folder.into();
-    std::fs::create_dir_all(&folder).map_err(|e| panic!("can't create folder {}: {}", folder, e));
+  pub(crate) fn new<S: AsRef<Path>>(folder: S) -> Self
+  where
+    PathBuf: std::convert::From<S>,
+  {
+    std::fs::create_dir_all(&folder).map_err(|e| panic!("can't create folder: {}", e)); // folder
 
     SOrganizations { folder: folder.into() }
   }

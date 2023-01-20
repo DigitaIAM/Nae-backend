@@ -6,6 +6,7 @@ use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadO
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 use serde::{Deserialize, Serialize};
 // use tracing_subscriber::fmt::format::Json;
+use std::path::Path;
 use std::{
   collections::{BTreeMap, HashMap},
   num,
@@ -21,6 +22,7 @@ use uuid::{uuid, Uuid};
 use chrono::ParseError;
 use std::string::FromUtf8Error;
 
+use crate::settings::Settings;
 use crate::{commutator::Application, services, utils::json::JsonParams};
 
 #[derive(Clone)]
@@ -33,8 +35,8 @@ impl WHStorage {
     Ok(self.database.record_ops(ops)?)
   }
 
-  pub fn new() -> Result<Self, WHError> {
-    std::fs::create_dir_all("./database/")
+  pub fn new(settings: Arc<Settings>) -> Result<Self, WHError> {
+    std::fs::create_dir_all(&settings.database.inventory)
       .map_err(|e| WHError::new("Can't create folder in ./database/"))?;
 
     let mut opts = Options::default();
@@ -942,7 +944,7 @@ impl OpMutation {
     document: Batch,
     before: Option<SOperation>,
     after: Option<SOperation>,
-    event: DateTime<Utc>
+    event: DateTime<Utc>,
   ) -> OpMutation {
     OpMutation { id, date, store, goods, document, before, after, event }
   }
@@ -989,7 +991,7 @@ impl OpMutation {
         document: a.batch.clone(),
         before: b.op.clone(),
         after: a.op.clone(),
-        event: a.event
+        event: a.event,
       })
     } else if let Some(b) = &before {
       Ok(OpMutation {
@@ -1000,7 +1002,7 @@ impl OpMutation {
         document: b.batch.clone(),
         before: b.op.clone(),
         after: None,
-        event: b.event
+        event: b.event,
       })
     } else if let Some(a) = &after {
       Ok(OpMutation {
@@ -1011,7 +1013,7 @@ impl OpMutation {
         document: a.batch.clone(),
         before: None,
         after: a.op.clone(),
-        event: a.event
+        event: a.event,
       })
     } else {
       Err(WHError::new("Both before and after states are None. It shouldn't happened"))
@@ -1577,7 +1579,7 @@ mod tests {
       .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
       .unwrap();
 
-    let storage = SOrganizations::new("./data_test/companies/");
+    let storage = SOrganizations::new(tmp_dir.path().join("companies"));
     application.storage = Some(storage.clone());
 
     application.register(DocsFiles::new(application.clone(), "docs", storage.clone()));
@@ -2767,7 +2769,7 @@ mod tests {
         chrono::Utc::now(),
       ),
       // КОРРЕКТНАЯ ОПЕРАЦИЯ С ДВУМЯ NONE?
-      OpMutation::new(id3, start_d, w1, G1, doc.clone(), None, None, chrono::Utc::now(),),
+      OpMutation::new(id3, start_d, w1, G1, doc.clone(), None, None, chrono::Utc::now()),
     ];
 
     db.record_ops(&ops).expect("test_issue_op_none");
