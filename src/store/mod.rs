@@ -165,12 +165,12 @@ const CHECK_DATE_STORE_PARTY: &str = "cf_check_date_store_party";
 const CHECK_PARTY_STORE_DATE: &str = "cf_check_party_store_date";
 
 #[derive(Eq, Ord, PartialOrd, Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Document {
-  id: String,
+pub struct Batch {
+  id: Uuid,
   date: DateTime<Utc>,
 }
 
-impl Default for Document {
+impl Default for Batch {
   fn default() -> Self {
     Self { id: Default::default(), date: Default::default() }
   }
@@ -812,7 +812,7 @@ struct Balance {
   date: DateTime<Utc>,
   store: Store,
   goods: Goods,
-  document: Document,
+  document: Batch,
   // value
   number: NumberForGoods,
 }
@@ -891,27 +891,29 @@ impl Balance {
   }
 }
 
+#[derive(Debug)]
 struct Op {
   // key
   id: Uuid,
   date: DateTime<Utc>,
   store: Store,
   goods: Goods,
-  document: Document,
+  batch: Batch,
   // value
   op: Option<SOperation>,
+  event: DateTime<Utc>,
 }
 
 impl Op {
   fn party(&self) -> Vec<u8> {
-    let dt = self.document.date.timestamp() as u64;
+    let dt = self.batch.date.timestamp() as u64;
 
     self
       .goods
       .as_bytes()
       .iter()
       .chain(dt.to_be_bytes().iter())
-      .chain(self.document.id.as_bytes().iter())
+      .chain(self.batch.id.as_bytes().iter())
       .map(|b| *b)
       .collect()
   }
@@ -924,10 +926,11 @@ pub struct OpMutation {
   date: DateTime<Utc>,
   store: Store,
   goods: Goods,
-  document: Document,
+  document: Batch,
   // value
   before: Option<SOperation>,
   after: Option<SOperation>,
+  event: DateTime<Utc>,
 }
 
 impl OpMutation {
@@ -936,11 +939,12 @@ impl OpMutation {
     date: DateTime<Utc>,
     store: Store,
     goods: Goods,
-    document: Document,
+    document: Batch,
     before: Option<SOperation>,
     after: Option<SOperation>,
+    event: DateTime<Utc>
   ) -> OpMutation {
-    OpMutation { id, date, store, goods, document, before, after }
+    OpMutation { id, date, store, goods, document, before, after, event }
   }
 
   fn party(&self) -> Vec<u8> {
@@ -982,9 +986,10 @@ impl OpMutation {
         date: a.date,
         store: a.store,
         goods: a.goods,
-        document: a.document.clone(),
+        document: a.batch.clone(),
         before: b.op.clone(),
         after: a.op.clone(),
+        event: a.event
       })
     } else if let Some(b) = &before {
       Ok(OpMutation {
@@ -992,9 +997,10 @@ impl OpMutation {
         date: b.date,
         store: b.store,
         goods: b.goods,
-        document: b.document.clone(),
+        document: b.batch.clone(),
         before: b.op.clone(),
         after: None,
+        event: b.event
       })
     } else if let Some(a) = &after {
       Ok(OpMutation {
@@ -1002,9 +1008,10 @@ impl OpMutation {
         date: a.date,
         store: a.store,
         goods: a.goods,
-        document: a.document.clone(),
+        document: a.batch.clone(),
         before: None,
         after: a.op.clone(),
+        event: a.event
       })
     } else {
       Err(WHError::new("Both before and after states are None. It shouldn't happened"))
@@ -1096,7 +1103,7 @@ struct AgregationStoreGoods {
   // ключ
   store: Option<Store>,
   goods: Option<Goods>,
-  document: Option<Document>,
+  document: Option<Batch>,
   // агрегация
   open_balance: NumberForGoods,
   receive: NumberForGoods,
@@ -1426,13 +1433,14 @@ pub fn receive_data(
   mut before: JsonValue,
 ) -> Result<JsonValue, WHError> {
   let store = data["storage"].uuid();
-  let document = Document { id: data["_id"].string(), date: data["date"].date()? };
 
-  // TODO make a vector from data["goods"] and iterate for it making Vec<Op> and send it to receive_operations()
+  let mut before = json_to_ops(&mut before, store.clone(), time.clone(), ctx)?.into_iter();
 
-  let mut before =
-    json_to_ops(&mut before, store.clone(), document.clone(), time.clone(), ctx)?.into_iter();
-  let mut after = json_to_ops(&mut data, store, document, time, ctx)?.into_iter();
+  // let tmp = json_to_ops(&mut data, store, time, ctx)?;
+  // println!("AFTER: {tmp:#?}");
+  // let mut after = tmp.into_iter();
+
+  let mut after = json_to_ops(&mut data, store, time, ctx)?.into_iter();
 
   let mut b_op = before.next();
   let mut a_op = after.next();
@@ -1480,39 +1488,47 @@ pub fn receive_data(
 fn json_to_ops(
   data: &mut JsonValue,
   store: Uuid,
-  document: Document,
   time: DateTime<Utc>,
   ctx: &Vec<String>,
 ) -> Result<Vec<Op>, WHError> {
   let mut ops = Vec::new();
 
   if *data != JsonValue::Null {
+    let d_date = data["date"].date()?;
     for goods in data["goods"].members_mut() {
       let op = Op {
-        // id: if _tid == None create new and inject _tid to data, else _tid
         id: if let Some(tid) = goods["_tid"].uuid_or_none() {
           tid
         } else {
           goods["_tid"] = JsonValue::String(Uuid::new_v4().to_string());
           goods["_tid"].uuid()
         },
-        date: time,
+        date: d_date,
         store,
         goods: goods["goods"].uuid(),
-        document: document.clone(),
+        batch: Batch { id: goods["_tid"].uuid(), date: d_date },
         op: if ctx == &vec!["warehouse".to_string(), "receive".to_string()] {
           Some(SOperation::Receive(NumberForGoods {
             qty: goods["qty"].number(),
-            cost: Some(goods["cost"].number()),
+            cost: if goods["cost"].number() == Decimal::ZERO {
+              None
+            } else {
+              Some(goods["cost"].number())
+            },
           }))
         } else if ctx == &vec!["warehouse".to_string(), "issue".to_string()] {
           Some(SOperation::Issue(NumberForGoods {
             qty: goods["qty"].number(),
-            cost: Some(goods["cost"].number()),
+            cost: if goods["cost"].number() == Decimal::ZERO {
+              None
+            } else {
+              Some(goods["cost"].number())
+            },
           }))
         } else {
           break;
         },
+        event: time,
       };
       ops.push(op);
     }
@@ -1539,45 +1555,55 @@ mod tests {
   use super::*;
   use crate::warehouse::test_util::init;
   use actix_web::{http::header::ContentType, test, web, App};
+  use futures::TryFutureExt;
   use json::object;
   use rocksdb::{ColumnFamilyDescriptor, Options};
   use tempfile::TempDir;
   use uuid::Uuid;
 
   #[actix_web::test]
-  async fn store_test_put_ops_with_app() {
+  async fn store_test_app_receive_change() {
+    if let Err(_) = app_receive_change().await {
+      std::fs::remove_dir_all("./data_test");
+      std::fs::remove_dir_all("./database");
+    }
+  }
+
+  async fn app_receive_change() -> Result<(), WHError> {
     let (tmp_dir, settings, db) = init();
 
-    let (mut app, events_receiver) = Application::new(Arc::new(settings), Arc::new(db))
+    let (mut application, events_receiver) = Application::new(Arc::new(settings), Arc::new(db))
       .await
       .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
       .unwrap();
 
     let storage = SOrganizations::new("./data_test/companies/");
-    app.storage = Some(storage.clone());
+    application.storage = Some(storage.clone());
 
-    app.register(DocsFiles::new(app.clone(), "docs", storage.clone()));
+    application.register(DocsFiles::new(application.clone(), "docs", storage.clone()));
 
     let app = test::init_service(
       App::new()
         // .app_data(web::Data::new(db.clone()))
-        .app_data(web::Data::new(app.clone()))
+        .app_data(web::Data::new(application.clone()))
         // .wrap(middleware::Logger::default())
         .service(api::docs_create)
+        .service(api::docs_update)
         // .service(api::memory_modify)
         // .service(api::memory_query)
         .default_service(web::route().to(api::not_implemented)),
     )
     .await;
 
-    // let doc1 = Uuid::new_v4();
-    let goods1 = Uuid::new_v4();
-    let storage1 = Uuid::new_v4();
-    let oid = ID::random();
+    let goods1 = Uuid::from_u128(201);
+    let goods2 = Uuid::from_u128(101);
+    let storage1 = Uuid::from_u128(202);
+    let oid = ID::from("99");
 
-    let mut data1: JsonValue = object! {
-        _id: "2023-01-17T13:02:15.787Z",
-        date: "2023-01-11",
+    //receive
+    let data0: JsonValue = object! {
+        _id: "",
+        date: "2023-01-18",
         storage: storage1.to_string(),
         goods: [
             {
@@ -1589,7 +1615,7 @@ mod tests {
                 _tid: ""
             },
             {
-                goods: goods1.to_string(),
+                goods: goods2.to_string(),
                 uom: "",
                 qty: 2,
                 price: 8,
@@ -1601,6 +1627,41 @@ mod tests {
 
     let req = test::TestRequest::post()
       .uri(&format!("/api/docs?oid={}&ctx=warehouse,receive", oid.to_base64()))
+      .set_payload(data0.dump())
+      .insert_header(ContentType::json())
+      // .param("oid", oid.to_base64())
+      // .param("document", "warehouse")
+      // .param("document", "receive")
+      .to_request();
+
+    let response = test::call_and_read_body(&app, req).await;
+
+    let result0: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+    assert_ne!("", result0["goods"][0]["_tid"].as_str().unwrap());
+    assert_ne!("", result0["goods"][1]["_tid"].as_str().unwrap());
+
+    // let id = result0["goods"][1]["_tid"].as_str().unwrap();
+
+    // issue
+    let data1: JsonValue = object! {
+        _id: "",
+        date: "2023-01-18",
+        storage: storage1.to_string(),
+        goods: [
+            {
+                goods: goods2.to_string(),
+                uom: "",
+                qty: 1,
+                // price: 0,
+                // cost: 0,
+                _tid: result0["goods"][1]["_tid"].as_str().unwrap(),
+            },
+        ]
+    };
+
+    let req = test::TestRequest::post()
+      .uri(&format!("/api/docs?oid={}&ctx=warehouse,issue", oid.to_base64()))
       .set_payload(data1.dump())
       .insert_header(ContentType::json())
       // .param("oid", oid.to_base64())
@@ -1610,10 +1671,58 @@ mod tests {
 
     let response = test::call_and_read_body(&app, req).await;
 
+    let result1: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+    // change
+    let id = result0["goods"][0]["_tid"].as_str().unwrap();
+
+    let data2: JsonValue = object! {
+        _id: "",
+        date: "2023-01-18",
+        storage: storage1.to_string(),
+        goods: [
+            {
+                goods: goods1.to_string(),
+                uom: "",
+                qty: 2,
+                price: 10,
+                cost: 20,
+                _tid: id,
+            }
+        ]
+    };
+
+    let req = test::TestRequest::post()
+      .uri(&format!("/api/docs/{id}?oid={}&ctx=warehouse,receive", oid.to_base64()))
+      .set_payload(data2.dump())
+      .insert_header(ContentType::json())
+      .to_request();
+
+    let response = test::call_and_read_body(&app, req).await;
+
     let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
 
-    assert_ne!("", result["goods"][0]["_tid"].as_str().unwrap());
-    assert_ne!("", result["goods"][1]["_tid"].as_str().unwrap());
+    let compare: serde_json::Value = serde_json::from_str(&data2.dump()).unwrap();
+
+    assert_eq!(compare, result);
+
+    let x = DateTypeStoreGoodsId();
+
+    let report = x
+      .get_report(
+        dt("2023-01-17").unwrap(),
+        dt("2023-01-20").unwrap(),
+        storage1,
+        &mut application.warehouse.database,
+      )
+      .unwrap();
+
+    println!("REPORT: {report:#?}");
+
+    std::fs::remove_dir_all("./data_test");
+    std::fs::remove_dir_all("./database");
+
+    Ok(())
   }
 
   #[actix_web::test]
@@ -1646,7 +1755,7 @@ mod tests {
     let op_d = dt("2022-10-10").expect("test_receive_ops");
     let check_d = dt("2022-11-01").expect("test_receive_ops");
     let w1 = Uuid::new_v4();
-    let party = Document { id: Uuid::new_v4().to_string(), date: op_d };
+    let party = Batch { id: Uuid::new_v4(), date: op_d };
 
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
@@ -1662,6 +1771,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
@@ -1671,6 +1781,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id3,
@@ -1680,6 +1791,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id4,
@@ -1689,6 +1801,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -1734,7 +1847,7 @@ mod tests {
     let op_d = dt("2022-10-10").expect("test_get_neg_balance");
     let check_d = dt("2022-10-11").expect("test_get_neg_balance");
     let w1 = Uuid::new_v4();
-    let party = Document { id: Uuid::new_v4().to_string(), date: op_d };
+    let party = Batch { id: Uuid::new_v4(), date: op_d };
 
     let id1 = Uuid::from_u128(101);
 
@@ -1746,6 +1859,7 @@ mod tests {
       party.clone(),
       None,
       Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+      chrono::Utc::now(),
     )];
 
     db.record_ops(&ops).expect("test_get_neg_balance");
@@ -1785,7 +1899,7 @@ mod tests {
     let start_d = dt("2022-10-10").expect("test_get_zero_balance");
     let end_d = dt("2022-10-11").expect("test_get_zero_balance");
     let w1 = Uuid::new_v4();
-    let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let party = Batch { id: Uuid::new_v4(), date: start_d };
 
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
@@ -1799,6 +1913,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
@@ -1808,6 +1923,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Issue(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -1852,7 +1968,7 @@ mod tests {
     let start_d = dt("2022-10-10")?;
     let end_d = dt("2022-10-11")?;
     let w1 = Uuid::new_v4();
-    let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let party = Batch { id: Uuid::new_v4(), date: start_d };
 
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
@@ -1866,6 +1982,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
@@ -1875,6 +1992,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -1912,8 +2030,8 @@ mod tests {
     let op_d = dt("2022-10-10")?;
     let check_d = dt("2022-10-11")?;
     let w1 = Uuid::new_v4();
-    let doc1 = Document { id: Uuid::new_v4().to_string(), date: dt("2022-10-09")? };
-    let doc2 = Document { id: Uuid::new_v4().to_string(), date: op_d };
+    let doc1 = Batch { id: Uuid::new_v4(), date: dt("2022-10-09")? };
+    let doc2 = Batch { id: Uuid::new_v4(), date: op_d };
 
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
@@ -1929,6 +2047,7 @@ mod tests {
         doc1.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
@@ -1938,6 +2057,7 @@ mod tests {
         doc1.clone(),
         None,
         Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id3,
@@ -1947,6 +2067,7 @@ mod tests {
         doc2.clone(),
         None,
         Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id4,
@@ -1956,6 +2077,7 @@ mod tests {
         doc2.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -2007,7 +2129,7 @@ mod tests {
 
     let start_d = dt("2022-11-01").expect("test_op_iter");
     let w1 = Uuid::new_v4();
-    let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let party = Batch { id: Uuid::new_v4(), date: start_d };
 
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
@@ -2023,6 +2145,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id4,
@@ -2032,6 +2155,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id1,
@@ -2044,6 +2168,7 @@ mod tests {
           qty: Decimal::from_str("0.5").unwrap(),
           cost: Some(1500.into()),
         })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
@@ -2056,6 +2181,7 @@ mod tests {
           qty: Decimal::from_str("0.5").unwrap(),
           cost: Some(1500.into()),
         })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -2114,7 +2240,7 @@ mod tests {
     let start_d = dt("2022-11-07").expect("test_report");
     let end_d = dt("2022-11-08").expect("test_report");
     let w1 = Uuid::new_v4();
-    let party = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let party = Batch { id: Uuid::new_v4(), date: start_d };
 
     let ops = vec![
       OpMutation::new(
@@ -2125,6 +2251,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(4000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         Uuid::new_v4(),
@@ -2134,6 +2261,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(6000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         Uuid::new_v4(),
@@ -2143,6 +2271,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         Uuid::new_v4(),
@@ -2152,6 +2281,7 @@ mod tests {
         party.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         Uuid::new_v4(),
@@ -2164,6 +2294,7 @@ mod tests {
           qty: Decimal::from_str("0.5").unwrap(),
           cost: Some(1500.into()),
         })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         Uuid::new_v4(),
@@ -2176,6 +2307,7 @@ mod tests {
           qty: Decimal::from_str("0.5").unwrap(),
           cost: Some(1500.into()),
         })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -2258,9 +2390,8 @@ mod tests {
     let start_d = dt("2022-10-10").expect("test_parties");
     let end_d = dt("2022-10-11").expect("test_parties");
     let w1 = Uuid::new_v4();
-    let doc1 =
-      Document { id: Uuid::new_v4().to_string(), date: dt("2022-10-08").expect("test_parties") };
-    let doc2 = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let doc1 = Batch { id: Uuid::new_v4(), date: dt("2022-10-08").expect("test_parties") };
+    let doc2 = Batch { id: Uuid::new_v4(), date: start_d };
 
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
@@ -2275,6 +2406,7 @@ mod tests {
         doc1.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
@@ -2284,6 +2416,7 @@ mod tests {
         doc2.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id3,
@@ -2293,6 +2426,7 @@ mod tests {
         doc2.clone(),
         None,
         Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(500.into()) })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -2360,7 +2494,7 @@ mod tests {
     let end_d = dt("2022-10-11").expect("test_issue_cost_none");
     let w1 = Uuid::new_v4();
 
-    let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let doc = Batch { id: Uuid::new_v4(), date: start_d };
 
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
@@ -2374,6 +2508,7 @@ mod tests {
         doc.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
@@ -2383,6 +2518,7 @@ mod tests {
         doc.clone(),
         None,
         Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: None })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -2438,7 +2574,7 @@ mod tests {
     let end_d = dt("2022-10-11").expect("test_receive_cost_none");
     let w1 = Uuid::new_v4();
 
-    let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let doc = Batch { id: Uuid::new_v4(), date: start_d };
 
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
@@ -2452,6 +2588,7 @@ mod tests {
         doc.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
@@ -2461,6 +2598,7 @@ mod tests {
         doc.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: None })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -2516,7 +2654,7 @@ mod tests {
     let end_d = dt("2022-10-11").expect("test_issue_remainder");
     let w1 = Uuid::new_v4();
 
-    let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let doc = Batch { id: Uuid::new_v4(), date: start_d };
 
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
@@ -2534,6 +2672,7 @@ mod tests {
         doc.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
@@ -2543,6 +2682,7 @@ mod tests {
         doc.clone(),
         None,
         Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: None })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id3,
@@ -2552,6 +2692,7 @@ mod tests {
         doc.clone(),
         None,
         Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: None })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -2608,7 +2749,7 @@ mod tests {
     let end_d = dt("2022-10-11").expect("test_issue_op_none");
     let w1 = Uuid::new_v4();
 
-    let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let doc = Batch { id: Uuid::new_v4(), date: start_d };
 
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
@@ -2623,9 +2764,10 @@ mod tests {
         doc.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
+        chrono::Utc::now(),
       ),
       // КОРРЕКТНАЯ ОПЕРАЦИЯ С ДВУМЯ NONE?
-      OpMutation::new(id3, start_d, w1, G1, doc.clone(), None, None),
+      OpMutation::new(id3, start_d, w1, G1, doc.clone(), None, None, chrono::Utc::now(),),
     ];
 
     db.record_ops(&ops).expect("test_issue_op_none");
@@ -2680,7 +2822,7 @@ mod tests {
     let end_d = dt("2022-10-11").expect("test_receive_change_op");
     let w1 = Uuid::new_v4();
 
-    let doc = Document { id: Uuid::new_v4().to_string(), date: start_d };
+    let doc = Batch { id: Uuid::new_v4(), date: start_d };
 
     let id1 = Uuid::from_u128(101);
 
@@ -2693,6 +2835,7 @@ mod tests {
         doc.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
+        chrono::Utc::now(),
       ),
       OpMutation::new(
         id1,
@@ -2702,6 +2845,7 @@ mod tests {
         doc.clone(),
         None,
         Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(30.into()) })),
+        chrono::Utc::now(),
       ),
     ];
 
@@ -2730,6 +2874,7 @@ mod tests {
       doc.clone(),
       Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
       Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(100.into()) })),
+      chrono::Utc::now(),
     )];
 
     db.record_ops(&ops_new).expect("test_receive_change_op");
