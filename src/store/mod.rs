@@ -37,7 +37,7 @@ impl WHStorage {
 
   pub fn new(settings: Arc<Settings>) -> Result<Self, WHError> {
     std::fs::create_dir_all(&settings.database.inventory)
-      .map_err(|e| WHError::new("Can't create folder in ./database/"))?;
+      .map_err(|e| WHError::new("Can't create folder for WHStorage"))?;
 
     let mut opts = Options::default();
     let mut cfs = Vec::new();
@@ -58,8 +58,8 @@ impl WHStorage {
     opts.create_missing_column_families(true);
     let db = Db {
       db: Arc::new(
-        DB::open_cf_descriptors(&opts, "./database/", cfs)
-          .expect("Can't open database in ./database/"),
+        DB::open_cf_descriptors(&opts, &settings.database.inventory, cfs)
+          .expect("Can't open database in settings.database.inventory"),
       ),
     };
 
@@ -1565,13 +1565,6 @@ mod tests {
 
   #[actix_web::test]
   async fn store_test_app_receive_change() {
-    if let Err(_) = app_receive_change().await {
-      std::fs::remove_dir_all("./data_test");
-      std::fs::remove_dir_all("./database");
-    }
-  }
-
-  async fn app_receive_change() -> Result<(), WHError> {
     let (tmp_dir, settings, db) = init();
 
     let (mut application, events_receiver) = Application::new(Arc::new(settings), Arc::new(db))
@@ -1642,8 +1635,6 @@ mod tests {
 
     assert_ne!("", result0["goods"][0]["_tid"].as_str().unwrap());
     assert_ne!("", result0["goods"][1]["_tid"].as_str().unwrap());
-
-    // let id = result0["goods"][1]["_tid"].as_str().unwrap();
 
     // issue
     let data1: JsonValue = object! {
@@ -1720,11 +1711,6 @@ mod tests {
       .unwrap();
 
     println!("REPORT: {report:#?}");
-
-    std::fs::remove_dir_all("./data_test");
-    std::fs::remove_dir_all("./database");
-
-    Ok(())
   }
 
   #[actix_web::test]
