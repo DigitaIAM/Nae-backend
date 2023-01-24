@@ -2,7 +2,7 @@ use crate::animo::memory::ID;
 use crate::commutator::Application;
 use crate::services::{Data, Error};
 use crate::storage::{json, load, save};
-use crate::store::{dt, receive_data, Batch, NumberForGoods, OpMutation, SOperation};
+use crate::store::{dt, receive_data, Batch, NumberForGoods, OpMutation};
 use crate::utils::time::time_to_string;
 use chrono::{DateTime, Utc};
 use json::JsonValue;

@@ -19,6 +19,7 @@ pub trait JsonParams {
   fn uuid_or_none(&self) -> Option<Uuid>;
 
   fn number(&self) -> Decimal;
+  fn number_or_none(&self) -> Option<Decimal>;
 
   fn date(&self) -> Result<DateTime<Utc>, Error>;
 }
@@ -60,6 +61,18 @@ impl JsonParams for JsonValue {
   fn number(&self) -> Decimal {
     // Decimal::from_str(self.as_str().unwrap_or("0")).expect("These error can't occur")
     Decimal::from_str(&self.to_string()).unwrap_or_default()
+  }
+
+  fn number_or_none(&self) -> Option<Decimal> {
+    if let Some(number) = self.as_number() {
+      let number = number.to_string();
+      match Decimal::from_str(&self.to_string()) {
+        Ok(number) => Some(number),
+        Err(_) => None,
+      }
+    } else {
+      None
+    }
   }
 
   fn date(&self) -> Result<DateTime<Utc>, Error> {

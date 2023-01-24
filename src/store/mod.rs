@@ -1,11 +1,13 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 
+mod balance;
+
 use chrono::{DateTime, Datelike, Month, NaiveDate, Utc};
 use json::{array, iterators::Members, JsonValue};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 use serde::{Deserialize, Serialize};
-// use tracing_subscriber::fmt::format::Json;
+use std::ops::Neg;
 use std::path::Path;
 use std::{
   collections::{BTreeMap, HashMap},
@@ -16,14 +18,13 @@ use std::{
 };
 use uuid::{uuid, Uuid};
 
-// use crate::error::WHError;
-// use crate::store::error::WHError;
-
 use chrono::ParseError;
 use std::string::FromUtf8Error;
 
 use crate::settings::Settings;
 use crate::{commutator::Application, services, utils::json::JsonParams};
+
+use self::balance::{BalanceDelta, BalanceForGoods};
 
 #[derive(Clone)]
 pub struct WHStorage {
@@ -43,10 +44,10 @@ impl WHStorage {
     let mut cfs = Vec::new();
 
     let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_PARTY_ID,
-      DATE_TYPE_STORE_PARTY_ID,
-      CHECK_DATE_STORE_PARTY,
-      CHECK_PARTY_STORE_DATE,
+      STORE_DATE_TYPE_BATCH_ID,
+      DATE_TYPE_STORE_BATCH_ID,
+      CHECK_DATE_STORE_BATCH,
+      CHECK_BATCH_STORE_DATE,
     ];
 
     for name in cf_names {
@@ -129,30 +130,6 @@ type Store = Uuid;
 type Qty = Decimal;
 type Cost = Decimal;
 
-// trait TryFromStr {
-//   fn try_from(value: Option<String>) -> Result<Self, WHError>;
-// }
-
-// impl TryFromStr for Uuid {
-//   fn try_from(value: Option<String>) -> Result<Uuid, WHError> {
-//     if let Some(v) = value {
-//       Ok(Uuid::parse_str(v.as_str())?)
-//     } else {
-//       Err(WHError::new("Error parsing uuid from str"))
-//     }
-//   }
-// }
-
-// impl TryFromStr for Decimal {
-//   fn try_from(value: Option<String>) -> Result<Self, WHError> {
-//     if let Some(v) = value {
-//       Ok(Decimal::from_str(v.as_str())?)
-//     } else {
-//       Err(WHError::new("Error parsing decimal from str"))
-//     }
-//   }
-// }
-
 const G1: Uuid = Uuid::from_u128(1);
 const G2: Uuid = Uuid::from_u128(2);
 const G3: Uuid = Uuid::from_u128(3);
@@ -160,11 +137,11 @@ const G3: Uuid = Uuid::from_u128(3);
 const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
 const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
-const STORE_DATE_TYPE_PARTY_ID: &str = "cf_store_date_type_party_id";
-const DATE_TYPE_STORE_PARTY_ID: &str = "cf_date_type_store_party_id";
+const STORE_DATE_TYPE_BATCH_ID: &str = "cf_store_date_type_batch_id";
+const DATE_TYPE_STORE_BATCH_ID: &str = "cf_date_type_store_batch_id";
 
-const CHECK_DATE_STORE_PARTY: &str = "cf_check_date_store_party";
-const CHECK_PARTY_STORE_DATE: &str = "cf_check_party_store_date";
+const CHECK_DATE_STORE_BATCH: &str = "cf_check_date_store_batch";
+const CHECK_BATCH_STORE_DATE: &str = "cf_check_batch_store_date";
 
 #[derive(Eq, Ord, PartialOrd, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Batch {
@@ -172,12 +149,11 @@ pub struct Batch {
   date: DateTime<Utc>,
 }
 
-impl Default for Batch {
-  fn default() -> Self {
-    Self { id: Default::default(), date: Default::default() }
+impl Batch {
+  fn new() -> Batch {
+    Batch { id: Default::default(), date: Default::default() }
   }
 }
-
 trait WareHouse {
   fn put_op(&self, op: &OpMutation, db: &Db) -> Result<(), WHError>;
 
@@ -189,7 +165,7 @@ trait WareHouse {
     end_d: DateTime<Utc>,
     wh: Store,
     db: &Db,
-  ) -> Result<Vec<OpMutation>, WHError>;
+  ) -> Result<Vec<Op>, WHError>;
 
   fn get_report(
     &self,
@@ -204,17 +180,18 @@ trait WareHouse {
 
     let mut old_balances = BTreeMap::new();
 
-    for checkpoint in checkpoints {
-      let balance = old_balances.entry(checkpoint.party()).or_insert(Balance {
-        date: checkpoint.date,
-        store: checkpoint.store,
-        goods: checkpoint.goods,
-        document: checkpoint.document.clone(),
-        number: NumberForGoods::default(),
-      });
+    // TODO it's incorrect, recheck
+    // for checkpoint in checkpoints {
+    //   let balance = old_balances.entry(checkpoint.party()).or_insert(Balance {
+    //     date: checkpoint.date,
+    //     store: checkpoint.store,
+    //     goods: checkpoint.goods,
+    //     batch: checkpoint.batch.clone(),
+    //     number: BalanceForGoods::default(),
+    //   });
 
-      balance.number += &checkpoint.number;
-    }
+    //   balance.number += checkpoint.number;
+    // }
 
     let items = new_get_agregations(old_balances, ops, start_date);
 
@@ -230,7 +207,7 @@ impl WareHouse for DateTypeStoreGoodsId {
     end_d: DateTime<Utc>,
     wh: Store,
     db: &Db,
-  ) -> Result<Vec<OpMutation>, WHError> {
+  ) -> Result<Vec<Op>, WHError> {
     let start_date = start_d.timestamp() as u64;
     let from: Vec<u8> = start_date
       .to_be_bytes()
@@ -252,7 +229,7 @@ impl WareHouse for DateTypeStoreGoodsId {
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
 
-    if let Some(handle) = db.db.cf_handle(DATE_TYPE_STORE_PARTY_ID) {
+    if let Some(handle) = db.db.cf_handle(DATE_TYPE_STORE_BATCH_ID) {
       let iter = db.db.iterator_cf_opt(&handle, options, IteratorMode::Start);
 
       let mut res = Vec::new();
@@ -270,7 +247,7 @@ impl WareHouse for DateTypeStoreGoodsId {
   }
 
   fn put_op(&self, op: &OpMutation, db: &Db) -> Result<(), WHError> {
-    if let Some(cf) = db.db.cf_handle(DATE_TYPE_STORE_PARTY_ID) {
+    if let Some(cf) = db.db.cf_handle(DATE_TYPE_STORE_BATCH_ID) {
       db.db.put_cf(&cf, op.date_type_store_party_id(), op.value()?)?;
 
       Ok(())
@@ -280,7 +257,7 @@ impl WareHouse for DateTypeStoreGoodsId {
   }
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
-    ColumnFamilyDescriptor::new(DATE_TYPE_STORE_PARTY_ID, opts)
+    ColumnFamilyDescriptor::new(DATE_TYPE_STORE_BATCH_ID, opts)
   }
 }
 
@@ -292,7 +269,7 @@ impl WareHouse for StoreDateTypeGoodsId {
     end_d: DateTime<Utc>,
     wh: Store,
     db: &Db,
-  ) -> Result<Vec<OpMutation>, WHError> {
+  ) -> Result<Vec<Op>, WHError> {
     let start_date = start_d.timestamp() as u64;
     let from: Vec<u8> = wh
       .as_bytes()
@@ -314,7 +291,7 @@ impl WareHouse for StoreDateTypeGoodsId {
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
 
-    if let Some(handle) = db.db.cf_handle(STORE_DATE_TYPE_PARTY_ID) {
+    if let Some(handle) = db.db.cf_handle(STORE_DATE_TYPE_BATCH_ID) {
       let iter = db.db.iterator_cf_opt(&handle, options, IteratorMode::Start);
 
       let mut res = Vec::new();
@@ -331,7 +308,7 @@ impl WareHouse for StoreDateTypeGoodsId {
   }
 
   fn put_op(&self, op: &OpMutation, db: &Db) -> Result<(), WHError> {
-    if let Some(cf) = db.db.cf_handle(STORE_DATE_TYPE_PARTY_ID) {
+    if let Some(cf) = db.db.cf_handle(STORE_DATE_TYPE_BATCH_ID) {
       db.db.put_cf(&cf, op.store_date_type_party_id(), op.value()?)?;
 
       Ok(())
@@ -341,9 +318,22 @@ impl WareHouse for StoreDateTypeGoodsId {
   }
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
-    ColumnFamilyDescriptor::new(STORE_DATE_TYPE_PARTY_ID, opts)
+    ColumnFamilyDescriptor::new(STORE_DATE_TYPE_BATCH_ID, opts)
   }
 }
+
+trait Checkpoint {
+  fn key(&self, op: &Op) -> Vec<u8>;
+}
+
+struct CheckDateStoreBatch();
+
+impl Checkpoint for CheckDateStoreBatch {
+    fn key(&self, op: &Op) -> Vec<u8> {
+        
+    }
+}
+struct CheckBatchStoreDate();
 
 pub fn dt(date: &str) -> Result<DateTime<Utc>, WHError> {
   let res = DateTime::parse_from_rfc3339(format!("{date}T00:00:00Z").as_str())?.into();
@@ -414,15 +404,8 @@ impl Db {
       date: first_day_next_month(op.date),
       store: op.store,
       goods: op.goods,
-      document: op.document.clone(),
-      number: if let Some(o) = &op.after {
-        match o {
-          SOperation::Receive(n) => n.clone(),
-          SOperation::Issue(n) => n.clone(),
-        }
-      } else {
-        NumberForGoods::default()
-      },
+      batch: op.batch.clone(),
+      number: BalanceForGoods::default(),
     };
 
     if let Some(cf) = self.db.cf_handle(name) {
@@ -443,12 +426,8 @@ impl Db {
       for name in &cf_names {
         if name == "default" {
           continue;
-        } else if name == CHECK_DATE_STORE_PARTY || name == CHECK_PARTY_STORE_DATE {
-          if op.before.is_none() {
-            self.insert_checkpoint(&op, name)?;
-          } else {
-            self.change_checkpoint(&op, name)?;
-          }
+        } else if name == CHECK_DATE_STORE_BATCH || name == CHECK_BATCH_STORE_DATE {
+          self.change_checkpoint(&op, name)?;
         } else {
           if let Some(cf) = self.db.cf_handle(name.as_str()) {
             if op.before.is_none() {
@@ -472,124 +451,28 @@ impl Db {
   }
 
   fn change_checkpoint(&self, op: &OpMutation, name: &str) -> Result<(), WHError> {
-    let mut bal = Balance {
-      date: first_day_next_month(op.date),
-      store: op.store,
-      goods: op.goods,
-      document: op.document.clone(),
-      number: NumberForGoods::default(),
-    };
-
-    let from = bal.key(name)?;
-    let mut till: Vec<u8> = Vec::new();
-
-    if name == CHECK_PARTY_STORE_DATE {
-      till = op
-        .party()
-        .iter()
-        .chain(op.store.as_bytes().iter())
-        .chain(u64::MAX.to_be_bytes().iter())
-        .map(|b| *b)
-        .collect();
-    } else if name == CHECK_DATE_STORE_PARTY {
-      till = u64::MAX
-        .to_be_bytes()
-        .iter()
-        .chain(op.store.as_bytes().iter())
-        .chain(op.party().iter())
-        .map(|b| *b)
-        .collect();
-    }
-
-    let mut readopts = ReadOptions::default();
-    readopts.set_iterate_range(from..till);
     let cf = self.db.cf_handle(name).expect("option in change_checkpoint");
 
-    let mut iter = self.db.iterator_cf_opt(&cf, readopts, IteratorMode::Start);
+    // for begins
+    // get iterator from first day of next month of given operation till 'last' check point
+    let check_point = first_day_next_month(op.date);
 
-    while let Some(res) = iter.next() {
-      let (_, v) = res?;
-      let mut b: Balance = serde_json::from_slice(&v)?;
+    let key: Vec<u8> = todo!();
 
-      if b.document == op.document && b.store == op.store && b.goods == op.goods {
-        if op.after.is_none() {
-          bal.number += op.before.as_ref().expect("option in change_checkpoint");
-          if bal.number.qty == Decimal::new(0, 0) {
-            self.db.delete_cf(&cf, bal.key(name)?)?;
-          } else {
-            self.db.put_cf(&cf, bal.key(name)?, bal.value()?)?;
-          }
-        } else {
-          b.number += &op.delta()?;
+    
 
-          self.db.put_cf(&cf, b.key(name)?, b.value()?)?;
-        }
-      }
-    }
-
-    Ok(())
-  }
-
-  fn insert_checkpoint(&self, op: &OpMutation, name: &str) -> Result<(), WHError> {
-    let mut bal = Balance {
-      date: first_day_current_month(op.date),
-      store: op.store,
-      goods: op.goods,
-      document: op.document.clone(),
-      number: NumberForGoods::default(),
+    let balance = match self.db.get_cf(&cf, &key)? {
+      Some(v) => serde_json::from_slice(&v)?,
+      None => BalanceForGoods::default(),
     };
 
-    let cf = self.db.cf_handle(name).expect("option in insert_checkpoint");
-
-    let mut old = NumberForGoods::default();
-
-    // найти предыдущий чекпоинт с помощью ключа баланса
-    if let Ok(Some(v)) = self.db.get_cf(&cf, bal.key(name)?) {
-      let b: Balance = serde_json::from_slice(&v)?;
-
-      old += &b.number;
-    }
-
-    bal.date = first_day_next_month(op.date);
-
-    if let Ok(Some(v)) = self.db.get_cf(&cf, bal.key(name)?) {
-      let mut b: Balance = serde_json::from_slice(&v)?;
-
-      if let Some(o) = &op.after {
-        match o {
-          SOperation::Receive(n) => {
-            b.number += n;
-          },
-          SOperation::Issue(n) => {
-            b.number -= n;
-          },
-        }
-      } else {
-        b.number = NumberForGoods::default();
-      }
-
-      if b.number.cost == Some(0.into())
-        || b.number.cost.is_none()
-        || b.number.qty == Decimal::new(0, 0)
-      {
-        self.db.delete_cf(&cf, b.key(name)?)?;
-      } else {
-        self.db.put_cf(&cf, b.key(name)?, b.value()?)?;
-      }
+    balance += op.to_delta();
+    if balance.is_zero() {
+      self.db.delete_cf(&cf, &key)?;
     } else {
-      if let Some(o) = &op.after {
-        match o {
-          SOperation::Receive(n) => {
-            bal.number = bal.number + old + n.clone();
-          },
-          SOperation::Issue(n) => {
-            bal.number = bal.number - old - n.clone();
-          },
-        }
-
-        self.db.put_cf(&cf, bal.key(name)?, bal.value()?)?;
-      }
+      self.db.put_cf(&cf, &key, serde_json::to_string(&balance)?)?;
     }
+    // for ends
 
     Ok(())
   }
@@ -601,7 +484,7 @@ impl Db {
   ) -> Result<Vec<Balance>, WHError> {
     let mut result = Vec::new();
 
-    if let Some(cf) = self.db.cf_handle(CHECK_DATE_STORE_PARTY) {
+    if let Some(cf) = self.db.cf_handle(CHECK_DATE_STORE_BATCH) {
       let ts = first_day_current_month(date).timestamp() as u64;
 
       let from: Vec<u8> = ts
@@ -630,7 +513,7 @@ impl Db {
       }
     } else {
       let opts = Options::default();
-      self.db.create_cf(CHECK_DATE_STORE_PARTY, &opts)?;
+      self.db.create_cf(CHECK_DATE_STORE_BATCH, &opts)?;
     }
 
     Ok(result)
@@ -643,7 +526,7 @@ impl Db {
   ) -> Result<Vec<Balance>, WHError> {
     let mut result = Vec::new();
 
-    if let Some(cf) = self.db.cf_handle(CHECK_DATE_STORE_PARTY) {
+    if let Some(cf) = self.db.cf_handle(CHECK_DATE_STORE_BATCH) {
       let dt = date.timestamp() as u64;
       let from: Vec<u8> = dt
         .to_be_bytes()
@@ -661,7 +544,7 @@ impl Db {
       }
     } else {
       let opts = Options::default();
-      self.db.create_cf(CHECK_DATE_STORE_PARTY, &opts)?;
+      self.db.create_cf(CHECK_DATE_STORE_BATCH, &opts)?;
     }
 
     Ok(result)
@@ -675,125 +558,74 @@ pub struct NumberForGoods {
 }
 
 impl NumberForGoods {
-  fn is_equal_operation(&self, oper: &Option<SOperation>) -> bool {
-    if let Some(o) = oper {
-      match o {
-        SOperation::Receive(n) if self == n => return true,
-        SOperation::Issue(n) if self == n => return true,
-        &_ => (),
-      }
-    }
-
-    false
-  }
-}
-
-impl Default for NumberForGoods {
-  fn default() -> Self {
-    Self { qty: 0.into(), cost: Some(0.into()) }
-  }
-}
-
-impl AddAssign<&Self> for NumberForGoods {
-  fn add_assign(&mut self, rhs: &Self) {
-    if let Some(c) = rhs.cost {
-      self.cost = Some(self.cost.unwrap_or(0.into()) + c);
-    }
-    self.qty += rhs.qty;
-  }
-}
-
-impl SubAssign<&Self> for NumberForGoods {
-  fn sub_assign(&mut self, rhs: &Self) {
-    if let Some(c) = rhs.cost {
-      self.cost = Some(self.cost.unwrap_or(0.into()) - c);
-    } else {
-      if let Some(sc) = self.cost {
-        let price = sc / self.qty;
-        self.cost = Some(sc - price * rhs.qty);
-      }
-    }
-    self.qty -= rhs.qty;
-  }
-}
-
-impl Add for NumberForGoods {
-  type Output = NumberForGoods;
-
-  fn add(self, rhs: Self) -> Self::Output {
-    NumberForGoods {
-      qty: self.qty + rhs.qty,
-      cost: Some(self.cost.unwrap_or(0.into()) + rhs.cost.unwrap_or(0.into())),
-    }
-  }
-}
-
-impl Sub for NumberForGoods {
-  type Output = NumberForGoods;
-
-  fn sub(self, rhs: Self) -> Self::Output {
-    NumberForGoods {
-      qty: self.qty - rhs.qty,
-      cost: if let Some(c) = rhs.cost {
-        Some(self.cost.unwrap_or(0.into()) - c)
-      } else {
-        if let Some(sc) = self.cost {
-          let price = sc / self.qty;
-          Some(sc - price * rhs.qty)
-        } else {
-          None
-        }
-      },
-    }
+  fn to_delta(&self) -> BalanceDelta {
+    BalanceDelta { qty: self.qty, cost: self.cost.unwrap_or_default() }
   }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum SOperation {
-  Receive(NumberForGoods),
-  Issue(NumberForGoods),
+pub enum Mode {
+  Auto,
+  Manual,
 }
 
-impl Add<SOperation> for NumberForGoods {
-  type Output = NumberForGoods;
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum InternalOperation {
+  Receive(Qty, Cost),
+  Issue(Qty, Cost, Mode),
+}
 
-  fn add(mut self, rhs: SOperation) -> Self::Output {
+trait Operation {}
+
+impl Into<BalanceDelta> for InternalOperation {
+  fn into(self) -> BalanceDelta {
+    match self {
+      InternalOperation::Receive(qty, cost) => BalanceDelta { qty, cost },
+      InternalOperation::Issue(qty, cost, mode) => BalanceDelta { qty: -qty, cost: -cost },
+    }
+  }
+}
+
+impl Add<InternalOperation> for BalanceForGoods {
+  type Output = BalanceForGoods;
+
+  fn add(mut self, rhs: InternalOperation) -> Self::Output {
     match rhs {
-      SOperation::Receive(n) => {
-        self.cost = Some(self.cost.unwrap_or(0.into()) + n.cost.unwrap_or(0.into()));
-        self.qty += n.qty;
+      InternalOperation::Receive(qty, cost) => {
+        self.qty += qty;
+        self.cost += cost;
       },
-      SOperation::Issue(n) => {
-        if let Some(c) = n.cost {
-          self.cost = Some(self.cost.unwrap_or(0.into()) - c);
+      InternalOperation::Issue(qty, cost, mode) => {
+        self.qty -= qty;
+        self.cost -= if mode == Mode::Manual {
+          cost
         } else {
-          if let Some(sc) = self.cost {
-            let price = sc / self.qty;
-            self.cost = Some(sc - price * n.qty);
+          match self.cost.checked_div(self.qty) {
+            Some(price) => price * qty,
+            None => 0.into(), // TODO handle error?
           }
         }
-        self.qty -= n.qty;
       },
     }
     self
   }
 }
 
-impl AddAssign<&SOperation> for NumberForGoods {
-  fn add_assign(&mut self, rhs: &SOperation) {
+impl AddAssign<&InternalOperation> for BalanceForGoods {
+  fn add_assign(&mut self, rhs: &InternalOperation) {
     match rhs {
-      SOperation::Receive(n) => {
-        self.qty += n.qty;
-        self.cost = Some(self.cost.unwrap_or(0.into()) + n.cost.unwrap_or(0.into()));
+      InternalOperation::Receive(qty, cost) => {
+        self.qty += qty;
+        self.cost += cost;
       },
-      SOperation::Issue(n) => {
-        self.qty -= n.qty;
-        if let Some(c) = n.cost {
-          self.cost = Some(self.cost.unwrap_or(0.into()) - c);
+      InternalOperation::Issue(qty, cost, mode) => {
+        self.qty -= qty;
+        self.cost -= if mode == &Mode::Manual {
+          *cost
         } else {
-          if let Some(sc) = self.cost {
-            let price = sc / self.qty;
-            self.cost = Some(sc - price * n.qty);
+          match self.cost.checked_div(self.qty) {
+            Some(price) => price * *qty,
+            None => 0.into(), // TODO handle error?
           }
         }
       },
@@ -814,21 +646,9 @@ struct Balance {
   date: DateTime<Utc>,
   store: Store,
   goods: Goods,
-  document: Batch,
+  batch: Batch,
   // value
-  number: NumberForGoods,
-}
-
-impl Default for Balance {
-  fn default() -> Self {
-    Self {
-      date: Default::default(),
-      store: Default::default(),
-      goods: Default::default(),
-      document: Default::default(),
-      number: NumberForGoods::default(),
-    }
-  }
+  number: BalanceForGoods,
 }
 
 impl AddAssign<&OpMutation> for Balance {
@@ -869,8 +689,8 @@ impl Balance {
 
   fn key(&self, s: &str) -> Result<Vec<u8>, WHError> {
     match s {
-      CHECK_DATE_STORE_PARTY => Ok(self.key_date_store_party()),
-      CHECK_PARTY_STORE_DATE => Ok(self.key_party_store_date()),
+      CHECK_DATE_STORE_BATCH => Ok(self.key_date_store_party()),
+      CHECK_BATCH_STORE_DATE => Ok(self.key_party_store_date()),
       _ => Err(WHError::new("Wrong Balance key type")),
     }
   }
@@ -880,20 +700,20 @@ impl Balance {
   }
 
   fn party(&self) -> Vec<u8> {
-    let dt = self.document.date.timestamp() as u64;
+    let dt = self.batch.date.timestamp() as u64;
 
     self
       .goods
       .as_bytes()
       .iter()
       .chain(dt.to_be_bytes().iter())
-      .chain(self.document.id.as_bytes().iter())
+      .chain(self.batch.id.as_bytes().iter())
       .map(|b| *b)
       .collect()
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Op {
   // key
   id: Uuid,
@@ -901,9 +721,12 @@ struct Op {
   store: Store,
   goods: Goods,
   batch: Batch,
+
+  transfer: Option<Store>,
+
   // value
-  op: Option<SOperation>,
-  event: DateTime<Utc>,
+  op: InternalOperation,
+  event: String,
 }
 
 impl Op {
@@ -919,6 +742,10 @@ impl Op {
       .map(|b| *b)
       .collect()
   }
+
+  fn to_delta(&self) -> BalanceDelta {
+    self.op.clone().into()
+  }
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -927,12 +754,13 @@ pub struct OpMutation {
   id: Uuid,
   date: DateTime<Utc>,
   store: Store,
+  transfer: Option<Store>,
   goods: Goods,
-  document: Batch,
+  batch: Batch,
   // value
-  before: Option<SOperation>,
-  after: Option<SOperation>,
-  event: DateTime<Utc>,
+  before: Option<InternalOperation>,
+  after: Option<InternalOperation>,
+  event: String,
 }
 
 impl OpMutation {
@@ -940,45 +768,73 @@ impl OpMutation {
     id: Uuid,
     date: DateTime<Utc>,
     store: Store,
+    transfer: Option<Store>,
     goods: Goods,
-    document: Batch,
-    before: Option<SOperation>,
-    after: Option<SOperation>,
+    batch: Batch,
+    before: Option<InternalOperation>,
+    after: Option<InternalOperation>,
     event: DateTime<Utc>,
   ) -> OpMutation {
-    OpMutation { id, date, store, goods, document, before, after, event }
+    OpMutation { id, date, store, transfer, goods, batch, before, after, event: event.to_string() }
+  }
+
+  fn receive_new(
+    id: Uuid,
+    date: DateTime<Utc>,
+    store: Store,
+    goods: Goods,
+    batch: Batch,
+    qty: Qty,
+    cost: Cost,
+  ) -> OpMutation {
+    OpMutation {
+      id,
+      date,
+      store,
+      transfer: None,
+      goods,
+      batch,
+      before: None,
+      after: Some(InternalOperation::Receive(qty, cost)),
+      event: chrono::Utc::now().to_string(),
+    }
+  }
+
+  fn to_op(&self) -> Op {
+    if let Some(op) = self.after.as_ref() {
+      Op {
+        id: self.id.clone(),
+        date: self.date.clone(),
+        store: self.store.clone(),
+        goods: self.goods.clone(),
+        batch: self.batch.clone(),
+        transfer: self.transfer.clone(),
+        op: op.clone(),
+        event: self.event.clone(),
+      }
+    } else {
+      todo!()
+    }
   }
 
   fn party(&self) -> Vec<u8> {
-    let dt = self.document.date.timestamp() as u64;
+    let dt = self.batch.date.timestamp() as u64;
 
     self
       .goods
       .as_bytes()
       .iter()
       .chain(dt.to_be_bytes().iter())
-      .chain(self.document.id.as_bytes().iter())
+      .chain(self.batch.id.as_bytes().iter())
       .map(|b| *b)
       .collect()
   }
 
-  fn delta(&self) -> Result<SOperation, WHError> {
-    let old = self.before.clone().expect("option in delta");
+  fn to_delta(&self) -> BalanceDelta {
+    let n: BalanceDelta = self.after.as_ref().map(|i| i.clone().into()).unwrap_or_default();
+    let o: BalanceDelta = self.before.as_ref().map(|i| i.clone().into()).unwrap_or_default();
 
-    if let Some(new) = self.after.clone() {
-      match new {
-        SOperation::Receive(n) => match old {
-          SOperation::Receive(o) => Ok(SOperation::Receive(n - o)),
-          SOperation::Issue(o) => Err(WHError::new("Wrong op type in delta!")),
-        },
-        SOperation::Issue(n) => match old {
-          SOperation::Receive(o) => Err(WHError::new("Wrong op type in delta!")),
-          SOperation::Issue(o) => Ok(SOperation::Issue(n - o)),
-        },
-      }
-    } else {
-      Ok(old)
-    }
+    n - o
   }
 
   fn new_from_ops(before: Option<Op>, after: Option<Op>) -> Result<OpMutation, WHError> {
@@ -987,33 +843,36 @@ impl OpMutation {
         id: a.id,
         date: a.date,
         store: a.store,
+        transfer: a.transfer,
         goods: a.goods,
-        document: a.batch.clone(),
-        before: b.op.clone(),
-        after: a.op.clone(),
-        event: a.event,
+        batch: a.batch.clone(),
+        before: Some(b.op.clone()),
+        after: Some(a.op.clone()),
+        event: a.event.clone(),
       })
     } else if let Some(b) = &before {
       Ok(OpMutation {
         id: b.id,
         date: b.date,
         store: b.store,
+        transfer: b.transfer,
         goods: b.goods,
-        document: b.batch.clone(),
-        before: b.op.clone(),
+        batch: b.batch.clone(),
+        before: Some(b.op.clone()),
         after: None,
-        event: b.event,
+        event: b.event.clone(),
       })
     } else if let Some(a) = &after {
       Ok(OpMutation {
         id: a.id,
         date: a.date,
         store: a.store,
+        transfer: a.transfer,
         goods: a.goods,
-        document: a.batch.clone(),
+        batch: a.batch.clone(),
         before: None,
-        after: a.op.clone(),
-        event: a.event,
+        after: Some(a.op.clone()),
+        event: a.event.clone(),
       })
     } else {
       Err(WHError::new("Both before and after states are None. It shouldn't happened"))
@@ -1024,8 +883,8 @@ impl OpMutation {
 impl KeyValueStore for OpMutation {
   fn key(&self, s: &String) -> Result<Vec<u8>, WHError> {
     match s.as_str() {
-      STORE_DATE_TYPE_PARTY_ID => Ok(self.store_date_type_party_id()),
-      DATE_TYPE_STORE_PARTY_ID => Ok(self.date_type_store_party_id()),
+      STORE_DATE_TYPE_BATCH_ID => Ok(self.store_date_type_party_id()),
+      DATE_TYPE_STORE_BATCH_ID => Ok(self.date_type_store_party_id()),
       _ => Err(WHError::new("Wrong Op key type")),
     }
   }
@@ -1037,8 +896,8 @@ impl KeyValueStore for OpMutation {
 
     if let Some(o) = &self.after {
       op_type = match o {
-        SOperation::Receive(_) => 1_u8,
-        SOperation::Issue(_) => 2_u8,
+        InternalOperation::Receive(..) => 1_u8,
+        InternalOperation::Issue(..) => 2_u8,
       };
     }
 
@@ -1067,8 +926,8 @@ impl KeyValueStore for OpMutation {
 
     if let Some(o) = &self.after {
       op_type = match o {
-        SOperation::Receive(_) => 1_u8,
-        SOperation::Issue(_) => 2_u8,
+        InternalOperation::Receive(..) => 1_u8,
+        InternalOperation::Issue(..) => 2_u8,
       };
     }
 
@@ -1094,7 +953,7 @@ enum ReturnType {
 
 trait Agregation {
   fn check(&mut self, op: &OpMutation) -> ReturnType; // если операция валидна, вернет None, если нет - вернет свое значение и обнулит себя и выставит новые ключи
-  fn apply_operation(&mut self, op: &OpMutation);
+  fn apply_operation(&mut self, op: &Op);
   fn apply_agregation(&mut self, agr: Option<&AgregationStoreGoods>);
   fn balance(&mut self, balance: Option<&Balance>) -> ReturnType; // имплементировать для трех возможных ситуаций
   fn is_applyable_for(&self, op: &OpMutation) -> bool;
@@ -1107,10 +966,10 @@ struct AgregationStoreGoods {
   goods: Option<Goods>,
   document: Option<Batch>,
   // агрегация
-  open_balance: NumberForGoods,
-  receive: NumberForGoods,
-  issue: NumberForGoods,
-  close_balance: NumberForGoods,
+  open_balance: BalanceForGoods,
+  receive: BalanceDelta,
+  issue: BalanceDelta,
+  close_balance: BalanceForGoods,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -1128,32 +987,21 @@ impl AgregationStoreGoods {
   fn initialize(&mut self, op: &OpMutation) {
     self.store = Some(op.store);
     self.goods = Some(op.goods);
-    self.open_balance = NumberForGoods::default();
-    self.receive = NumberForGoods::default();
-    self.issue = NumberForGoods::default();
-    self.close_balance = NumberForGoods::default();
+    self.open_balance = BalanceForGoods::default();
+    self.receive = BalanceDelta::default();
+    self.issue = BalanceDelta::default();
+    self.close_balance = BalanceForGoods::default();
   }
 
-  fn add_op_to_balance(&mut self, op: &OpMutation) {
+  fn add_to_open_balance(&mut self, op: &Op) {
     self.store = Some(op.store);
     self.goods = Some(op.goods);
-    self.document = Some(op.document.clone());
+    self.document = Some(op.batch.clone());
 
-    if let Some(o) = &op.after {
-      match o {
-        SOperation::Receive(n) => {
-          self.open_balance += n;
-          self.close_balance += n;
-        },
-        SOperation::Issue(n) => {
-          self.open_balance -= n;
-          self.close_balance -= n;
-        },
-      }
-    } else {
-      self.open_balance = NumberForGoods::default();
-      self.close_balance = NumberForGoods::default();
-    }
+    let delta = op.to_delta();
+
+    self.open_balance += delta.clone();
+    self.close_balance += delta;
   }
 
   fn party(&self) -> Vec<u8> {
@@ -1179,19 +1027,19 @@ impl Default for AgregationStoreGoods {
       store: None,
       goods: None,
       document: None,
-      open_balance: NumberForGoods::default(),
-      receive: NumberForGoods::default(),
-      issue: NumberForGoods::default(),
-      close_balance: NumberForGoods::default(),
+      open_balance: BalanceForGoods::default(),
+      receive: BalanceDelta::default(),
+      issue: BalanceDelta::default(),
+      close_balance: BalanceForGoods::default(),
     }
   }
 }
 
-impl AddAssign<&OpMutation> for AgregationStoreGoods {
-  fn add_assign(&mut self, rhs: &OpMutation) {
+impl AddAssign<&Op> for AgregationStoreGoods {
+  fn add_assign(&mut self, rhs: &Op) {
     self.store = Some(rhs.store);
     self.goods = Some(rhs.goods);
-    self.document = Some(rhs.document.clone());
+    self.document = Some(rhs.batch.clone());
     self.apply_operation(rhs);
   }
 }
@@ -1244,18 +1092,16 @@ impl Agregation for AgregationStore {
     }
   }
 
-  fn apply_operation(&mut self, op: &OpMutation) {
-    if let Some(o) = &op.after {
-      match o {
-        SOperation::Receive(n) => {
-          self.receive += n.cost.unwrap_or(0.into());
-          self.close_balance += n.cost.unwrap_or(0.into());
-        },
-        SOperation::Issue(n) => {
-          self.issue += n.cost.unwrap_or(0.into());
-          self.close_balance -= n.cost.unwrap_or(0.into());
-        },
-      }
+  fn apply_operation(&mut self, op: &Op) {
+    match &op.op {
+      InternalOperation::Receive(qty, cost) => {
+        self.receive += cost;
+        self.close_balance += cost;
+      },
+      InternalOperation::Issue(qty, cost, mode) => {
+        self.issue += cost;
+        self.close_balance -= cost;
+      },
     }
   }
 
@@ -1266,10 +1112,10 @@ impl Agregation for AgregationStore {
   fn apply_agregation(&mut self, agr: Option<&AgregationStoreGoods>) {
     if let Some(agr) = agr {
       self.store = agr.store;
-      self.open_balance += agr.open_balance.cost.unwrap_or(0.into());
-      self.receive += agr.receive.cost.unwrap_or(0.into());
-      self.issue += agr.issue.cost.unwrap_or(0.into());
-      self.close_balance += agr.close_balance.cost.unwrap_or(0.into());
+      self.open_balance += agr.open_balance.cost;
+      self.receive += agr.receive.cost;
+      self.issue += agr.issue.cost;
+      self.close_balance += agr.close_balance.cost;
     }
   }
 }
@@ -1282,10 +1128,10 @@ impl Agregation for AgregationStoreGoods {
         ReturnType::Good(AgregationStoreGoods {
           store: Some(b.store),
           goods: Some(b.goods),
-          document: Some(b.document.clone()),
+          document: Some(b.batch.clone()),
           open_balance: b.number.clone(),
-          receive: NumberForGoods::default(),
-          issue: NumberForGoods::default(),
+          receive: BalanceDelta::default(),
+          issue: BalanceDelta::default(),
           close_balance: b.number.clone(),
         })
       } else if b.goods > self.goods.expect("option in fn balance") {
@@ -1329,28 +1175,27 @@ impl Agregation for AgregationStoreGoods {
     }
   }
 
-  fn apply_operation(&mut self, op: &OpMutation) {
-    if let Some(o) = &op.after {
-      match o {
-        SOperation::Receive(n) => {
-          self.receive += n;
-        },
-        SOperation::Issue(n) => {
-          if let Some(c) = n.cost {
-            self.issue += n;
-          } else {
-            let issue = self.open_balance.clone() + self.receive.clone();
-            let price = issue.cost.unwrap_or(0.into()) / issue.qty;
-            self.issue.cost = Some(self.issue.cost.unwrap_or(0.into()) + price * n.qty);
-            self.issue.qty += n.qty;
-          }
-        },
-      }
-      self.close_balance = self.open_balance.clone() + self.receive.clone() - self.issue.clone();
-    } else {
-      self.issue = self.open_balance.clone() + self.receive.clone();
-      self.close_balance = NumberForGoods::default();
+  fn apply_operation(&mut self, op: &Op) {
+    match &op.op {
+      InternalOperation::Receive(qty, cost) => {
+        self.receive.qty += qty;
+        self.receive.cost += cost;
+      },
+      InternalOperation::Issue(qty, cost, mode) => {
+        self.issue.qty -= qty;
+        if mode == &Mode::Auto {
+          let balance = self.open_balance.clone() + self.receive.clone();
+          let cost = match balance.cost.checked_div(balance.qty) {
+            Some(price) => price * qty,
+            None => 0.into(), // TODO handle error?
+          };
+          self.issue.cost -= cost;
+        } else {
+          self.issue.cost -= cost;
+        }
+      },
     }
+    self.close_balance = self.open_balance.clone() + self.receive.clone() + self.issue.clone();
   }
 
   fn apply_agregation(&mut self, agr: Option<&AgregationStoreGoods>) {
@@ -1385,7 +1230,7 @@ struct Report {
 
 fn new_get_agregations(
   balances: BTreeMap<Vec<u8>, Balance>,
-  operations: Vec<OpMutation>,
+  operations: Vec<Op>,
   start_date: DateTime<Utc>,
 ) -> (AgregationStore, Vec<AgregationStoreGoods>) {
   let mut agregations = BTreeMap::new();
@@ -1397,10 +1242,10 @@ fn new_get_agregations(
       AgregationStoreGoods {
         store: Some(balance.store),
         goods: Some(balance.goods),
-        document: Some(balance.document),
+        document: Some(balance.batch),
         open_balance: balance.number.clone(),
-        receive: NumberForGoods::default(),
-        issue: NumberForGoods::default(),
+        receive: BalanceDelta::default(),
+        issue: BalanceDelta::default(),
         close_balance: balance.number,
       },
     );
@@ -1411,7 +1256,7 @@ fn new_get_agregations(
       agregations
         .entry(op.party())
         .or_insert(AgregationStoreGoods::default())
-        .add_op_to_balance(&op);
+        .add_to_open_balance(&op);
     } else {
       *agregations.entry(op.party()).or_insert(AgregationStoreGoods::default()) += &op;
     }
@@ -1507,30 +1352,22 @@ fn json_to_ops(
         },
         date: d_date,
         store,
+        transfer: goods["transfer"].uuid_or_none(),
         goods: goods["goods"].uuid(),
         batch: Batch { id: goods["_tid"].uuid(), date: d_date },
         op: if ctx == &vec!["warehouse".to_string(), "receive".to_string()] {
-          Some(SOperation::Receive(NumberForGoods {
-            qty: goods["qty"].number(),
-            cost: if goods["cost"].number() == Decimal::ZERO {
-              None
-            } else {
-              Some(goods["cost"].number())
-            },
-          }))
+          InternalOperation::Receive(goods["qty"].number(), goods["cost"].number())
         } else if ctx == &vec!["warehouse".to_string(), "issue".to_string()] {
-          Some(SOperation::Issue(NumberForGoods {
-            qty: goods["qty"].number(),
-            cost: if goods["cost"].number() == Decimal::ZERO {
-              None
-            } else {
-              Some(goods["cost"].number())
-            },
-          }))
+          let (cost, mode) = if let Some(cost) = goods["cost"].number_or_none() {
+            (cost, Mode::Manual)
+          } else {
+            (0.into(), Mode::Auto)
+          };
+          InternalOperation::Issue(goods["qty"].number(), cost, mode)
         } else {
           break;
         },
-        event: time,
+        event: time.to_string(),
       };
       ops.push(op);
     }
@@ -1564,7 +1401,129 @@ mod tests {
   use uuid::Uuid;
 
   #[actix_web::test]
-  async fn store_test_app_receive_change() {
+  async fn store_test_app_move() {
+    let (tmp_dir, settings, db) = init();
+
+    let (mut application, events_receiver) = Application::new(Arc::new(settings), Arc::new(db))
+      .await
+      .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
+      .unwrap();
+
+    let storage = SOrganizations::new(tmp_dir.path().join("companies"));
+    application.storage = Some(storage.clone());
+
+    application.register(DocsFiles::new(application.clone(), "docs", storage.clone()));
+
+    let app = test::init_service(
+      App::new()
+        // .app_data(web::Data::new(db.clone()))
+        .app_data(web::Data::new(application.clone()))
+        // .wrap(middleware::Logger::default())
+        .service(api::docs_create)
+        .service(api::docs_update)
+        // .service(api::memory_modify)
+        // .service(api::memory_query)
+        .default_service(web::route().to(api::not_implemented)),
+    )
+    .await;
+
+    let goods1 = Uuid::from_u128(101);
+    let goods2 = Uuid::from_u128(102);
+    let storage1 = Uuid::from_u128(201);
+    let storage2 = Uuid::from_u128(202);
+    let oid = ID::from("99");
+
+    //receive
+    let data0: JsonValue = object! {
+        _id: "",
+        date: "2023-01-18",
+        storage: storage1.to_string(),
+        goods: [
+            {
+                goods: goods1.to_string(),
+                uom: "",
+                qty: 1,
+                price: 10,
+                cost: 10,
+                _tid: ""
+            },
+            {
+                goods: goods2.to_string(),
+                uom: "",
+                qty: 2,
+                price: 8,
+                cost: 16,
+                _tid: ""
+            }
+        ]
+    };
+
+    let req = test::TestRequest::post()
+      .uri(&format!("/api/docs?oid={}&ctx=warehouse,receive", oid.to_base64()))
+      .set_payload(data0.dump())
+      .insert_header(ContentType::json())
+      // .param("oid", oid.to_base64())
+      // .param("document", "warehouse")
+      // .param("document", "receive")
+      .to_request();
+
+    let response = test::call_and_read_body(&app, req).await;
+
+    let result0: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+    assert_ne!("", result0["goods"][0]["_tid"].as_str().unwrap());
+    assert_ne!("", result0["goods"][1]["_tid"].as_str().unwrap());
+
+    // move
+    let id = result0["goods"][0]["_tid"].as_str().unwrap();
+
+    let data1: JsonValue = object! {
+        _id: "",
+        date: "2023-01-18",
+        storage: storage1.to_string(),
+        transfer: storage2.to_string(),
+        goods: [
+            {
+                goods: goods1.to_string(),
+                uom: "",
+                qty: 2,
+                price: 10,
+                cost: 20,
+                _tid: id,
+            }
+        ]
+    };
+
+    let req = test::TestRequest::post()
+      .uri(&format!("/api/docs/{id}?oid={}&ctx=warehouse,receive", oid.to_base64()))
+      .set_payload(data1.dump())
+      .insert_header(ContentType::json())
+      .to_request();
+
+    let response = test::call_and_read_body(&app, req).await;
+
+    let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+    let compare: serde_json::Value = serde_json::from_str(&data1.dump()).unwrap();
+
+    assert_eq!(compare, result);
+
+    let x = DateTypeStoreGoodsId();
+
+    let report = x
+      .get_report(
+        dt("2023-01-17").unwrap(),
+        dt("2023-01-20").unwrap(),
+        storage1,
+        &mut application.warehouse.database,
+      )
+      .unwrap();
+
+    println!("REPORT: {report:#?}");
+  }
+
+  #[actix_web::test]
+  async fn store_test_app_receive_issue_change() {
     let (tmp_dir, settings, db) = init();
 
     let (mut application, events_receiver) = Application::new(Arc::new(settings), Arc::new(db))
@@ -1721,10 +1680,10 @@ mod tests {
     let mut cfs = Vec::new();
 
     let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_PARTY_ID,
-      DATE_TYPE_STORE_PARTY_ID,
-      CHECK_DATE_STORE_PARTY,
-      CHECK_PARTY_STORE_DATE,
+      STORE_DATE_TYPE_BATCH_ID,
+      DATE_TYPE_STORE_BATCH_ID,
+      CHECK_DATE_STORE_BATCH,
+      CHECK_BATCH_STORE_DATE,
     ];
 
     for name in cf_names {
@@ -1751,44 +1710,38 @@ mod tests {
     let id4 = Uuid::from_u128(104);
 
     let ops = vec![
-      OpMutation::new(
-        id1,
-        op_d,
-        w1,
-        G1,
-        party.clone(),
-        None,
-        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
-        chrono::Utc::now(),
-      ),
+      OpMutation::receive_new(id1, op_d, w1, G1, party.clone(), 3.into(), 3000.into()),
       OpMutation::new(
         id2,
         op_d,
         w1,
+        None,
         G1,
         party.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual)),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id3,
         op_d,
         w1,
+        None,
         G2,
         party.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+        Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id4,
         op_d,
         w1,
+        None,
         G2,
         party.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+        Some(InternalOperation::Receive(2.into(), 2000.into())),
         chrono::Utc::now(),
       ),
     ];
@@ -1799,20 +1752,20 @@ mod tests {
       date: check_d,
       store: w1,
       goods: G1,
-      document: party,
-      number: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
+      batch: party,
+      number: BalanceForGoods { qty: 2.into(), cost: 2000.into() },
     };
 
-    let b1 = db.find_checkpoint(&ops[0], CHECK_DATE_STORE_PARTY).expect("test_receive_ops");
+    let b1 = db.find_checkpoint(&ops[0], CHECK_DATE_STORE_BATCH).expect("test_receive_ops");
     assert_eq!(b1, Some(balance.clone()));
 
-    let b2 = db.find_checkpoint(&ops[0], CHECK_PARTY_STORE_DATE).expect("test_receive_ops");
+    let b2 = db.find_checkpoint(&ops[0], CHECK_BATCH_STORE_DATE).expect("test_receive_ops");
     assert_eq!(b2, Some(balance));
 
-    let b3 = db.find_checkpoint(&ops[2], CHECK_DATE_STORE_PARTY).expect("test_receive_ops");
+    let b3 = db.find_checkpoint(&ops[2], CHECK_DATE_STORE_BATCH).expect("test_receive_ops");
     assert_eq!(b3, None);
 
-    let b4 = db.find_checkpoint(&ops[2], CHECK_PARTY_STORE_DATE).expect("test_receive_ops");
+    let b4 = db.find_checkpoint(&ops[2], CHECK_BATCH_STORE_DATE).expect("test_receive_ops");
     assert_eq!(b4, None);
 
     tmpdir.close().expect("Can't close tmp dir in test_receive_ops");
@@ -1822,7 +1775,7 @@ mod tests {
   async fn store_test_neg_balance_date_type_store_goods_id() {
     let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_neg_balance");
     let mut opts = Options::default();
-    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_PARTY_ID, opts.clone());
+    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_BATCH_ID, opts.clone());
     opts.create_if_missing(true);
     opts.create_missing_column_families(true);
     let mut db = Db {
@@ -1843,10 +1796,11 @@ mod tests {
       id1,
       op_d,
       w1,
+      None,
       G1,
       party.clone(),
       None,
-      Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+      Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
       chrono::Utc::now(),
     )];
 
@@ -1856,10 +1810,10 @@ mod tests {
       store: Some(w1),
       goods: Some(G1),
       document: Some(party.clone()),
-      open_balance: NumberForGoods::default(),
-      receive: NumberForGoods::default(),
-      issue: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-      close_balance: NumberForGoods { qty: (-2).into(), cost: Some((-2000).into()) },
+      open_balance: BalanceForGoods::default(),
+      receive: BalanceDelta::default(),
+      issue: BalanceDelta { qty: 2.into(), cost: 2000.into() },
+      close_balance: BalanceForGoods { qty: (-2).into(), cost: (-2000).into() },
     };
 
     let st = DateTypeStoreGoodsId();
@@ -1874,7 +1828,7 @@ mod tests {
   async fn store_test_zero_balance_date_type_store_goods_id() {
     let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_zero_balance");
     let mut opts = Options::default();
-    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_PARTY_ID, opts.clone());
+    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_BATCH_ID, opts.clone());
     opts.create_if_missing(true);
     opts.create_missing_column_families(true);
     let mut db = Db {
@@ -1893,24 +1847,16 @@ mod tests {
     let id2 = Uuid::from_u128(102);
 
     let ops = vec![
-      OpMutation::new(
-        id1,
-        start_d,
-        w1,
-        G1,
-        party.clone(),
-        None,
-        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
-        chrono::Utc::now(),
-      ),
+      OpMutation::receive_new(id1, start_d, w1, G1, party.clone(), 3.into(), 3000.into()),
       OpMutation::new(
         id2,
         start_d,
         w1,
+        None,
         G1,
         party.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+        Some(InternalOperation::Issue(3.into(), 3000.into(), Mode::Manual)),
         chrono::Utc::now(),
       ),
     ];
@@ -1924,10 +1870,10 @@ mod tests {
       store: Some(w1),
       goods: Some(G1),
       document: Some(party.clone()),
-      open_balance: NumberForGoods::default(),
-      receive: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
-      issue: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
-      close_balance: NumberForGoods::default(),
+      open_balance: BalanceForGoods::default(),
+      receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
+      issue: BalanceDelta { qty: 3.into(), cost: 3000.into() },
+      close_balance: BalanceForGoods::default(),
     };
 
     assert_eq!(res.items.1[0], agr);
@@ -1966,20 +1912,22 @@ mod tests {
         id1,
         start_d,
         w1,
+        None,
         G1,
         party.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+        Some(InternalOperation::Receive(2.into(), 2000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
         start_d,
         w1,
+        None,
         G1,
         party.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        Some(InternalOperation::Receive(1.into(), 1000.into())),
         chrono::Utc::now(),
       ),
     ];
@@ -1991,7 +1939,7 @@ mod tests {
     let res = key.get_ops(start_d, end_d, w1, &db)?;
 
     for i in 0..ops.len() {
-      assert_eq!(ops[i], res[i]);
+      assert_eq!(ops[i].to_op(), res[i]);
     }
 
     Ok(())
@@ -2031,40 +1979,44 @@ mod tests {
         id1,
         op_d,
         w1,
+        None,
         G1,
         doc1.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+        Some(InternalOperation::Receive(3.into(), 3000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
         op_d,
         w1,
+        None,
         G1,
         doc1.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual)),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id3,
         op_d,
         w1,
+        None,
         G2,
         doc2.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+        Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id4,
         op_d,
         w1,
+        None,
         G2,
         doc2.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(2000.into()) })),
+        Some(InternalOperation::Receive(2.into(), 2000.into())),
         chrono::Utc::now(),
       ),
     ];
@@ -2078,19 +2030,19 @@ mod tests {
         store: Some(w1),
         goods: Some(G1),
         document: Some(doc1.clone()),
-        open_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-        receive: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
-        issue: NumberForGoods { qty: 1.into(), cost: Some(1000.into()) },
-        close_balance: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
+        open_balance: BalanceForGoods::default(),
+        receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
+        issue: BalanceDelta { qty: 1.into(), cost: 1000.into() },
+        close_balance: BalanceForGoods { qty: 2.into(), cost: 2000.into() },
       },
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G2),
         document: Some(doc2.clone()),
-        open_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-        receive: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-        issue: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-        close_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
+        open_balance: BalanceForGoods::default(),
+        receive: BalanceDelta { qty: 2.into(), cost: 2000.into() },
+        issue: BalanceDelta { qty: 2.into(), cost: 2000.into() },
+        close_balance: BalanceForGoods::default(),
       },
     ];
 
@@ -2129,46 +2081,44 @@ mod tests {
         id3,
         start_d,
         w1,
+        None,
         G2,
         party.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        Some(InternalOperation::Receive(1.into(), 1000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id4,
         start_d,
         w1,
+        None,
         G2,
         party.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        Some(InternalOperation::Receive(1.into(), 1000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id1,
         start_d,
         w1,
+        None,
         G3,
         party.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods {
-          qty: Decimal::from_str("0.5").unwrap(),
-          cost: Some(1500.into()),
-        })),
+        Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
         start_d,
         w1,
+        None,
         G3,
         party.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods {
-          qty: Decimal::from_str("0.5").unwrap(),
-          cost: Some(1500.into()),
-        })),
+        Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
         chrono::Utc::now(),
       ),
     ];
@@ -2206,10 +2156,10 @@ mod tests {
     let mut cfs = Vec::new();
 
     let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_PARTY_ID,
-      DATE_TYPE_STORE_PARTY_ID,
-      CHECK_DATE_STORE_PARTY,
-      CHECK_PARTY_STORE_DATE,
+      STORE_DATE_TYPE_BATCH_ID,
+      DATE_TYPE_STORE_BATCH_ID,
+      CHECK_DATE_STORE_BATCH,
+      CHECK_BATCH_STORE_DATE,
     ];
 
     for name in cf_names {
@@ -2235,66 +2185,66 @@ mod tests {
         Uuid::new_v4(),
         dt("2022-10-30").expect("test_report"),
         w1,
+        None,
         G1,
         party.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(4000.into()) })),
+        Some(InternalOperation::Receive(4.into(), 4000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         Uuid::new_v4(),
         dt("2022-11-03").expect("test_report"),
         w1,
+        None,
         G3,
         party.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 2.into(), cost: Some(6000.into()) })),
+        Some(InternalOperation::Receive(2.into(), 6000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         Uuid::new_v4(),
         start_d,
         w1,
+        None,
         G2,
         party.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        Some(InternalOperation::Receive(1.into(), 1000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         Uuid::new_v4(),
         start_d,
         w1,
+        None,
         G2,
         party.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(1000.into()) })),
+        Some(InternalOperation::Receive(1.into(), 1000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         Uuid::new_v4(),
         start_d,
         w1,
+        None,
         G3,
         party.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods {
-          qty: Decimal::from_str("0.5").unwrap(),
-          cost: Some(1500.into()),
-        })),
+        Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         Uuid::new_v4(),
         start_d,
         w1,
+        None,
         G3,
         party.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods {
-          qty: Decimal::from_str("0.5").unwrap(),
-          cost: Some(1500.into()),
-        })),
+        Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
         chrono::Utc::now(),
       ),
     ];
@@ -2314,28 +2264,28 @@ mod tests {
         store: Some(w1),
         goods: Some(G1),
         document: Some(party.clone()),
-        open_balance: NumberForGoods { qty: 4.into(), cost: Some(4000.into()) },
-        receive: NumberForGoods::default(),
-        issue: NumberForGoods::default(),
-        close_balance: NumberForGoods { qty: 4.into(), cost: Some(4000.into()) },
+        open_balance: BalanceForGoods { qty: 4.into(), cost: 4000.into() },
+        receive: BalanceDelta::default(),
+        issue: BalanceDelta::default(),
+        close_balance: BalanceForGoods { qty: 4.into(), cost: 4000.into() },
       },
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G2),
         document: Some(party.clone()),
-        open_balance: NumberForGoods::default(),
-        receive: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
-        issue: NumberForGoods::default(),
-        close_balance: NumberForGoods { qty: 2.into(), cost: Some(2000.into()) },
+        open_balance: BalanceForGoods::default(),
+        receive: BalanceDelta { qty: 2.into(), cost: 2000.into() },
+        issue: BalanceDelta::default(),
+        close_balance: BalanceForGoods { qty: 2.into(), cost: 2000.into() },
       },
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G3),
         document: Some(party.clone()),
-        open_balance: NumberForGoods { qty: 2.into(), cost: Some(6000.into()) },
-        receive: NumberForGoods::default(),
-        issue: NumberForGoods { qty: 1.into(), cost: Some(3000.into()) },
-        close_balance: NumberForGoods { qty: 1.into(), cost: Some(3000.into()) },
+        open_balance: BalanceForGoods { qty: 2.into(), cost: 6000.into() },
+        receive: BalanceDelta::default(),
+        issue: BalanceDelta { qty: 1.into(), cost: 3000.into() },
+        close_balance: BalanceForGoods { qty: 1.into(), cost: 3000.into() },
       },
     ];
 
@@ -2366,7 +2316,7 @@ mod tests {
   async fn store_test_parties_date_type_store_goods_id() {
     let tmpdir = TempDir::new().expect("Can't create tmp dir in test_parties");
     let mut opts = Options::default();
-    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_PARTY_ID, opts.clone());
+    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_BATCH_ID, opts.clone());
     opts.create_if_missing(true);
     opts.create_missing_column_families(true);
     let mut db = Db {
@@ -2390,30 +2340,33 @@ mod tests {
         id1,
         start_d,
         w1,
+        None,
         G1,
         doc1.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(3000.into()) })),
+        Some(InternalOperation::Receive(3.into(), 3000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
         start_d,
         w1,
+        None,
         G1,
         doc2.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
+        Some(InternalOperation::Receive(4.into(), 2000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id3,
         start_d,
         w1,
+        None,
         G1,
         doc2.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: Some(500.into()) })),
+        Some(InternalOperation::Issue(1.into(), 500.into(), Mode::Manual)),
         chrono::Utc::now(),
       ),
     ];
@@ -2428,19 +2381,19 @@ mod tests {
         store: Some(w1),
         goods: Some(G1),
         document: Some(doc1.clone()),
-        open_balance: NumberForGoods::default(),
-        receive: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
-        issue: NumberForGoods::default(),
-        close_balance: NumberForGoods { qty: 3.into(), cost: Some(3000.into()) },
+        open_balance: BalanceForGoods::default(),
+        receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
+        issue: BalanceDelta::default(),
+        close_balance: BalanceForGoods { qty: 3.into(), cost: 3000.into() },
       },
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G1),
         document: Some(doc2.clone()),
-        open_balance: NumberForGoods::default(),
-        receive: NumberForGoods { qty: 4.into(), cost: Some(2000.into()) },
-        issue: NumberForGoods { qty: 1.into(), cost: Some(500.into()) },
-        close_balance: NumberForGoods { qty: 3.into(), cost: Some(1500.into()) },
+        open_balance: BalanceForGoods::default(),
+        receive: BalanceDelta { qty: 4.into(), cost: 2000.into() },
+        issue: BalanceDelta { qty: 1.into(), cost: 500.into() },
+        close_balance: BalanceForGoods { qty: 3.into(), cost: 1500.into() },
       },
     ];
 
@@ -2458,10 +2411,10 @@ mod tests {
     let mut cfs = Vec::new();
 
     let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_PARTY_ID,
-      DATE_TYPE_STORE_PARTY_ID,
-      CHECK_DATE_STORE_PARTY,
-      CHECK_PARTY_STORE_DATE,
+      STORE_DATE_TYPE_BATCH_ID,
+      DATE_TYPE_STORE_BATCH_ID,
+      CHECK_DATE_STORE_BATCH,
+      CHECK_BATCH_STORE_DATE,
     ];
 
     for name in cf_names {
@@ -2492,20 +2445,22 @@ mod tests {
         id1,
         start_d,
         w1,
+        None,
         G1,
         doc.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
+        Some(InternalOperation::Receive(4.into(), 2000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
         start_d,
         w1,
+        None,
         G1,
         doc.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: None })),
+        Some(InternalOperation::Issue(1.into(), 0.into(), Mode::Auto)),
         chrono::Utc::now(),
       ),
     ];
@@ -2519,10 +2474,10 @@ mod tests {
       store: Some(w1),
       goods: Some(G1),
       document: Some(doc.clone()),
-      open_balance: NumberForGoods::default(),
-      receive: NumberForGoods { qty: 4.into(), cost: Some(2000.into()) },
-      issue: NumberForGoods { qty: 1.into(), cost: Some(500.into()) },
-      close_balance: NumberForGoods { qty: 3.into(), cost: Some(1500.into()) },
+      open_balance: BalanceForGoods::default(),
+      receive: BalanceDelta { qty: 4.into(), cost: 2000.into() },
+      issue: BalanceDelta { qty: 1.into(), cost: 500.into() },
+      close_balance: BalanceForGoods { qty: 3.into(), cost: 1500.into() },
     };
 
     assert_eq!(agr, res.items.1[0]);
@@ -2538,10 +2493,10 @@ mod tests {
     let mut cfs = Vec::new();
 
     let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_PARTY_ID,
-      DATE_TYPE_STORE_PARTY_ID,
-      CHECK_DATE_STORE_PARTY,
-      CHECK_PARTY_STORE_DATE,
+      STORE_DATE_TYPE_BATCH_ID,
+      DATE_TYPE_STORE_BATCH_ID,
+      CHECK_DATE_STORE_BATCH,
+      CHECK_BATCH_STORE_DATE,
     ];
 
     for name in cf_names {
@@ -2572,20 +2527,22 @@ mod tests {
         id1,
         start_d,
         w1,
+        None,
         G1,
         doc.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(2000.into()) })),
+        Some(InternalOperation::Receive(4.into(), 2000.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
         start_d,
         w1,
+        None,
         G1,
         doc.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: None })),
+        Some(InternalOperation::Receive(1.into(), 0.into())),
         chrono::Utc::now(),
       ),
     ];
@@ -2599,10 +2556,10 @@ mod tests {
       store: Some(w1),
       goods: Some(G1),
       document: Some(doc.clone()),
-      open_balance: NumberForGoods::default(),
-      receive: NumberForGoods { qty: 5.into(), cost: Some(2000.into()) },
-      issue: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-      close_balance: NumberForGoods { qty: 5.into(), cost: Some(2000.into()) },
+      open_balance: BalanceForGoods::default(),
+      receive: BalanceDelta { qty: 5.into(), cost: 2000.into() },
+      issue: BalanceDelta { qty: 0.into(), cost: 0.into() },
+      close_balance: BalanceForGoods { qty: 5.into(), cost: 2000.into() },
     };
 
     assert_eq!(agr, res.items.1[0]);
@@ -2618,10 +2575,10 @@ mod tests {
     let mut cfs = Vec::new();
 
     let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_PARTY_ID,
-      DATE_TYPE_STORE_PARTY_ID,
-      CHECK_DATE_STORE_PARTY,
-      CHECK_PARTY_STORE_DATE,
+      STORE_DATE_TYPE_BATCH_ID,
+      DATE_TYPE_STORE_BATCH_ID,
+      CHECK_DATE_STORE_BATCH,
+      CHECK_BATCH_STORE_DATE,
     ];
 
     for name in cf_names {
@@ -2648,38 +2605,41 @@ mod tests {
     let id2 = Uuid::from_u128(102);
     let id3 = Uuid::from_u128(103);
 
-    println!("{id1}");
-    println!("{id2}");
+    // println!("{id1}");
+    // println!("{id2}");
 
     let ops = vec![
       OpMutation::new(
         id1,
         start_d,
         w1,
+        None,
         G1,
         doc.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
+        Some(InternalOperation::Receive(3.into(), 10.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id2,
         start_d,
         w1,
+        None,
         G1,
         doc.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods { qty: 1.into(), cost: None })),
+        Some(InternalOperation::Issue(1.into(), 0.into(), Mode::Auto)),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id3,
         start_d,
         w1,
+        None,
         G1,
         doc.clone(),
         None,
-        Some(SOperation::Issue(NumberForGoods { qty: 2.into(), cost: None })),
+        Some(InternalOperation::Issue(2.into(), 0.into(), Mode::Auto)),
         chrono::Utc::now(),
       ),
     ];
@@ -2695,10 +2655,10 @@ mod tests {
       store: Some(w1),
       goods: Some(G1),
       document: Some(doc.clone()),
-      open_balance: NumberForGoods::default(),
-      receive: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
-      issue: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
-      close_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
+      open_balance: BalanceForGoods::default(),
+      receive: BalanceDelta { qty: 3.into(), cost: 10.into() },
+      issue: BalanceDelta { qty: 3.into(), cost: 10.into() },
+      close_balance: BalanceForGoods { qty: 0.into(), cost: 0.into() },
     };
 
     assert_eq!(agr, res.items.1[0]);
@@ -2714,10 +2674,10 @@ mod tests {
     let mut cfs = Vec::new();
 
     let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_PARTY_ID,
-      DATE_TYPE_STORE_PARTY_ID,
-      CHECK_DATE_STORE_PARTY,
-      CHECK_PARTY_STORE_DATE,
+      STORE_DATE_TYPE_BATCH_ID,
+      DATE_TYPE_STORE_BATCH_ID,
+      CHECK_DATE_STORE_BATCH,
+      CHECK_BATCH_STORE_DATE,
     ];
 
     for name in cf_names {
@@ -2748,14 +2708,15 @@ mod tests {
         id1,
         start_d,
         w1,
+        None,
         G1,
         doc.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
+        Some(InternalOperation::Receive(3.into(), 10.into())),
         chrono::Utc::now(),
       ),
       // КОРРЕКТНАЯ ОПЕРАЦИЯ С ДВУМЯ NONE?
-      OpMutation::new(id3, start_d, w1, G1, doc.clone(), None, None, chrono::Utc::now()),
+      OpMutation::new(id3, start_d, w1, None, G1, doc.clone(), None, None, chrono::Utc::now()),
     ];
 
     db.record_ops(&ops).expect("test_issue_op_none");
@@ -2767,10 +2728,10 @@ mod tests {
       store: Some(w1),
       goods: Some(G1),
       document: Some(doc.clone()),
-      open_balance: NumberForGoods::default(),
-      receive: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
-      issue: NumberForGoods { qty: 3.into(), cost: Some(10.into()) },
-      close_balance: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
+      open_balance: BalanceForGoods::default(),
+      receive: BalanceDelta { qty: 3.into(), cost: 10.into() },
+      issue: BalanceDelta { qty: 3.into(), cost: 10.into() },
+      close_balance: BalanceForGoods { qty: 0.into(), cost: 0.into() },
     };
 
     assert_eq!(agr, res.items.1[0]);
@@ -2786,10 +2747,10 @@ mod tests {
     let mut cfs = Vec::new();
 
     let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_PARTY_ID,
-      DATE_TYPE_STORE_PARTY_ID,
-      CHECK_DATE_STORE_PARTY,
-      CHECK_PARTY_STORE_DATE,
+      STORE_DATE_TYPE_BATCH_ID,
+      DATE_TYPE_STORE_BATCH_ID,
+      CHECK_DATE_STORE_BATCH,
+      CHECK_BATCH_STORE_DATE,
     ];
 
     for name in cf_names {
@@ -2819,20 +2780,22 @@ mod tests {
         id1,
         dt("2022-08-25").expect("test_receive_change_op"),
         w1,
+        None,
         G1,
         doc.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
+        Some(InternalOperation::Receive(3.into(), 10.into())),
         chrono::Utc::now(),
       ),
       OpMutation::new(
         id1,
         dt("2022-09-20").expect("test_receive_change_op"),
         w1,
+        None,
         G1,
         doc.clone(),
         None,
-        Some(SOperation::Receive(NumberForGoods { qty: 1.into(), cost: Some(30.into()) })),
+        Some(InternalOperation::Receive(1.into(), 30.into())),
         chrono::Utc::now(),
       ),
     ];
@@ -2843,8 +2806,8 @@ mod tests {
       date: dt("2022-10-01").expect("test_receive_change_op"),
       store: w1,
       goods: G1,
-      document: doc.clone(),
-      number: NumberForGoods { qty: 4.into(), cost: Some(40.into()) },
+      batch: doc.clone(),
+      number: BalanceForGoods { qty: 4.into(), cost: 40.into() },
     };
 
     let mut old_checkpoints = db
@@ -2858,10 +2821,11 @@ mod tests {
       id1,
       dt("2022-08-25").expect("test_receive_change_op"),
       w1,
+      None,
       G1,
       doc.clone(),
-      Some(SOperation::Receive(NumberForGoods { qty: 3.into(), cost: Some(10.into()) })),
-      Some(SOperation::Receive(NumberForGoods { qty: 4.into(), cost: Some(100.into()) })),
+      Some(InternalOperation::Receive(3.into(), 10.into())),
+      Some(InternalOperation::Receive(4.into(), 100.into())),
       chrono::Utc::now(),
     )];
 
@@ -2871,8 +2835,8 @@ mod tests {
       date: dt("2022-10-01").expect("test_receive_change_op"),
       store: w1,
       goods: G1,
-      document: doc.clone(),
-      number: NumberForGoods { qty: 5.into(), cost: Some(130.into()) },
+      batch: doc.clone(),
+      number: BalanceForGoods { qty: 5.into(), cost: 130.into() },
     };
 
     let mut new_checkpoints = db
@@ -2889,10 +2853,10 @@ mod tests {
       store: Some(w1),
       goods: Some(G1),
       document: Some(doc.clone()),
-      open_balance: NumberForGoods { qty: 5.into(), cost: Some(130.into()) },
-      receive: NumberForGoods::default(),
-      issue: NumberForGoods { qty: 0.into(), cost: Some(0.into()) },
-      close_balance: NumberForGoods { qty: 5.into(), cost: Some(130.into()) },
+      open_balance: BalanceForGoods { qty: 5.into(), cost: 130.into() },
+      receive: BalanceDelta::default(),
+      issue: BalanceDelta { qty: 0.into(), cost: 0.into() },
+      close_balance: BalanceForGoods { qty: 5.into(), cost: 130.into() },
     };
 
     assert_eq!(res.items.1[0], agr);
