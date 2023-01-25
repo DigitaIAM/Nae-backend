@@ -1,6 +1,11 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 
 mod balance;
+mod check_batch_store_date;
+mod check_date_store_batch;
+mod date_type_store_goods_id;
+mod error;
+mod store_date_type_goods_id;
 
 use chrono::{DateTime, Datelike, Month, NaiveDate, Utc};
 use json::{array, iterators::Members, JsonValue};
@@ -8,7 +13,8 @@ use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadO
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 use serde::{Deserialize, Serialize};
 use std::ops::Neg;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 use std::{
   collections::{BTreeMap, HashMap},
   num,
@@ -25,105 +31,9 @@ use crate::settings::Settings;
 use crate::{commutator::Application, services, utils::json::JsonParams};
 
 use self::balance::{BalanceDelta, BalanceForGoods};
-
-#[derive(Clone)]
-pub struct WHStorage {
-  pub database: Db,
-}
-
-impl WHStorage {
-  pub fn receive_operations(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
-    Ok(self.database.record_ops(ops)?)
-  }
-
-  pub fn new(settings: Arc<Settings>) -> Result<Self, WHError> {
-    std::fs::create_dir_all(&settings.database.inventory)
-      .map_err(|e| WHError::new("Can't create folder for WHStorage"))?;
-
-    let mut opts = Options::default();
-    let mut cfs = Vec::new();
-
-    let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_BATCH_ID,
-      DATE_TYPE_STORE_BATCH_ID,
-      CHECK_DATE_STORE_BATCH,
-      CHECK_BATCH_STORE_DATE,
-    ];
-
-    for name in cf_names {
-      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-      cfs.push(cf);
-    }
-
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &settings.database.inventory, cfs)
-          .expect("Can't open database in settings.database.inventory"),
-      ),
-    };
-
-    Ok(WHStorage { database: db })
-  }
-}
-
-#[derive(Debug)]
-pub struct WHError {
-  message: String,
-}
-
-impl WHError {
-  pub fn new(e: &str) -> Self {
-    WHError { message: e.to_string() }
-  }
-
-  pub fn message(&self) -> String {
-    self.message.clone()
-  }
-}
-
-impl From<rocksdb::Error> for WHError {
-  fn from(e: rocksdb::Error) -> Self {
-    WHError { message: e.to_string() }
-  }
-}
-
-impl From<serde_json::Error> for WHError {
-  fn from(e: serde_json::Error) -> Self {
-    WHError { message: e.to_string() }
-  }
-}
-
-impl From<ParseError> for WHError {
-  fn from(e: ParseError) -> Self {
-    WHError { message: e.to_string() }
-  }
-}
-
-impl From<FromUtf8Error> for WHError {
-  fn from(e: FromUtf8Error) -> Self {
-    WHError { message: e.to_string() }
-  }
-}
-
-impl From<rust_decimal::Error> for WHError {
-  fn from(e: rust_decimal::Error) -> Self {
-    WHError { message: e.to_string() }
-  }
-}
-
-impl From<uuid::Error> for WHError {
-  fn from(e: uuid::Error) -> Self {
-    WHError { message: e.to_string() }
-  }
-}
-
-impl From<services::Error> for WHError {
-  fn from(e: services::Error) -> Self {
-    WHError { message: e.to_string() }
-  }
-}
+use self::check_batch_store_date::CheckBatchStoreDate;
+use self::check_date_store_batch::CheckDateStoreBatch;
+pub use self::error::WHError;
 
 type Goods = Uuid;
 type Store = Uuid;
@@ -140,8 +50,56 @@ const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
 const STORE_DATE_TYPE_BATCH_ID: &str = "cf_store_date_type_batch_id";
 const DATE_TYPE_STORE_BATCH_ID: &str = "cf_date_type_store_batch_id";
 
-const CHECK_DATE_STORE_BATCH: &str = "cf_check_date_store_batch";
-const CHECK_BATCH_STORE_DATE: &str = "cf_check_batch_store_date";
+// enum Topologies {
+
+// }
+
+#[derive(Clone)]
+pub struct WHStorage {
+  pub database: Db,
+}
+
+impl WHStorage {
+  pub fn receive_operations(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
+    Ok(self.database.record_ops(ops)?)
+  }
+
+  pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, WHError> {
+    std::fs::create_dir_all(&path).map_err(|e| WHError::new("Can't create folder for WHStorage"))?;
+
+    let mut opts = Options::default();
+    let mut cfs = Vec::new();
+
+    let mut cf_names: Vec<&str> = vec![
+      STORE_DATE_TYPE_BATCH_ID,
+      DATE_TYPE_STORE_BATCH_ID,
+      CheckDateStoreBatch::cf_name(),
+      CheckBatchStoreDate::cf_name(),
+    ];
+    // checkpoint_topologies.iter().for_each(|t| cf_names.push(t.cf_name()));
+
+    for name in cf_names {
+      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
+      cfs.push(cf);
+    }
+
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
+
+    let database = DB::open_cf_descriptors(&opts, &path, cfs)
+      .expect("Can't open database in settings.database.inventory");
+    let database = Arc::new(database);
+
+    let checkpoint_topologies: Vec<Box<dyn Checkpoint + Sync + Send>> = vec![
+      Box::new(CheckDateStoreBatch { db: database.clone() }),
+      Box::new(CheckBatchStoreDate { db: database.clone() }),
+    ];
+
+    let db = Db { db: database, checkpoint_topologies: Arc::new(checkpoint_topologies) };
+
+    Ok(WHStorage { database: db })
+  }
+}
 
 #[derive(Eq, Ord, PartialOrd, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Batch {
@@ -174,166 +132,71 @@ trait WareHouse {
     wh: Store,
     db: &mut Db,
   ) -> Result<Report, WHError> {
-    let checkpoints = db.search_last_checkpoints(start_date, wh)?;
+    // TODO move to trait Checkpoint
+    let balances = db.get_checkpoints_before_date(start_date, wh)?;
 
     let ops = self.get_ops(first_day_current_month(start_date), end_date, wh, db)?;
 
-    let mut old_balances = BTreeMap::new();
-
-    // TODO it's incorrect, recheck
-    // for checkpoint in checkpoints {
-    //   let balance = old_balances.entry(checkpoint.party()).or_insert(Balance {
-    //     date: checkpoint.date,
-    //     store: checkpoint.store,
-    //     goods: checkpoint.goods,
-    //     batch: checkpoint.batch.clone(),
-    //     number: BalanceForGoods::default(),
-    //   });
-
-    //   balance.number += checkpoint.number;
-    // }
-
-    let items = new_get_agregations(old_balances, ops, start_date);
+    let items = new_get_agregations(balances, ops, start_date);
 
     Ok(Report { start_date, end_date, items })
   }
 }
 
-struct DateTypeStoreGoodsId();
-impl WareHouse for DateTypeStoreGoodsId {
-  fn get_ops(
-    &self,
-    start_d: DateTime<Utc>,
-    end_d: DateTime<Utc>,
-    wh: Store,
-    db: &Db,
-  ) -> Result<Vec<Op>, WHError> {
-    let start_date = start_d.timestamp() as u64;
-    let from: Vec<u8> = start_date
-      .to_be_bytes()
-      .iter()
-      .chain(0_u8.to_be_bytes().iter())
-      .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let end_date = end_d.timestamp() as u64;
-    let till: Vec<u8> = end_date
-      .to_be_bytes()
-      .iter()
-      .chain(u8::MAX.to_be_bytes().iter())
-      .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(from..till);
-
-    if let Some(handle) = db.db.cf_handle(DATE_TYPE_STORE_BATCH_ID) {
-      let iter = db.db.iterator_cf_opt(&handle, options, IteratorMode::Start);
-
-      let mut res = Vec::new();
-
-      for item in iter {
-        let (_, value) = item?;
-        let op = serde_json::from_slice(&value)?;
-        res.push(op);
-      }
-
-      Ok(res)
-    } else {
-      Err(WHError::new("There are no operations in db"))
-    }
-  }
-
-  fn put_op(&self, op: &OpMutation, db: &Db) -> Result<(), WHError> {
-    if let Some(cf) = db.db.cf_handle(DATE_TYPE_STORE_BATCH_ID) {
-      db.db.put_cf(&cf, op.date_type_store_party_id(), op.value()?)?;
-
-      Ok(())
-    } else {
-      Err(WHError::new("Can't get cf from db in fn put_op"))
-    }
-  }
-
-  fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
-    ColumnFamilyDescriptor::new(DATE_TYPE_STORE_BATCH_ID, opts)
-  }
-}
-
-struct StoreDateTypeGoodsId();
-impl WareHouse for StoreDateTypeGoodsId {
-  fn get_ops(
-    &self,
-    start_d: DateTime<Utc>,
-    end_d: DateTime<Utc>,
-    wh: Store,
-    db: &Db,
-  ) -> Result<Vec<Op>, WHError> {
-    let start_date = start_d.timestamp() as u64;
-    let from: Vec<u8> = wh
-      .as_bytes()
-      .iter()
-      .chain(start_date.to_be_bytes().iter())
-      .chain(0_u8.to_be_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let end_date = end_d.timestamp() as u64;
-    let till = wh
-      .as_bytes()
-      .iter()
-      .chain(end_date.to_be_bytes().iter())
-      .chain(u8::MAX.to_be_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(from..till);
-
-    if let Some(handle) = db.db.cf_handle(STORE_DATE_TYPE_BATCH_ID) {
-      let iter = db.db.iterator_cf_opt(&handle, options, IteratorMode::Start);
-
-      let mut res = Vec::new();
-      for item in iter {
-        let (_, value) = item?;
-        let op = serde_json::from_slice(&value)?;
-        res.push(op);
-      }
-
-      Ok(res)
-    } else {
-      Err(WHError::new("There are no operations in db"))
-    }
-  }
-
-  fn put_op(&self, op: &OpMutation, db: &Db) -> Result<(), WHError> {
-    if let Some(cf) = db.db.cf_handle(STORE_DATE_TYPE_BATCH_ID) {
-      db.db.put_cf(&cf, op.store_date_type_party_id(), op.value()?)?;
-
-      Ok(())
-    } else {
-      Err(WHError::new("Can't get cf from db in fn put_op"))
-    }
-  }
-
-  fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
-    ColumnFamilyDescriptor::new(STORE_DATE_TYPE_BATCH_ID, opts)
-  }
-}
-
 trait Checkpoint {
-  fn key(&self, op: &Op) -> Vec<u8>;
-}
+  // fn cf_name(&self) -> &str;
 
-struct CheckDateStoreBatch();
+  fn key(&self, op: &Op, date_of_checkpoint: DateTime<Utc>) -> Vec<u8>;
 
-impl Checkpoint for CheckDateStoreBatch {
-    fn key(&self, op: &Op) -> Vec<u8> {
-        
+  fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError>;
+  fn set_balance(&self, key: &Vec<u8>, balance: BalanceForGoods) -> Result<(), WHError>;
+  fn del_balance(&self, key: &Vec<u8>) -> Result<(), WHError>;
+
+  fn change_checkpoints(
+    &self,
+    op: &OpMutation,
+    last_checkpoint_date: DateTime<Utc>,
+  ) -> Result<(), WHError> {
+    // let cf = self.db.cf_handle(name).expect("option in change_checkpoint");
+
+    let mut date = op.date;
+    let mut check_point = op.date;
+
+    // get iterator from first day of next month of given operation till 'last' check point
+    while check_point <= last_checkpoint_date {
+      check_point = first_day_next_month(date);
+
+      let key = self.key(&op.to_op(), check_point);
+
+      let mut balance = self.get_balance(&key)?;
+
+      balance += op.to_delta();
+
+      if balance.is_zero() {
+        self.del_balance(&key)?;
+      } else {
+        self.set_balance(&key, balance)?;
+      }
+      date = check_point;
     }
+
+    Ok(())
+  }
+
+  fn get_checkpoints_before_date(
+    &self,
+    date: DateTime<Utc>,
+    wh: Store,
+  ) -> Result<Vec<Balance>, WHError>;
+
+  fn get_report(
+    &self,
+    start_date: DateTime<Utc>,
+    end_date: DateTime<Utc>,
+    wh: Store,
+    db: &mut Db,
+  ) -> Result<Report, WHError>;
 }
-struct CheckBatchStoreDate();
 
 pub fn dt(date: &str) -> Result<DateTime<Utc>, WHError> {
   let res = DateTime::parse_from_rfc3339(format!("{date}T00:00:00Z").as_str())?.into();
@@ -358,7 +221,7 @@ fn first_day_next_month(date: DateTime<Utc>) -> DateTime<Utc> {
   DateTime::<Utc>::from_utc(naivedate, Utc)
 }
 
-fn min_party() -> Vec<u8> {
+fn min_batch() -> Vec<u8> {
   UUID_NIL
     .as_bytes()
     .iter()
@@ -368,7 +231,7 @@ fn min_party() -> Vec<u8> {
     .collect()
 }
 
-fn max_party() -> Vec<u8> {
+fn max_batch() -> Vec<u8> {
   UUID_MAX
     .as_bytes()
     .iter()
@@ -381,6 +244,7 @@ fn max_party() -> Vec<u8> {
 #[derive(Clone)]
 pub struct Db {
   db: Arc<DB>,
+  checkpoint_topologies: Arc<Vec<Box<dyn Checkpoint + Sync + Send>>>,
 }
 
 impl Db {
@@ -421,133 +285,54 @@ impl Db {
   }
 
   fn record_ops(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
-    let cf_names = DB::list_cf(&Options::default(), DB::path(&self.db))?;
+    // let cf_names = DB::list_cf(&Options::default(), DB::path(&self.db))?;
     for op in ops {
-      for name in &cf_names {
-        if name == "default" {
-          continue;
-        } else if name == CHECK_DATE_STORE_BATCH || name == CHECK_BATCH_STORE_DATE {
-          self.change_checkpoint(&op, name)?;
-        } else {
-          if let Some(cf) = self.db.cf_handle(name.as_str()) {
-            if op.before.is_none() {
-              self.db.put_cf(&cf, op.key(name)?, op.value()?)?;
-            } else {
-              if let Ok(Some(bytes)) = self.db.get_cf(&cf, op.key(name)?) {
-                let o: OpMutation = serde_json::from_slice(&bytes)?;
-                if op.before == o.after {
-                  self.db.put_cf(&cf, op.key(name)?, op.value()?)?;
-                } else {
-                  return Err(WHError::new("Wrong 'before' state in operation"));
-                }
-              }
-            }
-          }
-        }
-      }
+      // for checkpoint_topology in self.db.checkpoint_topologies {
+      //   checkpoint_topology.change_checkpoints(&op)?;
+      // }
+
+      // TODO review code
+      // for name in &cf_names {
+      //   if name == "default" {
+      //     continue;
+      //   } else if name == CHECK_DATE_STORE_BATCH || name == CHECK_BATCH_STORE_DATE {
+      //     self.change_checkpoints(&op, name)?;
+      //   } else {
+      //     if let Some(cf) = self.db.cf_handle(name.as_str()) {
+      //       if op.before.is_none() {
+      //         self.db.put_cf(&cf, op.key(name)?, op.value()?)?;
+      //       } else {
+      //         if let Ok(Some(bytes)) = self.db.get_cf(&cf, op.key(name)?) {
+      //           let o: OpMutation = serde_json::from_slice(&bytes)?;
+      //           if op.before == o.after {
+      //             self.db.put_cf(&cf, op.key(name)?, op.value()?)?;
+      //           } else {
+      //             return Err(WHError::new("Wrong 'before' state in operation"));
+      //           }
+      //         }
+      //       }
+      //     }
+      //   }
+      // }
     }
 
     Ok(())
   }
 
-  fn change_checkpoint(&self, op: &OpMutation, name: &str) -> Result<(), WHError> {
-    let cf = self.db.cf_handle(name).expect("option in change_checkpoint");
-
-    // for begins
-    // get iterator from first day of next month of given operation till 'last' check point
-    let check_point = first_day_next_month(op.date);
-
-    let key: Vec<u8> = todo!();
-
-    
-
-    let balance = match self.db.get_cf(&cf, &key)? {
-      Some(v) => serde_json::from_slice(&v)?,
-      None => BalanceForGoods::default(),
-    };
-
-    balance += op.to_delta();
-    if balance.is_zero() {
-      self.db.delete_cf(&cf, &key)?;
-    } else {
-      self.db.put_cf(&cf, &key, serde_json::to_string(&balance)?)?;
-    }
-    // for ends
-
-    Ok(())
-  }
-
-  fn search_last_checkpoints(
+  fn get_checkpoints_before_date(
     &mut self,
     date: DateTime<Utc>,
     wh: Store,
   ) -> Result<Vec<Balance>, WHError> {
-    let mut result = Vec::new();
-
-    if let Some(cf) = self.db.cf_handle(CHECK_DATE_STORE_BATCH) {
-      let ts = first_day_current_month(date).timestamp() as u64;
-
-      let from: Vec<u8> = ts
-        .to_be_bytes()
-        .iter()
-        .chain(wh.as_bytes().iter())
-        .chain(min_party().iter())
-        .map(|b| *b)
-        .collect();
-      let till: Vec<u8> = ts
-        .to_be_bytes()
-        .iter()
-        .chain(wh.as_bytes().iter())
-        .chain(max_party().iter())
-        .map(|b| *b)
-        .collect();
-      let mut opts = ReadOptions::default();
-      opts.set_iterate_range(from..till);
-
-      let mut iter = self.db.iterator_cf_opt(&cf, opts, IteratorMode::Start);
-
-      while let Some(res) = iter.next() {
-        let (_, value) = res?;
-        let balance = serde_json::from_slice(&value)?;
-        result.push(balance);
+    for checkpoint_topology in self.checkpoint_topologies.iter() {
+      match checkpoint_topology.get_checkpoints_before_date(date, wh) {
+        Ok(result) => return Ok(result),
+        Err(e) => {
+          // TODO ignore only not supported
+        },
       }
-    } else {
-      let opts = Options::default();
-      self.db.create_cf(CHECK_DATE_STORE_BATCH, &opts)?;
     }
-
-    Ok(result)
-  }
-
-  fn search_next_checkpoints(
-    &mut self,
-    date: DateTime<Utc>,
-    wh: Store,
-  ) -> Result<Vec<Balance>, WHError> {
-    let mut result = Vec::new();
-
-    if let Some(cf) = self.db.cf_handle(CHECK_DATE_STORE_BATCH) {
-      let dt = date.timestamp() as u64;
-      let from: Vec<u8> = dt
-        .to_be_bytes()
-        .iter()
-        .chain(wh.as_bytes().iter())
-        .chain(max_party().iter())
-        .map(|b| *b)
-        .collect();
-      let mut iter =
-        self.db.iterator_cf(&cf, IteratorMode::From(&from, rocksdb::Direction::Forward));
-      while let Some(res) = iter.next() {
-        let (_, value) = res?;
-        let bal = serde_json::from_slice(&value)?;
-        result.push(bal)
-      }
-    } else {
-      let opts = Options::default();
-      self.db.create_cf(CHECK_DATE_STORE_BATCH, &opts)?;
-    }
-
-    Ok(result)
+    Err(WHError::new("can't get checkpoint before date"))
   }
 }
 
@@ -635,8 +420,8 @@ impl AddAssign<&InternalOperation> for BalanceForGoods {
 
 trait KeyValueStore {
   fn key(&self, s: &String) -> Result<Vec<u8>, WHError>;
-  fn store_date_type_party_id(&self) -> Vec<u8>;
-  fn date_type_store_party_id(&self) -> Vec<u8>;
+  fn store_date_type_batch_id(&self) -> Vec<u8>;
+  fn date_type_store_batch_id(&self) -> Vec<u8>;
   fn value(&self) -> Result<String, WHError>;
 }
 
@@ -663,10 +448,10 @@ impl AddAssign<&OpMutation> for Balance {
 }
 
 impl Balance {
-  fn key_party_store_date(&self) -> Vec<u8> {
+  fn key_batch_store_date(&self) -> Vec<u8> {
     let dt = self.date.timestamp() as u64;
     let key = self
-      .party()
+      .batch()
       .iter()
       .chain(self.store.as_bytes().iter())
       .chain(dt.to_be_bytes().iter())
@@ -675,13 +460,13 @@ impl Balance {
     key
   }
 
-  fn key_date_store_party(&self) -> Vec<u8> {
+  fn key_date_store_batch(&self) -> Vec<u8> {
     let dt = self.date.timestamp() as u64;
     let key = dt
       .to_be_bytes()
       .iter()
       .chain(self.store.as_bytes().iter())
-      .chain(self.party().iter())
+      .chain(self.batch().iter())
       .map(|b| *b)
       .collect();
     key
@@ -689,8 +474,8 @@ impl Balance {
 
   fn key(&self, s: &str) -> Result<Vec<u8>, WHError> {
     match s {
-      CHECK_DATE_STORE_BATCH => Ok(self.key_date_store_party()),
-      CHECK_BATCH_STORE_DATE => Ok(self.key_party_store_date()),
+      CHECK_DATE_STORE_BATCH => Ok(self.key_date_store_batch()),
+      CHECK_BATCH_STORE_DATE => Ok(self.key_batch_store_date()),
       _ => Err(WHError::new("Wrong Balance key type")),
     }
   }
@@ -699,7 +484,7 @@ impl Balance {
     Ok(serde_json::to_string(&self)?)
   }
 
-  fn party(&self) -> Vec<u8> {
+  fn batch(&self) -> Vec<u8> {
     let dt = self.batch.date.timestamp() as u64;
 
     self
@@ -730,19 +515,6 @@ struct Op {
 }
 
 impl Op {
-  fn party(&self) -> Vec<u8> {
-    let dt = self.batch.date.timestamp() as u64;
-
-    self
-      .goods
-      .as_bytes()
-      .iter()
-      .chain(dt.to_be_bytes().iter())
-      .chain(self.batch.id.as_bytes().iter())
-      .map(|b| *b)
-      .collect()
-  }
-
   fn to_delta(&self) -> BalanceDelta {
     self.op.clone().into()
   }
@@ -761,6 +533,22 @@ pub struct OpMutation {
   before: Option<InternalOperation>,
   after: Option<InternalOperation>,
   event: String,
+}
+
+impl Default for OpMutation {
+  fn default() -> Self {
+    Self {
+      id: Default::default(),
+      date: Default::default(),
+      store: Default::default(),
+      transfer: Default::default(),
+      goods: Default::default(),
+      batch: Batch::new(),
+      before: None,
+      after: None,
+      event: Default::default(),
+    }
+  }
 }
 
 impl OpMutation {
@@ -817,7 +605,7 @@ impl OpMutation {
     }
   }
 
-  fn party(&self) -> Vec<u8> {
+  fn batch(&self) -> Vec<u8> {
     let dt = self.batch.date.timestamp() as u64;
 
     self
@@ -837,9 +625,9 @@ impl OpMutation {
     n - o
   }
 
-  fn new_from_ops(before: Option<Op>, after: Option<Op>) -> Result<OpMutation, WHError> {
+  fn new_from_ops(before: Option<Op>, after: Option<Op>) -> OpMutation {
     if let (Some(b), Some(a)) = (&before, &after) {
-      Ok(OpMutation {
+      OpMutation {
         id: a.id,
         date: a.date,
         store: a.store,
@@ -849,9 +637,9 @@ impl OpMutation {
         before: Some(b.op.clone()),
         after: Some(a.op.clone()),
         event: a.event.clone(),
-      })
+      }
     } else if let Some(b) = &before {
-      Ok(OpMutation {
+      OpMutation {
         id: b.id,
         date: b.date,
         store: b.store,
@@ -861,9 +649,9 @@ impl OpMutation {
         before: Some(b.op.clone()),
         after: None,
         event: b.event.clone(),
-      })
+      }
     } else if let Some(a) = &after {
-      Ok(OpMutation {
+      OpMutation {
         id: a.id,
         date: a.date,
         store: a.store,
@@ -873,9 +661,9 @@ impl OpMutation {
         before: None,
         after: Some(a.op.clone()),
         event: a.event.clone(),
-      })
+      }
     } else {
-      Err(WHError::new("Both before and after states are None. It shouldn't happened"))
+      OpMutation::default()
     }
   }
 }
@@ -883,13 +671,13 @@ impl OpMutation {
 impl KeyValueStore for OpMutation {
   fn key(&self, s: &String) -> Result<Vec<u8>, WHError> {
     match s.as_str() {
-      STORE_DATE_TYPE_BATCH_ID => Ok(self.store_date_type_party_id()),
-      DATE_TYPE_STORE_BATCH_ID => Ok(self.date_type_store_party_id()),
+      STORE_DATE_TYPE_BATCH_ID => Ok(self.store_date_type_batch_id()),
+      DATE_TYPE_STORE_BATCH_ID => Ok(self.date_type_store_batch_id()),
       _ => Err(WHError::new("Wrong Op key type")),
     }
   }
 
-  fn store_date_type_party_id(&self) -> Vec<u8> {
+  fn store_date_type_batch_id(&self) -> Vec<u8> {
     let ts = self.date.timestamp() as u64;
     // if after == None, this operation will be recorded last (that's why op_type by default is 3)
     let mut op_type = 3_u8;
@@ -907,7 +695,7 @@ impl KeyValueStore for OpMutation {
       .iter()
       .chain(ts.to_be_bytes().iter())
       .chain(op_type.to_be_bytes().iter())
-      .chain(self.party().iter())
+      .chain(self.batch().iter())
       .chain(self.id.as_bytes().iter())
       .map(|b| *b)
       .collect();
@@ -919,7 +707,7 @@ impl KeyValueStore for OpMutation {
     Ok(serde_json::to_string(&self)?)
   }
 
-  fn date_type_store_party_id(&self) -> Vec<u8> {
+  fn date_type_store_batch_id(&self) -> Vec<u8> {
     let ts = self.date.timestamp() as u64;
     // if after == None, this operation will be recorded last (that's why op_type by default is 3)
     let mut op_type = 3_u8;
@@ -936,7 +724,7 @@ impl KeyValueStore for OpMutation {
       .iter()
       .chain(op_type.to_be_bytes().iter())
       .chain(self.store.as_bytes().iter())
-      .chain(self.party().iter())
+      .chain(self.batch().iter())
       .chain(self.id.as_bytes().iter())
       .map(|b| *b)
       .collect();
@@ -964,7 +752,7 @@ struct AgregationStoreGoods {
   // ключ
   store: Option<Store>,
   goods: Option<Goods>,
-  document: Option<Batch>,
+  batch: Option<Batch>,
   // агрегация
   open_balance: BalanceForGoods,
   receive: BalanceDelta,
@@ -996,7 +784,7 @@ impl AgregationStoreGoods {
   fn add_to_open_balance(&mut self, op: &Op) {
     self.store = Some(op.store);
     self.goods = Some(op.goods);
-    self.document = Some(op.batch.clone());
+    self.batch = Some(op.batch.clone());
 
     let delta = op.to_delta();
 
@@ -1004,9 +792,9 @@ impl AgregationStoreGoods {
     self.close_balance += delta;
   }
 
-  fn party(&self) -> Vec<u8> {
+  fn batch(&self) -> Vec<u8> {
     let mut key = Vec::new();
-    if let Some(doc) = &self.document {
+    if let Some(doc) = &self.batch {
       key = self
         .goods
         .expect("option in party")
@@ -1026,7 +814,7 @@ impl Default for AgregationStoreGoods {
     Self {
       store: None,
       goods: None,
-      document: None,
+      batch: None,
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta::default(),
       issue: BalanceDelta::default(),
@@ -1039,7 +827,7 @@ impl AddAssign<&Op> for AgregationStoreGoods {
   fn add_assign(&mut self, rhs: &Op) {
     self.store = Some(rhs.store);
     self.goods = Some(rhs.goods);
-    self.document = Some(rhs.batch.clone());
+    self.batch = Some(rhs.batch.clone());
     self.apply_operation(rhs);
   }
 }
@@ -1128,7 +916,7 @@ impl Agregation for AgregationStoreGoods {
         ReturnType::Good(AgregationStoreGoods {
           store: Some(b.store),
           goods: Some(b.goods),
-          document: Some(b.batch.clone()),
+          batch: Some(b.batch.clone()),
           open_balance: b.number.clone(),
           receive: BalanceDelta::default(),
           issue: BalanceDelta::default(),
@@ -1204,7 +992,7 @@ impl Agregation for AgregationStoreGoods {
 }
 
 impl KeyValueStore for AgregationStoreGoods {
-  fn store_date_type_party_id(&self) -> Vec<u8> {
+  fn store_date_type_batch_id(&self) -> Vec<u8> {
     todo!()
   }
 
@@ -1212,7 +1000,7 @@ impl KeyValueStore for AgregationStoreGoods {
     Ok(serde_json::to_string(&self)?)
   }
 
-  fn date_type_store_party_id(&self) -> Vec<u8> {
+  fn date_type_store_batch_id(&self) -> Vec<u8> {
     todo!()
   }
 
@@ -1229,20 +1017,33 @@ struct Report {
 }
 
 fn new_get_agregations(
-  balances: BTreeMap<Vec<u8>, Balance>,
+  balances: Vec<Balance>,
   operations: Vec<Op>,
   start_date: DateTime<Utc>,
 ) -> (AgregationStore, Vec<AgregationStoreGoods>) {
+  let key = |store: &Store, goods: &Goods, batch: &Batch| -> Vec<u8> {
+    [].iter()
+      .chain(store.as_bytes().iter())
+      .chain(goods.as_bytes().iter())
+      .chain((batch.date.timestamp() as u64).to_be_bytes().iter())
+      .chain(batch.id.as_bytes().iter())
+      .map(|b| *b)
+      .collect()
+  };
+
+  let keyFor = |op: &Op| -> Vec<u8> { key(&op.store, &op.goods, &op.batch) };
+
   let mut agregations = BTreeMap::new();
   let mut master_agregation = AgregationStore::default();
 
-  for (product, balance) in balances {
+  for balance in balances {
     agregations.insert(
-      product,
+      key(&balance.store, &balance.goods, &balance.batch),
       AgregationStoreGoods {
         store: Some(balance.store),
         goods: Some(balance.goods),
-        document: Some(balance.batch),
+        batch: Some(balance.batch),
+
         open_balance: balance.number.clone(),
         receive: BalanceDelta::default(),
         issue: BalanceDelta::default(),
@@ -1254,11 +1055,11 @@ fn new_get_agregations(
   for op in operations {
     if op.date < start_date {
       agregations
-        .entry(op.party())
+        .entry(keyFor(&op))
         .or_insert(AgregationStoreGoods::default())
         .add_to_open_balance(&op);
     } else {
-      *agregations.entry(op.party()).or_insert(AgregationStoreGoods::default()) += &op;
+      *agregations.entry(keyFor(&op)).or_insert(AgregationStoreGoods::default()) += &op;
     }
   }
 
@@ -1287,48 +1088,58 @@ pub fn receive_data(
   // println!("AFTER: {tmp:#?}");
   // let mut after = tmp.into_iter();
 
-  let mut after = json_to_ops(&mut data, store, time, ctx)?.into_iter();
-
-  let mut b_op = before.next();
-  let mut a_op = after.next();
+  let mut after = json_to_ops(&mut data, store, time, ctx)?;
 
   let mut ops: Vec<OpMutation> = Vec::new();
 
-  while b_op.is_some() || a_op.is_some() {
-    if let (Some(b), Some(a)) = (&b_op, &a_op) {
-      if b.id == a.id && b.party() == a.party() {
-        // create new OpMut with both (delta will be finded and propagated later in receive_operations())
-        ops.push(OpMutation::new_from_ops(b_op, a_op)?);
-
-        b_op = before.next();
-        a_op = after.next();
-      } else if b.party() > a.party() {
-        // create new OpMut with a
-        ops.push(OpMutation::new_from_ops(None, a_op)?);
-
-        a_op = after.next();
-      } else if b.party() < a.party() {
-        //create new OpMut with b
-        ops.push(OpMutation::new_from_ops(b_op, None)?);
-
-        b_op = before.next();
-      }
-    } else if let Some(b) = &b_op {
-      // create new OpMut with b
-      ops.push(OpMutation::new_from_ops(b_op, None)?);
-
-      b_op = before.next();
-    } else if let Some(a) = &a_op {
-      // create new OpMut with a
-      ops.push(OpMutation::new_from_ops(None, a_op)?);
-
-      a_op = after.next();
+  while let Some(ref b) = before.next() {
+    if let Some(a) = after.remove_entry(&b.0) {
+      ops.push(OpMutation::new_from_ops(Some(b.1.clone()), Some(a.1)));
+    } else {
+      ops.push(OpMutation::new_from_ops(Some(b.1.clone()), None));
     }
   }
 
+  let mut after = after.into_iter();
+
+  while let Some(ref a) = after.next() {
+    ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
+  }
+
+  // while b_op.is_some() || a_op.is_some() {
+  //   if let (Some(b), Some(a)) = (&b_op, &a_op) {
+  //     if b.id == a.id && b.batch() == a.batch() {
+  //       // create new OpMut with both (delta will be finded and propagated later in receive_operations())
+  //       ops.push(OpMutation::new_from_ops(b_op, a_op)?);
+
+  //       b_op = before.next();
+  //       a_op = after.next();
+  //     } else if b.batch() > a.batch() {
+  //       // create new OpMut with a
+  //       ops.push(OpMutation::new_from_ops(None, a_op)?);
+
+  //       a_op = after.next();
+  //     } else if b.batch() < a.batch() {
+  //       //create new OpMut with b
+  //       ops.push(OpMutation::new_from_ops(b_op, None)?);
+
+  //       b_op = before.next();
+  //     }
+  //   } else if let Some(b) = &b_op {
+  //     // create new OpMut with b
+  //     ops.push(OpMutation::new_from_ops(b_op, None)?);
+
+  //     b_op = before.next();
+  //   } else if let Some(a) = &a_op {
+  //     // create new OpMut with a
+  //     ops.push(OpMutation::new_from_ops(None, a_op)?);
+
+  //     a_op = after.next();
+  //   }
+  // }
+
   app.warehouse.receive_operations(&ops)?;
 
-  // return data with _tids
   Ok(data)
 }
 
@@ -1337,8 +1148,8 @@ fn json_to_ops(
   store: Uuid,
   time: DateTime<Utc>,
   ctx: &Vec<String>,
-) -> Result<Vec<Op>, WHError> {
-  let mut ops = Vec::new();
+) -> Result<HashMap<String, Op>, WHError> {
+  let mut ops = HashMap::new();
 
   if *data != JsonValue::Null {
     let d_date = data["date"].date()?;
@@ -1369,7 +1180,7 @@ fn json_to_ops(
         },
         event: time.to_string(),
       };
-      ops.push(op);
+      ops.insert(goods["_tid"].to_string(), op);
     }
   }
   Ok(ops)
@@ -1389,9 +1200,10 @@ mod tests {
     services::{Error, Services},
     settings::{self, Settings},
     storage::SOrganizations,
+    store::date_type_store_goods_id::DateTypeStoreGoodsId,
   };
 
-  use super::*;
+  use super::{store_date_type_goods_id::StoreDateTypeGoodsId, *};
   use crate::warehouse::test_util::init;
   use actix_web::{http::header::ContentType, test, web, App};
   use futures::TryFutureExt;
@@ -1674,30 +1486,10 @@ mod tests {
 
   #[actix_web::test]
   async fn store_test_receive_ops() {
-    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
 
-    let mut opts = Options::default();
-    let mut cfs = Vec::new();
-
-    let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_BATCH_ID,
-      DATE_TYPE_STORE_BATCH_ID,
-      CHECK_DATE_STORE_BATCH,
-      CHECK_BATCH_STORE_DATE,
-    ];
-
-    for name in cf_names {
-      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-      cfs.push(cf);
-    }
-
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &tmpdir, cfs).expect("Can't open db in test_receive_ops"),
-      ),
-    };
+    let mut wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let op_d = dt("2022-10-10").expect("test_receive_ops");
     let check_d = dt("2022-11-01").expect("test_receive_ops");
@@ -1756,34 +1548,29 @@ mod tests {
       number: BalanceForGoods { qty: 2.into(), cost: 2000.into() },
     };
 
-    let b1 = db.find_checkpoint(&ops[0], CHECK_DATE_STORE_BATCH).expect("test_receive_ops");
-    assert_eq!(b1, Some(balance.clone()));
+    // for checkpoint_topology in db. ...
+    todo!();
+    // let b1 = db.find_checkpoint(&ops[0], CHECK_DATE_STORE_BATCH).expect("test_receive_ops");
+    // assert_eq!(b1, Some(balance.clone()));
 
-    let b2 = db.find_checkpoint(&ops[0], CHECK_BATCH_STORE_DATE).expect("test_receive_ops");
-    assert_eq!(b2, Some(balance));
+    // let b2 = db.find_checkpoint(&ops[0], CHECK_BATCH_STORE_DATE).expect("test_receive_ops");
+    // assert_eq!(b2, Some(balance));
 
-    let b3 = db.find_checkpoint(&ops[2], CHECK_DATE_STORE_BATCH).expect("test_receive_ops");
-    assert_eq!(b3, None);
+    // let b3 = db.find_checkpoint(&ops[2], CHECK_DATE_STORE_BATCH).expect("test_receive_ops");
+    // assert_eq!(b3, None);
 
-    let b4 = db.find_checkpoint(&ops[2], CHECK_BATCH_STORE_DATE).expect("test_receive_ops");
-    assert_eq!(b4, None);
+    // let b4 = db.find_checkpoint(&ops[2], CHECK_BATCH_STORE_DATE).expect("test_receive_ops");
+    // assert_eq!(b4, None);
 
-    tmpdir.close().expect("Can't close tmp dir in test_receive_ops");
+    tmp_dir.close().expect("Can't close tmp dir in test_receive_ops");
   }
 
   #[actix_web::test]
   async fn store_test_neg_balance_date_type_store_goods_id() {
-    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_neg_balance");
-    let mut opts = Options::default();
-    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_BATCH_ID, opts.clone());
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])
-          .expect("Can't open db in test_get_neg_balance"),
-      ),
-    };
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_neg_balance");
+
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let op_d = dt("2022-10-10").expect("test_get_neg_balance");
     let check_d = dt("2022-10-11").expect("test_get_neg_balance");
@@ -1809,7 +1596,7 @@ mod tests {
     let agr = AgregationStoreGoods {
       store: Some(w1),
       goods: Some(G1),
-      document: Some(party.clone()),
+      batch: Some(party.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta::default(),
       issue: BalanceDelta { qty: 2.into(), cost: 2000.into() },
@@ -1821,22 +1608,15 @@ mod tests {
 
     assert_eq!(res.items.1[0], agr);
 
-    tmpdir.close().expect("Can't close tmp dir in test_get_neg_balance");
+    tmp_dir.close().expect("Can't close tmp dir in test_get_neg_balance");
   }
 
   #[actix_web::test]
   async fn store_test_zero_balance_date_type_store_goods_id() {
-    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_zero_balance");
-    let mut opts = Options::default();
-    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_BATCH_ID, opts.clone());
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])
-          .expect("Can't open db in test_get_zero_balance"),
-      ),
-    };
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_zero_balance");
+
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let start_d = dt("2022-10-10").expect("test_get_zero_balance");
     let end_d = dt("2022-10-11").expect("test_get_zero_balance");
@@ -1869,7 +1649,7 @@ mod tests {
     let agr = AgregationStoreGoods {
       store: Some(w1),
       goods: Some(G1),
-      document: Some(party.clone()),
+      batch: Some(party.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
       issue: BalanceDelta { qty: 3.into(), cost: 3000.into() },
@@ -1878,7 +1658,7 @@ mod tests {
 
     assert_eq!(res.items.1[0], agr);
 
-    tmpdir.close().expect("Can't close tmp dir in test_get_zero_balance");
+    tmp_dir.close().expect("Can't close tmp dir in test_get_zero_balance");
   }
 
   #[actix_web::test]
@@ -1892,12 +1672,10 @@ mod tests {
   }
 
   fn get_wh_ops(key: impl WareHouse) -> Result<(), WHError> {
-    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
-    let mut opts = Options::default();
-    let cf = key.create_cf(opts.clone());
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let db = Db { db: Arc::new(DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])?) };
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
+
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let start_d = dt("2022-10-10")?;
     let end_d = dt("2022-10-11")?;
@@ -1956,12 +1734,10 @@ mod tests {
   }
 
   fn get_agregations_without_checkpoints(key: impl WareHouse) -> Result<(), WHError> {
-    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
-    let mut opts = Options::default();
-    let cf = key.create_cf(opts.clone());
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db { db: Arc::new(DB::open_cf_descriptors(&opts, &tmpdir, vec![cf])?) };
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
+
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let op_d = dt("2022-10-10")?;
     let check_d = dt("2022-10-11")?;
@@ -2029,7 +1805,7 @@ mod tests {
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G1),
-        document: Some(doc1.clone()),
+        batch: Some(doc1.clone()),
         open_balance: BalanceForGoods::default(),
         receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
         issue: BalanceDelta { qty: 1.into(), cost: 1000.into() },
@@ -2038,7 +1814,7 @@ mod tests {
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G2),
-        document: Some(doc2.clone()),
+        batch: Some(doc2.clone()),
         open_balance: BalanceForGoods::default(),
         receive: BalanceDelta { qty: 2.into(), cost: 2000.into() },
         issue: BalanceDelta { qty: 2.into(), cost: 2000.into() },
@@ -2056,7 +1832,7 @@ mod tests {
     }
     assert_eq!(iter.next(), None);
 
-    tmpdir.close().expect("Can't close tmp dir in store_test_get_wh_balance");
+    tmp_dir.close().expect("Can't close tmp dir in store_test_get_wh_balance");
 
     Ok(())
   }
@@ -2065,7 +1841,8 @@ mod tests {
   async fn store_test_op_iter() {
     let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_op_iter");
 
-    let db = Db { db: Arc::new(DB::open_default(&tmp_dir).expect("test_op_iter")) };
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let start_d = dt("2022-11-01").expect("test_op_iter");
     let w1 = Uuid::new_v4();
@@ -2124,7 +1901,7 @@ mod tests {
     ];
 
     for op in &ops {
-      db.put(&op.store_date_type_party_id(), &op.value().expect("test_op_iter"))
+      db.put(&op.store_date_type_batch_id(), &op.value().expect("test_op_iter"))
         .expect("Can't put op in db in test_op_iter");
     }
 
@@ -2152,28 +1929,8 @@ mod tests {
     let key1 = DateTypeStoreGoodsId();
     let key2 = StoreDateTypeGoodsId();
 
-    let mut opts = Options::default();
-    let mut cfs = Vec::new();
-
-    let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_BATCH_ID,
-      DATE_TYPE_STORE_BATCH_ID,
-      CHECK_DATE_STORE_BATCH,
-      CHECK_BATCH_STORE_DATE,
-    ];
-
-    for name in cf_names {
-      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-      cfs.push(cf);
-    }
-
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &tmp_dir, cfs).expect("Can't open db in test_report"),
-      ),
-    };
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let start_d = dt("2022-11-07").expect("test_report");
     let end_d = dt("2022-11-08").expect("test_report");
@@ -2263,7 +2020,7 @@ mod tests {
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G1),
-        document: Some(party.clone()),
+        batch: Some(party.clone()),
         open_balance: BalanceForGoods { qty: 4.into(), cost: 4000.into() },
         receive: BalanceDelta::default(),
         issue: BalanceDelta::default(),
@@ -2272,7 +2029,7 @@ mod tests {
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G2),
-        document: Some(party.clone()),
+        batch: Some(party.clone()),
         open_balance: BalanceForGoods::default(),
         receive: BalanceDelta { qty: 2.into(), cost: 2000.into() },
         issue: BalanceDelta::default(),
@@ -2281,7 +2038,7 @@ mod tests {
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G3),
-        document: Some(party.clone()),
+        batch: Some(party.clone()),
         open_balance: BalanceForGoods { qty: 2.into(), cost: 6000.into() },
         receive: BalanceDelta::default(),
         issue: BalanceDelta { qty: 1.into(), cost: 3000.into() },
@@ -2314,16 +2071,10 @@ mod tests {
 
   #[actix_web::test]
   async fn store_test_parties_date_type_store_goods_id() {
-    let tmpdir = TempDir::new().expect("Can't create tmp dir in test_parties");
-    let mut opts = Options::default();
-    let cf = ColumnFamilyDescriptor::new(DATE_TYPE_STORE_BATCH_ID, opts.clone());
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &tmpdir, vec![cf]).expect("Can't open db in test_parties"),
-      ),
-    };
+    let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_parties");
+
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let start_d = dt("2022-10-10").expect("test_parties");
     let end_d = dt("2022-10-11").expect("test_parties");
@@ -2380,7 +2131,7 @@ mod tests {
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G1),
-        document: Some(doc1.clone()),
+        batch: Some(doc1.clone()),
         open_balance: BalanceForGoods::default(),
         receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
         issue: BalanceDelta::default(),
@@ -2389,7 +2140,7 @@ mod tests {
       AgregationStoreGoods {
         store: Some(w1),
         goods: Some(G1),
-        document: Some(doc2.clone()),
+        batch: Some(doc2.clone()),
         open_balance: BalanceForGoods::default(),
         receive: BalanceDelta { qty: 4.into(), cost: 2000.into() },
         issue: BalanceDelta { qty: 1.into(), cost: 500.into() },
@@ -2400,36 +2151,15 @@ mod tests {
     assert_eq!(res.items.1[0], agrs[0]);
     assert_eq!(res.items.1[1], agrs[1]);
 
-    tmpdir.close().expect("Can't close tmp dir in test_parties");
+    tmp_dir.close().expect("Can't close tmp dir in test_parties");
   }
 
   #[actix_web::test]
   async fn store_test_issue_cost_none() {
     let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_issue_cost_none");
 
-    let mut opts = Options::default();
-    let mut cfs = Vec::new();
-
-    let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_BATCH_ID,
-      DATE_TYPE_STORE_BATCH_ID,
-      CHECK_DATE_STORE_BATCH,
-      CHECK_BATCH_STORE_DATE,
-    ];
-
-    for name in cf_names {
-      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-      cfs.push(cf);
-    }
-
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
-          .expect("Can't open db in test_issue_cost_none"),
-      ),
-    };
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let start_d = dt("2022-10-10").expect("test_issue_cost_none");
     let end_d = dt("2022-10-11").expect("test_issue_cost_none");
@@ -2473,7 +2203,7 @@ mod tests {
     let agr = AgregationStoreGoods {
       store: Some(w1),
       goods: Some(G1),
-      document: Some(doc.clone()),
+      batch: Some(doc.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta { qty: 4.into(), cost: 2000.into() },
       issue: BalanceDelta { qty: 1.into(), cost: 500.into() },
@@ -2489,29 +2219,8 @@ mod tests {
   async fn store_test_receive_cost_none() {
     let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_receive_cost_none");
 
-    let mut opts = Options::default();
-    let mut cfs = Vec::new();
-
-    let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_BATCH_ID,
-      DATE_TYPE_STORE_BATCH_ID,
-      CHECK_DATE_STORE_BATCH,
-      CHECK_BATCH_STORE_DATE,
-    ];
-
-    for name in cf_names {
-      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-      cfs.push(cf);
-    }
-
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
-          .expect("Can't open db in test_receive_cost_none"),
-      ),
-    };
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let start_d = dt("2022-10-10").expect("test_receive_cost_none");
     let end_d = dt("2022-10-11").expect("test_receive_cost_none");
@@ -2555,7 +2264,7 @@ mod tests {
     let agr = AgregationStoreGoods {
       store: Some(w1),
       goods: Some(G1),
-      document: Some(doc.clone()),
+      batch: Some(doc.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta { qty: 5.into(), cost: 2000.into() },
       issue: BalanceDelta { qty: 0.into(), cost: 0.into() },
@@ -2571,29 +2280,8 @@ mod tests {
   async fn store_test_issue_remainder() {
     let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_issue_remainder");
 
-    let mut opts = Options::default();
-    let mut cfs = Vec::new();
-
-    let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_BATCH_ID,
-      DATE_TYPE_STORE_BATCH_ID,
-      CHECK_DATE_STORE_BATCH,
-      CHECK_BATCH_STORE_DATE,
-    ];
-
-    for name in cf_names {
-      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-      cfs.push(cf);
-    }
-
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
-          .expect("Can't open db in test_issue_remainder"),
-      ),
-    };
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let start_d = dt("2022-10-10").expect("test_issue_remainder");
     let end_d = dt("2022-10-11").expect("test_issue_remainder");
@@ -2604,9 +2292,6 @@ mod tests {
     let id1 = Uuid::from_u128(101);
     let id2 = Uuid::from_u128(102);
     let id3 = Uuid::from_u128(103);
-
-    // println!("{id1}");
-    // println!("{id2}");
 
     let ops = vec![
       OpMutation::new(
@@ -2654,7 +2339,7 @@ mod tests {
     let agr = AgregationStoreGoods {
       store: Some(w1),
       goods: Some(G1),
-      document: Some(doc.clone()),
+      batch: Some(doc.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta { qty: 3.into(), cost: 10.into() },
       issue: BalanceDelta { qty: 3.into(), cost: 10.into() },
@@ -2670,28 +2355,8 @@ mod tests {
   async fn store_test_issue_op_none() {
     let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_issue_op_none");
 
-    let mut opts = Options::default();
-    let mut cfs = Vec::new();
-
-    let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_BATCH_ID,
-      DATE_TYPE_STORE_BATCH_ID,
-      CHECK_DATE_STORE_BATCH,
-      CHECK_BATCH_STORE_DATE,
-    ];
-
-    for name in cf_names {
-      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-      cfs.push(cf);
-    }
-
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &tmp_dir, cfs).expect("Can't open db in test_issue_op_none"),
-      ),
-    };
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let start_d = dt("2022-10-10").expect("test_issue_op_none");
     let end_d = dt("2022-10-11").expect("test_issue_op_none");
@@ -2727,7 +2392,7 @@ mod tests {
     let agr = AgregationStoreGoods {
       store: Some(w1),
       goods: Some(G1),
-      document: Some(doc.clone()),
+      batch: Some(doc.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta { qty: 3.into(), cost: 10.into() },
       issue: BalanceDelta { qty: 3.into(), cost: 10.into() },
@@ -2743,29 +2408,8 @@ mod tests {
   async fn store_test_receive_change_op() {
     let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_receive_change_op");
 
-    let mut opts = Options::default();
-    let mut cfs = Vec::new();
-
-    let cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_BATCH_ID,
-      DATE_TYPE_STORE_BATCH_ID,
-      CHECK_DATE_STORE_BATCH,
-      CHECK_BATCH_STORE_DATE,
-    ];
-
-    for name in cf_names {
-      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-      cfs.push(cf);
-    }
-
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-    let mut db = Db {
-      db: Arc::new(
-        DB::open_cf_descriptors(&opts, &tmp_dir, cfs)
-          .expect("Can't open db in test_receive_change_op"),
-      ),
-    };
+    let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+    let mut db = wh.database;
 
     let start_d = dt("2022-10-10").expect("test_receive_change_op");
     let end_d = dt("2022-10-11").expect("test_receive_change_op");
@@ -2811,7 +2455,7 @@ mod tests {
     };
 
     let mut old_checkpoints = db
-      .search_last_checkpoints(start_d, w1)
+      .get_checkpoints_before_date(start_d, w1)
       .expect("test_receive_change_op")
       .into_iter();
 
@@ -2840,7 +2484,7 @@ mod tests {
     };
 
     let mut new_checkpoints = db
-      .search_last_checkpoints(start_d, w1)
+      .get_checkpoints_before_date(start_d, w1)
       .expect("test_receive_change_op")
       .into_iter();
 
@@ -2852,7 +2496,7 @@ mod tests {
     let agr = AgregationStoreGoods {
       store: Some(w1),
       goods: Some(G1),
-      document: Some(doc.clone()),
+      batch: Some(doc.clone()),
       open_balance: BalanceForGoods { qty: 5.into(), cost: 130.into() },
       receive: BalanceDelta::default(),
       issue: BalanceDelta { qty: 0.into(), cost: 0.into() },

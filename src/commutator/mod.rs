@@ -56,7 +56,7 @@ impl Application {
       job_scheduler,
       services,
       storage: None,
-      warehouse: WHStorage::new(settings)?,
+      warehouse: WHStorage::open(&settings.database.inventory)?,
       // channels: Arc::new(HashMap::new()),
       stop: stop.clone(),
       events: events_sender,
