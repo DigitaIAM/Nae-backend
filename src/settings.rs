@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Database {
-  pub(crate) folder: PathBuf,
+  pub(crate) memory: PathBuf,
   pub(crate) inventory: PathBuf,
 }
 
@@ -32,7 +32,7 @@ impl Settings {
         issuer: "Nae".into(),
         secret: "1234567890".into(),
       },
-      database: Database { folder: folder.join("core"), inventory: folder.join("inventory") },
+      database: Database { memory: folder.join("memory"), inventory: folder.join("inventory") },
     }
   }
 
@@ -49,7 +49,8 @@ impl Settings {
       .build()?;
 
     println!("debug: {:?}", config.get_bool("debug"));
-    println!("database: {:?}", config.get::<String>("database.folder"));
+    println!("memory: {:?}", config.get::<String>("database.memory"));
+    println!("inventory: {:?}", config.get::<String>("database.inventory"));
 
     config.try_deserialize()
   }

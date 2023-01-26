@@ -1,8 +1,7 @@
 use crate::animo::memory::ID;
 use crate::services::Error;
-use crate::storage::docs::SDocs;
+use crate::storage::memories::SMemories;
 use crate::storage::old_references::{SDepartment, SLocation, SPerson, SShift};
-use crate::storage::references::SRefs;
 use crate::storage::{json, load, save, SCamera};
 use json::JsonValue;
 use std::path::{Path, PathBuf};
@@ -93,28 +92,16 @@ impl SOrganization {
     Err(Error::NotImplemented)
   }
 
-  pub(crate) fn docs(&self, ctx: Vec<String>) -> SDocs {
+  pub(crate) fn memories(&self, ctx: Vec<String>) -> SMemories {
     let mut folder = self.folder.clone();
-    folder.push("docs");
+    folder.push("memories");
     ctx.iter().for_each(|name| folder.push(name.as_str()));
 
     // workaround because of first request fail with none existing folder
     // TODO remove it from here
     std::fs::create_dir_all(&folder);
 
-    SDocs { oid: self.id.clone(), ctx, folder }
-  }
-
-  pub(crate) fn refs(&self, ctx: Vec<String>) -> SRefs {
-    let mut folder = self.folder.clone();
-    folder.push("docs");
-    ctx.iter().for_each(|name| folder.push(name.as_str()));
-
-    // workaround because of first request fail with none existing folder
-    // TODO remove it from here
-    std::fs::create_dir_all(&folder);
-
-    SRefs { oid: self.id.clone(), ctx, folder }
+    SMemories { oid: self.id.clone(), ctx, folder }
   }
 
   pub(crate) fn department(&self, id: ID) -> SDepartment {

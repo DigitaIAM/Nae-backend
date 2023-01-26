@@ -1196,7 +1196,7 @@ mod tests {
       memory::{Memory, ID},
     },
     api,
-    docs::DocsFiles,
+    memories::MemoriesInFiles,
     services::{Error, Services},
     settings::{self, Settings},
     storage::SOrganizations,

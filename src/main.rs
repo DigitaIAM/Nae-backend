@@ -39,8 +39,8 @@ mod ws;
 mod accounts;
 mod animo;
 mod api;
-mod docs;
 mod hr;
+mod memories;
 pub mod store;
 mod text_search;
 mod use_cases;
@@ -51,7 +51,6 @@ mod hik;
 use crate::animo::memory::*;
 use crate::animo::shared::*;
 use crate::animo::{Animo, Time, Topology};
-use crate::docs::{DocsFiles, ReferencesFiles};
 use crate::hik::error::Error;
 use crate::hik::services::actions::Actions;
 use crate::hik::services::{Cameras, Events};
@@ -59,6 +58,7 @@ use crate::hr::services::attendance_report::AttendanceReport;
 use crate::hr::services::companies::Companies;
 use crate::hr::services::departments::Departments;
 use crate::hr::services::shifts::Shifts;
+use crate::memories::MemoriesInFiles;
 use crate::services::{People, Services};
 use crate::settings::Settings;
 use crate::storage::SOrganizations;
@@ -147,7 +147,7 @@ async fn startup() -> std::io::Result<()> {
 
   let settings = std::sync::Arc::new(Settings::new().unwrap());
   println!("db starting up");
-  let db: AnimoDB = Memory::init(settings.database.folder.clone()).unwrap();
+  let db: AnimoDB = Memory::init(settings.database.memory.clone()).unwrap();
   println!("db started up");
 
   println!("app starting up");
@@ -172,8 +172,7 @@ async fn startup() -> std::io::Result<()> {
   app.register(Cameras::new(app.clone(), "cameras", storage.clone()));
   app.register(Events::new(app.clone(), "events", storage.clone()));
 
-  app.register(DocsFiles::new(app.clone(), "docs", storage.clone()));
-  app.register(ReferencesFiles::new(app.clone(), "refs", storage.clone()));
+  app.register(MemoriesInFiles::new(app.clone(), "memories", storage.clone()));
 
   println!("app started up");
 

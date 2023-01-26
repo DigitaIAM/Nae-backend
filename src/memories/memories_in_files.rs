@@ -21,20 +21,20 @@ use crate::{auth, Application, Memory, Services, Transformation, TransformationK
 // warehouse: { receiving, Put-away, transfer,  }
 // production: { manufacturing }
 
-pub struct DocsFiles {
+pub struct MemoriesInFiles {
   app: Application,
   name: Arc<String>,
 
   orgs: SOrganizations,
 }
 
-impl DocsFiles {
+impl MemoriesInFiles {
   pub(crate) fn new(app: Application, name: &str, orgs: SOrganizations) -> Arc<dyn Service> {
-    Arc::new(DocsFiles { app, name: Arc::new(name.to_string()), orgs })
+    Arc::new(MemoriesInFiles { app, name: Arc::new(name.to_string()), orgs })
   }
 }
 
-impl Service for DocsFiles {
+impl Service for MemoriesInFiles {
   fn path(&self) -> &str {
     &self.name
   }
@@ -46,8 +46,8 @@ impl Service for DocsFiles {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let docs = self.orgs.get(&oid).docs(ctx);
-    let list = docs.list()?;
+    let memories = self.orgs.get(&oid).memories(ctx);
+    let list = memories.list()?;
 
     let total = list.len();
     let list = list
@@ -68,17 +68,17 @@ impl Service for DocsFiles {
     let oid = self.oid(&params)?;
     let ctx = self.ctx(&params);
 
-    let docs = self.orgs.get(&oid).docs(ctx).get(&id);
-    docs.json()
+    let memories = self.orgs.get(&oid).memories(ctx).get(&id);
+    memories.json()
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
     let ctx = self.ctx(&params);
 
-    let docs = self.orgs.get(&oid).docs(ctx);
+    let memories = self.orgs.get(&oid).memories(ctx);
 
-    docs.create(&self.app, chrono::Utc::now(), data)
+    memories.create(&self.app, chrono::Utc::now(), data)
   }
 
   fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
@@ -88,9 +88,9 @@ impl Service for DocsFiles {
       let oid = self.oid(&params)?;
       let ctx = self.ctx(&params);
 
-      let docs = self.orgs.get(&oid).docs(ctx);
+      let memories = self.orgs.get(&oid).memories(ctx);
 
-      docs.update(&self.app, id, data)
+      memories.update(&self.app, id, data)
     }
   }
 
@@ -98,12 +98,12 @@ impl Service for DocsFiles {
     let oid = self.oid(&params)?;
     let ctx = self.ctx(&params);
 
-    let docs = self.orgs.get(&oid).docs(ctx);
+    let memories = self.orgs.get(&oid).memories(ctx);
 
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
-      let doc = docs.get(&id);
+      let doc = memories.get(&id);
       let mut obj = doc.json()?;
 
       let mut patch = data.clone();
@@ -117,7 +117,7 @@ impl Service for DocsFiles {
       //   }
       // }
 
-      docs.update(&self.app, id, obj)
+      memories.update(&self.app, id, obj)
     }
   }
 

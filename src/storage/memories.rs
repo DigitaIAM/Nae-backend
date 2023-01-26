@@ -10,7 +10,7 @@ use rust_decimal::Decimal;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-pub(crate) struct SDocs {
+pub(crate) struct SMemories {
   pub(crate) oid: ID,
   pub(crate) ctx: Vec<String>,
 
@@ -30,8 +30,9 @@ fn save_data(
   //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data["_id"])));
   // }
 
+  let file_name = format!("{id}.json");
   let mut path_current = folder.clone();
-  path_current.push(format!("{id}.json"));
+  path_current.push(&file_name);
 
   // 2023/01/2023-01-06T12:43:15Z/latest.json
   let mut path_latest = folder.clone();
@@ -49,16 +50,16 @@ fn save_data(
     Err(_) => JsonValue::Null,
   };
 
-  let data = receive_data(app, time, data, ctx, before)?;
+  // let data = receive_data(app, time, data, ctx, before)?;
 
   save(&path_current, data.dump())?;
 
-  symlink::symlink_file(path_current, path_latest)?;
+  symlink::symlink_file(file_name, path_latest)?;
 
   Ok(data)
 }
 
-impl SDocs {
+impl SMemories {
   fn folder(&self, id: &String) -> PathBuf {
     let year = &id[0..4];
     let month = &id[5..7];
@@ -86,6 +87,8 @@ impl SDocs {
 
     // 2023/01/2023-01-06T12:43:15Z/
     let mut folder = self.folder(&id);
+
+    println!("creating folder {folder:?}");
 
     std::fs::create_dir_all(&folder).map_err(|e| {
       Error::IOError(format!("can't create folder {}: {}", folder.to_string_lossy(), e))

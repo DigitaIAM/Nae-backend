@@ -1,8 +1,7 @@
 mod cameras;
-mod docs;
+mod memories;
 mod old_references;
 mod organizations;
-mod references;
 
 use crate::services::{Error, JsonData};
 pub(crate) use cameras::{SCamera, SEvent};
