@@ -1,13 +1,33 @@
+use std::sync::Arc;
+
 use super::{
-  Db, KeyValueStore, OpMutation, Op, Store, WHError, WareHouse, DATE_TYPE_STORE_BATCH_ID, UUID_MAX,
+  CheckpointTopology, Db, KeyValueStore, Op, OpMutation, Store, StoreTopology, WHError, UUID_MAX,
   UUID_NIL,
 };
 use chrono::{DateTime, Utc};
-use rocksdb::{ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions};
+use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 
-pub struct DateTypeStoreGoodsId();
+const CF_NAME: &str = "cf_date_type_store_batch_id";
 
-impl WareHouse for DateTypeStoreGoodsId {
+pub struct DateTypeStoreGoodsId {
+  pub db: Arc<DB>,
+}
+
+impl DateTypeStoreGoodsId {
+  pub fn cf_name() -> &'static str {
+    CF_NAME
+  }
+
+  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
+    if let Some(cf) = self.db.cf_handle(DateTypeStoreGoodsId::cf_name()) {
+      Ok(cf)
+    } else {
+      Err(WHError::new("can't get CF"))
+    }
+  }
+}
+
+impl StoreTopology for DateTypeStoreGoodsId {
   fn get_ops(
     &self,
     start_d: DateTime<Utc>,
@@ -36,7 +56,7 @@ impl WareHouse for DateTypeStoreGoodsId {
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
 
-    if let Some(handle) = db.db.cf_handle(DATE_TYPE_STORE_BATCH_ID) {
+    if let Some(handle) = db.db.cf_handle(DateTypeStoreGoodsId::cf_name()) {
       let iter = db.db.iterator_cf_opt(&handle, options, IteratorMode::Start);
 
       let mut res = Vec::new();
@@ -53,17 +73,35 @@ impl WareHouse for DateTypeStoreGoodsId {
     }
   }
 
-  fn put_op(&self, op: &OpMutation, db: &Db) -> Result<(), WHError> {
-    if let Some(cf) = db.db.cf_handle(DATE_TYPE_STORE_BATCH_ID) {
-      db.db.put_cf(&cf, op.date_type_store_batch_id(), op.value()?)?;
-
-      Ok(())
-    } else {
-      Err(WHError::new("Can't get cf from db in fn put_op"))
-    }
+  fn put_op(&self, op: &OpMutation) -> Result<(), WHError> {
+    Ok(self.db.put_cf(
+      &self.cf()?,
+      op.key(&DateTypeStoreGoodsId::cf_name().to_string())?,
+      op.value()?,
+    )?)
   }
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
-    ColumnFamilyDescriptor::new(DATE_TYPE_STORE_BATCH_ID, opts)
+    ColumnFamilyDescriptor::new(DateTypeStoreGoodsId::cf_name(), opts)
+  }
+
+  fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
+    if op.before.is_none() {
+      self.put_op(op)
+    } else {
+      if let Ok(Some(bytes)) = self
+        .db
+        .get_cf(&self.cf()?, op.key(&DateTypeStoreGoodsId::cf_name().to_string())?)
+      {
+        let o: OpMutation = serde_json::from_slice(&bytes)?;
+        if op.before == o.after {
+          self.put_op(op)
+        } else {
+          return Err(WHError::new("Wrong 'before' state in operation"));
+        }
+      } else {
+        return Err(WHError::new("There is no such operation in db"));
+      }
+    }
   }
 }

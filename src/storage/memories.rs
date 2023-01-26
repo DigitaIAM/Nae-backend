@@ -50,7 +50,7 @@ fn save_data(
     Err(_) => JsonValue::Null,
   };
 
-  // let data = receive_data(app, time, data, ctx, before)?;
+  let data = receive_data(app, time, data, ctx, before)?;
 
   save(&path_current, data.dump())?;
 

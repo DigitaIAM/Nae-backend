@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use super::{balance::BalanceForGoods, Balance, Checkpoint, Db, Op, Store, WHError};
+use super::{
+  balance::BalanceForGoods, first_day_next_month, Balance, CheckpointTopology, Db, Op, OpMutation,
+  Store, WHError,
+};
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, DB};
 
@@ -23,7 +26,7 @@ impl CheckBatchStoreDate {
   }
 }
 
-impl Checkpoint for CheckBatchStoreDate {
+impl CheckpointTopology for CheckBatchStoreDate {
   fn key(&self, op: &Op, date: DateTime<Utc>) -> Vec<u8> {
     [].iter()
       .chain((op.batch.date.timestamp() as u64).to_be_bytes().iter())
@@ -59,16 +62,39 @@ impl Checkpoint for CheckBatchStoreDate {
     date: DateTime<Utc>,
     wh: Store,
   ) -> Result<Vec<Balance>, WHError> {
-    Err(WHError::new("not supported"))
+    Err(WHError::new("Not supported"))
   }
 
-  fn get_report(
+  fn data_update(
     &self,
-    start_date: DateTime<Utc>,
-    end_date: DateTime<Utc>,
-    wh: Store,
-    db: &mut Db,
-  ) -> Result<super::Report, WHError> {
-    todo!()
+    op: &OpMutation,
+    last_checkpoint_date: DateTime<Utc>,
+  ) -> Result<(), WHError> {
+    // let cf = self.db.cf_handle(name).expect("option in change_checkpoint");
+
+    let mut date = op.date;
+    let mut check_point = op.date;
+
+    // get iterator from first day of next month of given operation till 'last' check point
+    while check_point < last_checkpoint_date {
+      check_point = first_day_next_month(date);
+
+      let key = self.key(&op.to_op(), check_point);
+
+      let mut balance = self.get_balance(&key)?;
+
+      balance += op.to_delta();
+
+      // println!("CHECKPOINT: {balance:#?}");
+
+      if balance.is_zero() {
+        self.del_balance(&key)?;
+      } else {
+        self.set_balance(&key, balance)?;
+      }
+      date = check_point;
+    }
+
+    Ok(())
   }
 }
