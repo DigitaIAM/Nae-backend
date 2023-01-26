@@ -134,7 +134,7 @@ impl Time {
 
     let mut sub = &bs[offset..offset + 8];
     let ts = sub.read_u64::<BigEndian>().unwrap(); // u64::from_be_bytes(convert(&bs[offset..offset+8]));
-    let ts = Utc.timestamp_millis(ts as i64);
+    let ts = Utc.timestamp_millis_opt(ts as i64).unwrap();
 
     let accuracy = TimeAccuracy::from_bytes(bs, offset + 8)?;
     let position = IntervalPosition::from_bytes(bs, offset + 9)?;
@@ -314,26 +314,41 @@ impl<T: TimeZone> DateTimeNow for DateTime<T> {
 
   fn beginning_of_minute(&self) -> DateTime<Self::Timezone> {
     let local_date_time = self.naive_local();
-    let time5 =
-      NaiveDate::from_ymd(local_date_time.year(), local_date_time.month(), local_date_time.day())
-        .and_hms(local_date_time.hour(), local_date_time.minute(), 0);
+    let time5 = NaiveDate::from_ymd_opt(
+      local_date_time.year(),
+      local_date_time.month(),
+      local_date_time.day(),
+    )
+    .unwrap()
+    .and_hms_opt(local_date_time.hour(), local_date_time.minute(), 0)
+    .unwrap();
     self.timezone().from_local_datetime(&time5).unwrap()
   }
 
   fn beginning_of_hour(&self) -> DateTime<Self::Timezone> {
     let local_date_time = self.naive_local();
-    let time5 =
-      NaiveDate::from_ymd(local_date_time.year(), local_date_time.month(), local_date_time.day())
-        .and_hms(local_date_time.hour(), 0, 0);
-    self.timezone().from_local_datetime(&time5).unwrap()
+    let time = NaiveDate::from_ymd_opt(
+      local_date_time.year(),
+      local_date_time.month(),
+      local_date_time.day(),
+    )
+    .unwrap()
+    .and_hms_opt(local_date_time.hour(), 0, 0)
+    .unwrap();
+    self.timezone().from_local_datetime(&time).unwrap()
   }
 
   fn beginning_of_day(&self) -> DateTime<Self::Timezone> {
     let local_date_time = self.naive_local();
-    let time5 =
-      NaiveDate::from_ymd(local_date_time.year(), local_date_time.month(), local_date_time.day())
-        .and_hms(0, 0, 0);
-    self.timezone().from_local_datetime(&time5).unwrap()
+    let time = NaiveDate::from_ymd_opt(
+      local_date_time.year(),
+      local_date_time.month(),
+      local_date_time.day(),
+    )
+    .unwrap()
+    .and_hms_opt(0, 0, 0)
+    .unwrap();
+    self.timezone().from_local_datetime(&time).unwrap()
   }
 
   // fn beginning_of_week(&self) -> DateTime<Self::Timezone> {
@@ -361,8 +376,10 @@ impl<T: TimeZone> DateTimeNow for DateTime<T> {
 
   fn beginning_of_month(&self) -> DateTime<Self::Timezone> {
     let local_date_time = self.naive_local();
-    let time5 =
-      NaiveDate::from_ymd(local_date_time.year(), local_date_time.month(), 1).and_hms(0, 0, 0);
+    let time5 = NaiveDate::from_ymd_opt(local_date_time.year(), local_date_time.month(), 1)
+      .unwrap()
+      .and_hms_opt(0, 0, 0)
+      .unwrap();
     self.timezone().from_local_datetime(&time5).unwrap()
   }
 
@@ -374,37 +391,58 @@ impl<T: TimeZone> DateTimeNow for DateTime<T> {
       7..=9 => 7u32,
       _ => 10u32,
     };
-    let time5 = NaiveDate::from_ymd(local_date_time.year(), month, 1).and_hms(0, 0, 0);
-    self.timezone().from_local_datetime(&time5).unwrap()
+    let time = NaiveDate::from_ymd_opt(local_date_time.year(), month, 1)
+      .unwrap()
+      .and_hms_opt(0, 0, 0)
+      .unwrap();
+    self.timezone().from_local_datetime(&time).unwrap()
   }
 
   fn beginning_of_year(&self) -> DateTime<Self::Timezone> {
     let local_date_time = self.naive_local();
-    let time5 = NaiveDate::from_ymd(local_date_time.year(), 1, 1).and_hms(0, 0, 0);
-    self.timezone().from_local_datetime(&time5).unwrap()
+    let time = NaiveDate::from_ymd_opt(local_date_time.year(), 1, 1)
+      .unwrap()
+      .and_hms_opt(0, 0, 0)
+      .unwrap();
+    self.timezone().from_local_datetime(&time).unwrap()
   }
 
   fn end_of_minute(&self) -> DateTime<Self::Timezone> {
     let local_date_time = self.naive_local();
-    let time5 =
-      NaiveDate::from_ymd(local_date_time.year(), local_date_time.month(), local_date_time.day())
-        .and_hms_nano(local_date_time.hour(), local_date_time.minute(), 59, 999999999);
-    self.timezone().from_local_datetime(&time5).unwrap()
+    let time = NaiveDate::from_ymd_opt(
+      local_date_time.year(),
+      local_date_time.month(),
+      local_date_time.day(),
+    )
+    .unwrap()
+    .and_hms_nano_opt(local_date_time.hour(), local_date_time.minute(), 59, 999999999)
+    .unwrap();
+    self.timezone().from_local_datetime(&time).unwrap()
   }
 
   fn end_of_hour(&self) -> DateTime<Self::Timezone> {
     let local_date_time = self.naive_local();
-    let time5 =
-      NaiveDate::from_ymd(local_date_time.year(), local_date_time.month(), local_date_time.day())
-        .and_hms_nano(local_date_time.hour(), 59, 59, 999999999);
-    self.timezone().from_local_datetime(&time5).unwrap()
+    let time = NaiveDate::from_ymd_opt(
+      local_date_time.year(),
+      local_date_time.month(),
+      local_date_time.day(),
+    )
+    .unwrap()
+    .and_hms_nano_opt(local_date_time.hour(), 59, 59, 999999999)
+    .unwrap();
+    self.timezone().from_local_datetime(&time).unwrap()
   }
 
   fn end_of_day(&self) -> DateTime<Self::Timezone> {
     let local_date_time = self.naive_local();
-    let time5 =
-      NaiveDate::from_ymd(local_date_time.year(), local_date_time.month(), local_date_time.day())
-        .and_hms_nano(23, 59, 59, 999999999);
+    let time5 = NaiveDate::from_ymd_opt(
+      local_date_time.year(),
+      local_date_time.month(),
+      local_date_time.day(),
+    )
+    .unwrap()
+    .and_hms_nano_opt(23, 59, 59, 999999999)
+    .unwrap();
     self.timezone().from_local_datetime(&time5).unwrap()
   }
 
@@ -439,10 +477,10 @@ impl<T: TimeZone> DateTimeNow for DateTime<T> {
       (local_date_time.year(), local_date_time.month() + 1)
     };
 
-    let time5 = NaiveDate::from_ymd(year, month, 1).and_hms(0, 0, 0);
+    let time = NaiveDate::from_ymd_opt(year, month, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
     self
       .timezone()
-      .from_local_datetime(&time5)
+      .from_local_datetime(&time)
       .unwrap()
       .sub(Duration::nanoseconds(1))
   }
@@ -455,18 +493,20 @@ impl<T: TimeZone> DateTimeNow for DateTime<T> {
       7..=9 => (local_date_time.year(), 10u32),
       _ => (local_date_time.year() + 1, 1u32),
     };
-    let time5 = NaiveDate::from_ymd(year, month, 1).and_hms(0, 0, 0);
+    let time = NaiveDate::from_ymd_opt(year, month, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
     self
       .timezone()
-      .from_local_datetime(&time5)
+      .from_local_datetime(&time)
       .unwrap()
       .sub(Duration::nanoseconds(1))
   }
 
   fn end_of_year(&self) -> DateTime<Self::Timezone> {
     let local_date_time = self.naive_local();
-    let time5 =
-      NaiveDate::from_ymd(local_date_time.year(), 12, 31).and_hms_nano(23, 59, 59, 999999999);
+    let time5 = NaiveDate::from_ymd_opt(local_date_time.year(), 12, 31)
+      .unwrap()
+      .and_hms_nano_opt(23, 59, 59, 999999999)
+      .unwrap();
     self.timezone().from_local_datetime(&time5).unwrap()
   }
 
