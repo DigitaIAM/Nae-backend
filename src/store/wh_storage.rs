@@ -1,8 +1,9 @@
 use super::{
   check_batch_store_date::CheckBatchStoreDate, check_date_store_batch::CheckDateStoreBatch,
-  date_type_store_goods_id::DATE_TYPE_STORE_BATCH_ID,
-  store_date_type_goods_id::STORE_DATE_TYPE_BATCH_ID, Checkpoint, Db, OpMutation, WHError,
+  date_type_store_goods_id::DateTypeStoreGoodsId, store_date_type_goods_id::StoreDateTypeGoodsId,
+  CheckpointTopology, Db, OpMutation, OrderedTopology, WHError,
 };
+use chrono::DateTime;
 use rocksdb::{ColumnFamilyDescriptor, Options, DB};
 use std::{path::Path, sync::Arc};
 
@@ -23,12 +24,11 @@ impl WHStorage {
     let mut cfs = Vec::new();
 
     let mut cf_names: Vec<&str> = vec![
-      STORE_DATE_TYPE_BATCH_ID,
-      DATE_TYPE_STORE_BATCH_ID,
+      StoreDateTypeGoodsId::cf_name(),
+      DateTypeStoreGoodsId::cf_name(),
       CheckDateStoreBatch::cf_name(),
       CheckBatchStoreDate::cf_name(),
     ];
-    // checkpoint_topologies.iter().for_each(|t| cf_names.push(t.cf_name()));
 
     for name in cf_names {
       let cf = ColumnFamilyDescriptor::new(name, opts.clone());
@@ -38,17 +38,26 @@ impl WHStorage {
     opts.create_if_missing(true);
     opts.create_missing_column_families(true);
 
-    let database = DB::open_cf_descriptors(&opts, &path, cfs)
+    let tmp_db = DB::open_cf_descriptors(&opts, &path, cfs)
       .expect("Can't open database in settings.database.inventory");
-    let database = Arc::new(database);
+    let inner_db = Arc::new(tmp_db);
 
-    let checkpoint_topologies: Vec<Box<dyn Checkpoint + Sync + Send>> = vec![
-      Box::new(CheckDateStoreBatch { db: database.clone() }),
-      Box::new(CheckBatchStoreDate { db: database.clone() }),
+    let checkpoint_topologies: Vec<Box<dyn CheckpointTopology + Sync + Send>> = vec![
+      Box::new(CheckDateStoreBatch { db: inner_db.clone() }),
+      Box::new(CheckBatchStoreDate { db: inner_db.clone() }),
     ];
 
-    let db = Db { db: database, checkpoint_topologies: Arc::new(checkpoint_topologies) };
+    let ordered_topologies: Vec<Box<dyn OrderedTopology + Sync + Send>> = vec![
+      Box::new(StoreDateTypeGoodsId { db: inner_db.clone() }),
+      Box::new(DateTypeStoreGoodsId { db: inner_db.clone() }),
+    ];
 
-    Ok(WHStorage { database: db })
+    let outer_db = Db {
+      db: inner_db,
+      checkpoint_topologies: Arc::new(checkpoint_topologies),
+      ordered_topologies: Arc::new(ordered_topologies),
+    };
+
+    Ok(WHStorage { database: outer_db })
   }
 }

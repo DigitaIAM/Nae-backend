@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::{
-  CheckpointTopology, Db, KeyValueStore, Op, OpMutation, Store, StoreTopology, WHError, UUID_MAX,
+  CheckpointTopology, Db, KeyValueStore, Op, OpMutation, OrderedTopology, Store, WHError, UUID_MAX,
   UUID_NIL,
 };
 use chrono::{DateTime, Utc};
@@ -27,7 +27,7 @@ impl DateTypeStoreGoodsId {
   }
 }
 
-impl StoreTopology for DateTypeStoreGoodsId {
+impl OrderedTopology for DateTypeStoreGoodsId {
   fn get_ops(
     &self,
     start_d: DateTime<Utc>,
@@ -56,21 +56,17 @@ impl StoreTopology for DateTypeStoreGoodsId {
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
 
-    if let Some(handle) = db.db.cf_handle(DateTypeStoreGoodsId::cf_name()) {
-      let iter = db.db.iterator_cf_opt(&handle, options, IteratorMode::Start);
+    let iter = db.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start);
 
-      let mut res = Vec::new();
+    let mut res = Vec::new();
 
-      for item in iter {
-        let (_, value) = item?;
-        let op = serde_json::from_slice(&value)?;
-        res.push(op);
-      }
-
-      Ok(res)
-    } else {
-      Err(WHError::new("There are no operations in db"))
+    for item in iter {
+      let (_, value) = item?;
+      let op = serde_json::from_slice(&value)?;
+      res.push(op);
     }
+
+    Ok(res)
   }
 
   fn put_op(&self, op: &OpMutation) -> Result<(), WHError> {

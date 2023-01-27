@@ -6,6 +6,8 @@ mod check_date_store_batch;
 mod date_type_store_goods_id;
 mod error;
 mod store_date_type_goods_id;
+pub mod wh_storage;
+mod db;
 
 use chrono::{DateTime, Datelike, Month, NaiveDate, Utc};
 use json::{array, iterators::Members, JsonValue};
@@ -34,6 +36,7 @@ use self::balance::{BalanceDelta, BalanceForGoods};
 use self::check_batch_store_date::CheckBatchStoreDate;
 use self::check_date_store_batch::CheckDateStoreBatch;
 use self::date_type_store_goods_id::DateTypeStoreGoodsId;
+use self::db::Db;
 pub use self::error::WHError;
 use self::store_date_type_goods_id::StoreDateTypeGoodsId;
 
@@ -49,62 +52,6 @@ const G3: Uuid = Uuid::from_u128(3);
 const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
 const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
-#[derive(Clone)]
-pub struct WHStorage {
-  pub database: Db,
-}
-
-impl WHStorage {
-  pub fn receive_operations(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
-    Ok(self.database.record_ops(ops)?)
-  }
-
-  pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, WHError> {
-    std::fs::create_dir_all(&path).map_err(|e| WHError::new("Can't create folder for WHStorage"))?;
-
-    let mut opts = Options::default();
-    let mut cfs = Vec::new();
-
-    let mut cf_names: Vec<&str> = vec![
-      StoreDateTypeGoodsId::cf_name(),
-      DateTypeStoreGoodsId::cf_name(),
-      CheckDateStoreBatch::cf_name(),
-      CheckBatchStoreDate::cf_name(),
-    ];
-    // checkpoint_topologies.iter().for_each(|t| cf_names.push(t.cf_name()));
-
-    for name in cf_names {
-      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-      cfs.push(cf);
-    }
-
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-
-    let tmp_db = DB::open_cf_descriptors(&opts, &path, cfs)
-      .expect("Can't open database in settings.database.inventory");
-    let inner_db = Arc::new(tmp_db);
-
-    let checkpoint_topologies: Vec<Box<dyn CheckpointTopology + Sync + Send>> = vec![
-      Box::new(CheckDateStoreBatch { db: inner_db.clone() }),
-      Box::new(CheckBatchStoreDate { db: inner_db.clone() }),
-    ];
-
-    let store_topologies: Vec<Box<dyn StoreTopology + Sync + Send>> = vec![
-      Box::new(DateTypeStoreGoodsId { db: inner_db.clone() }),
-      Box::new(StoreDateTypeGoodsId { db: inner_db.clone() }),
-    ];
-
-    let outer_db = Db {
-      db: inner_db,
-      checkpoint_topologies: Arc::new(checkpoint_topologies),
-      store_topologies: Arc::new(store_topologies),
-    };
-
-    Ok(WHStorage { database: outer_db })
-  }
-}
-
 #[derive(Eq, Ord, PartialOrd, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Batch {
   id: Uuid,
@@ -116,7 +63,7 @@ impl Batch {
     Batch { id: Default::default(), date: Default::default() }
   }
 }
-trait StoreTopology {
+pub trait OrderedTopology {
   fn put_op(&self, op: &OpMutation) -> Result<(), WHError>;
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor;
@@ -139,11 +86,11 @@ trait StoreTopology {
     // TODO move to trait Checkpoint
     let balances = db.get_checkpoints_before_date(start_date, wh)?;
 
-    println!("BALANCES: {balances:#?}");
+    // println!("BALANCES: {balances:#?}");
 
     let ops = self.get_ops(first_day_current_month(start_date), end_date, wh, db)?;
 
-    println!("OPS: {ops:#?}");
+    // println!("OPS: {ops:#?}");
 
     let items = new_get_agregations(balances, ops, start_date);
 
@@ -153,7 +100,7 @@ trait StoreTopology {
   fn data_update(&self, op: &OpMutation) -> Result<(), WHError>;
 }
 
-trait CheckpointTopology {
+pub trait CheckpointTopology {
   // fn cf_name(&self) -> &str;
 
   fn key(&self, op: &Op, date_of_checkpoint: DateTime<Utc>) -> Vec<u8>;
@@ -161,9 +108,40 @@ trait CheckpointTopology {
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError>;
   fn set_balance(&self, key: &Vec<u8>, balance: BalanceForGoods) -> Result<(), WHError>;
   fn del_balance(&self, key: &Vec<u8>) -> Result<(), WHError>;
+  fn key_latest_checkpoint_date(&self) -> Vec<u8>;
+  fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError>;
+  fn set_latest_checkpoint_date(&self, date: DateTime<Utc>) -> Result<(), WHError>;
 
-  fn data_update(&self, op: &OpMutation, last_checkpoint_date: DateTime<Utc>)
-    -> Result<(), WHError>;
+  fn checkpoint_update(&self, op: &OpMutation) -> Result<(), WHError> {
+    let mut tmp_date = op.date;
+    let mut check_point_date = op.date;
+    let mut last_checkpoint_date = self.get_latest_checkpoint_date()?;
+
+    if last_checkpoint_date < op.date {
+      last_checkpoint_date = first_day_next_month(op.date);
+    }
+
+    while check_point_date < last_checkpoint_date {
+      check_point_date = first_day_next_month(tmp_date);
+
+      let key = self.key(&op.to_op(), check_point_date);
+
+      let mut balance = self.get_balance(&key)?;
+
+      balance += op.to_delta();
+
+      if balance.is_zero() {
+        self.del_balance(&key)?;
+      } else {
+        self.set_balance(&key, balance)?;
+      }
+      tmp_date = check_point_date;
+    }
+
+    self.set_latest_checkpoint_date(check_point_date)?;
+
+    Ok(())
+  }
 
   fn get_checkpoints_before_date(
     &self,
@@ -213,113 +191,6 @@ fn max_batch() -> Vec<u8> {
     .chain(UUID_MAX.as_bytes().iter())
     .map(|b| *b)
     .collect()
-}
-
-#[derive(Clone)]
-pub struct Db {
-  db: Arc<DB>,
-  checkpoint_topologies: Arc<Vec<Box<dyn CheckpointTopology + Sync + Send>>>,
-  store_topologies: Arc<Vec<Box<dyn StoreTopology + Sync + Send>>>,
-}
-
-impl Db {
-  fn put(&self, key: &Vec<u8>, value: &String) -> Result<(), WHError> {
-    match self.db.put(key, value) {
-      Ok(_) => Ok(()),
-      Err(_) => Err(WHError::new("Can't put into a database")),
-    }
-  }
-
-  fn get(&self, key: &Vec<u8>) -> Result<String, WHError> {
-    match self.db.get(key) {
-      Ok(Some(res)) => Ok(String::from_utf8(res)?),
-      Ok(None) => Err(WHError::new("Can't get from database - no such value")),
-      Err(_) => Err(WHError::new("Something wrong with getting from database")),
-    }
-  }
-
-  fn find_checkpoint(&self, op: &OpMutation, name: &str) -> Result<Option<Balance>, WHError> {
-    let bal = Balance {
-      date: first_day_next_month(op.date),
-      store: op.store,
-      goods: op.goods,
-      batch: op.batch.clone(),
-      number: BalanceForGoods::default(),
-    };
-
-    if let Some(cf) = self.db.cf_handle(name) {
-      if let Ok(Some(v1)) = self.db.get_cf(&cf, bal.key(name)?) {
-        let b = serde_json::from_slice(&v1)?;
-        Ok(b)
-      } else {
-        Ok(None)
-      }
-    } else {
-      Err(WHError::new("Can't get cf from db in fn find_checkpoint"))
-    }
-  }
-
-  fn record_ops(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
-    for op in ops {
-      for checkpoint_topology in self.checkpoint_topologies.iter() {
-        checkpoint_topology.data_update(op, dt("2023-02-01")?)?;
-      }
-
-      // if let Some(cf) = self.db.cf_handle(DATE_TYPE_STORE_BATCH_ID) {
-      //   self.db.put_cf(&cf, op.key(&DATE_TYPE_STORE_BATCH_ID.to_string())?, op.value()?)?;
-      // }
-
-      // if let Some(cf) = self.db.cf_handle(STORE_DATE_TYPE_BATCH_ID) {
-      //   self.db.put_cf(&cf, op.key(&STORE_DATE_TYPE_BATCH_ID.to_string())?, op.value()?)?;
-      // }
-
-      // TODO review code
-      // for name in &cf_names {
-      //   if name == "default" {
-      //     continue;
-      //   } else if name == CHECK_DATE_STORE_BATCH || name == CHECK_BATCH_STORE_DATE {
-      //     self.change_checkpoints(&op, name)?;
-      //   } else {
-      //     if let Some(cf) = self.db.cf_handle(name.as_str()) {
-      //       if op.before.is_none() {
-      //         self.db.put_cf(&cf, op.key(name)?, op.value()?)?;
-      //       } else {
-      //         if let Ok(Some(bytes)) = self.db.get_cf(&cf, op.key(name)?) {
-      //           let o: OpMutation = serde_json::from_slice(&bytes)?;
-      //           if op.before == o.after {
-      //             self.db.put_cf(&cf, op.key(name)?, op.value()?)?;
-      //           } else {
-      //             return Err(WHError::new("Wrong 'before' state in operation"));
-      //           }
-      //         }
-      //       }
-      //     }
-      //   }
-      // }
-    }
-
-    Ok(())
-  }
-
-  fn get_checkpoints_before_date(
-    &mut self,
-    date: DateTime<Utc>,
-    wh: Store,
-  ) -> Result<Vec<Balance>, WHError> {
-    for checkpoint_topology in self.checkpoint_topologies.iter() {
-      match checkpoint_topology.get_checkpoints_before_date(date, wh) {
-        Ok(result) => return Ok(result),
-        Err(e) => {
-          if e.message() == "Not supported".to_string() {
-            continue;
-          } else {
-            return Err(e);
-          }
-        },
-      }
-    }
-    Err(WHError::new("can't get checkpoint before date"))
-  }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -412,7 +283,7 @@ trait KeyValueStore {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct Balance {
+pub struct Balance {
   // key
   date: DateTime<Utc>,
   store: Store,
@@ -485,7 +356,7 @@ impl Balance {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct Op {
+pub struct Op {
   // key
   id: Uuid,
   date: DateTime<Utc>,
@@ -996,7 +867,7 @@ impl KeyValueStore for AgregationStoreGoods {
 }
 
 #[derive(Debug, PartialEq)]
-struct Report {
+pub struct Report {
   start_date: DateTime<Utc>,
   end_date: DateTime<Utc>,
   items: (AgregationStore, Vec<AgregationStoreGoods>),

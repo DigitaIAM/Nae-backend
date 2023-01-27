@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use super::{
-  balance::BalanceForGoods, first_day_current_month, first_day_next_month, max_batch, min_batch,
-  Balance, CheckpointTopology, Db, Op, OpMutation, Store, WHError,
+  balance::BalanceForGoods, dt, first_day_current_month, first_day_next_month, max_batch, min_batch,
+  Balance, CheckpointTopology, Db, Op, OpMutation, Store, WHError, UUID_NIL,
 };
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, IteratorMode, ReadOptions, DB};
@@ -30,9 +30,9 @@ impl CheckDateStoreBatch {
 impl CheckpointTopology for CheckDateStoreBatch {
   fn key(&self, op: &Op, date: DateTime<Utc>) -> Vec<u8> {
     [].iter()
+      .chain(op.goods.as_bytes().iter())
       .chain((date.timestamp() as u64).to_be_bytes().iter())
       .chain(op.store.as_bytes().iter())
-      .chain(op.goods.as_bytes().iter())
       .chain((op.batch.date.timestamp() as u64).to_be_bytes().iter())
       .chain(op.batch.id.as_bytes().iter())
       .map(|b| *b)
@@ -97,36 +97,32 @@ impl CheckpointTopology for CheckDateStoreBatch {
     Ok(result)
   }
 
-  fn data_update(
-    &self,
-    op: &OpMutation,
-    last_checkpoint_date: DateTime<Utc>,
-  ) -> Result<(), WHError> {
-    // let cf = self.db.cf_handle(name).expect("option in change_checkpoint");
+  fn key_latest_checkpoint_date(&self) -> Vec<u8> {
+    [].iter()
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(u64::MIN.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(u64::MIN.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .map(|b| *b)
+      .collect()
+  }
 
-    let mut date = op.date;
-    let mut check_point = op.date;
-
-    // get iterator from first day of next month of given operation till 'last' check point
-    while check_point < last_checkpoint_date {
-      check_point = first_day_next_month(date);
-
-      let key = self.key(&op.to_op(), check_point);
-
-      let mut balance = self.get_balance(&key)?;
-
-      balance += op.to_delta();
-
-      // println!("CHECKPOINT: {balance:#?}");
-
-      if balance.is_zero() {
-        self.del_balance(&key)?;
-      } else {
-        self.set_balance(&key, balance)?;
-      }
-      date = check_point;
+  fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError> {
+    if let Some(bytes) = self.db.get_cf(&self.cf()?, self.key_latest_checkpoint_date())? {
+      let date = serde_json::from_slice(&bytes)?;
+      Ok(DateTime::parse_from_rfc3339(date)?.into())
+    } else {
+      // Ok(DateTime::<Utc>::default())
+      dt("1970-01-01")
     }
+  }
 
-    Ok(())
+  fn set_latest_checkpoint_date(&self, date: DateTime<Utc>) -> Result<(), WHError> {
+    Ok(self.db.put_cf(
+      &self.cf()?,
+      self.key_latest_checkpoint_date(),
+      serde_json::to_string(&date)?,
+    )?)
   }
 }
