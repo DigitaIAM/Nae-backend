@@ -1,10 +1,12 @@
 use actix_web::error::ParseError::Status;
+use chrono::{DateTime, Utc};
 use dbase::FieldConversionError;
 use json::object::Object;
 use json::JsonValue;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::io::Write;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
@@ -14,6 +16,7 @@ use uuid::Uuid;
 use crate::animo::error::DBError;
 use crate::services::{Data, Error, Params, Service};
 use crate::storage::SOrganizations;
+use crate::store::dt;
 use crate::utils::json::JsonMerge;
 use crate::ws::error_general;
 use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
@@ -123,5 +126,24 @@ impl Service for MemoriesInFiles {
 
   fn remove(&self, id: String, params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
+  }
+
+  fn report(
+    &self,
+    params: Params,
+    start_date: String,
+    end_date: String,
+    wh: String,
+  ) -> crate::services::Result {
+    let oid = self.oid(&params)?;
+    let ctx = self.ctx(&params);
+
+    let start_date = dt(&start_date).unwrap();
+    let end_date = dt(&end_date).unwrap();
+    let wh = Uuid::from_str(&wh).unwrap();
+
+    let memories = self.orgs.get(&oid).memories(ctx);
+
+    memories.report(&self.app, start_date, end_date, wh)
   }
 }

@@ -1,12 +1,15 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use actix_web::{post, web, Error, HttpRequest, HttpResponse, Responder};
 use json::{object, JsonValue};
+use uuid::Uuid;
 
 use crate::animo::db::AnimoDB;
 use crate::animo::memory::{ChangeTransformation, TransformationKey};
 use crate::commutator::Application;
 use crate::services::Services;
+use crate::store::{dt, WHError};
 use crate::Memory;
 use qstring::QString;
 
@@ -80,6 +83,30 @@ pub(crate) async fn docs_update(
   let params: JsonValue = object! {"ctx": ctx, "oid": oid};
 
   let result = web::block(move || app.service("docs").update(id, data, params))
+    .await?
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
+  let result: serde_json::Value = serde_json::from_str(&result.dump()).unwrap();
+
+  Ok(HttpResponse::Ok().json(result))
+}
+
+#[post("/api/docs/report")]
+pub(crate) async fn warehouse_report(
+  req: HttpRequest,
+  app: web::Data<Application>,
+  params: web::Query<HashMap<String, String>>,
+) -> Result<HttpResponse, Error> {
+  let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
+  let oid = params["oid"].clone();
+
+  let start_date = params["start_date"].clone();
+  let end_date = params["end_date"].clone();
+  let wh = params["wh"].clone();
+
+  let params: JsonValue = object! {"ctx": ctx, "oid": oid};
+
+  let result = web::block(move || app.service("docs").report(params, start_date, end_date, wh))
     .await?
     .map_err(actix_web::error::ErrorInternalServerError)?;
 

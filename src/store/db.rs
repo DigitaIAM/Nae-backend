@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use rocksdb::DB;
 
-use super::{CheckpointTopology, OrderedTopology, WHError, OpMutation, Balance, first_day_next_month, balance::BalanceForGoods, Store};
+use super::{CheckpointTopology, OrderedTopology, WHError, OpMutation, Balance, first_day_next_month, balance::BalanceForGoods, Store, Report};
 
 
 #[derive(Clone)]
@@ -65,7 +65,7 @@ impl Db {
   }
 
   pub fn get_checkpoints_before_date(
-    &mut self,
+    &self,
     date: DateTime<Utc>,
     wh: Store,
   ) -> Result<Vec<Balance>, WHError> {
@@ -82,5 +82,13 @@ impl Db {
       }
     }
     Err(WHError::new("can't get checkpoint before date"))
+  }
+
+  pub fn get_report(&self, start_date: DateTime<Utc>, end_date: DateTime<Utc>, wh: Store) -> Result<Report, WHError> {
+    for ordered_topology in self.ordered_topologies.iter() {
+      ordered_topology.get_report(start_date, end_date, wh, self.get_checkpoints_before_date(start_date, wh)?);
+    }
+
+    Err(WHError::new("tmp"))
   }
 }

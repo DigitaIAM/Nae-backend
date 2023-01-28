@@ -2,13 +2,14 @@ use crate::animo::memory::ID;
 use crate::commutator::Application;
 use crate::services::{Data, Error};
 use crate::storage::{json, load, save};
-use crate::store::{dt, receive_data, Batch, NumberForGoods, OpMutation};
+use crate::store::{dt, receive_data, Batch, NumberForGoods, OpMutation, Report};
 use crate::utils::time::time_to_string;
 use chrono::{DateTime, Utc};
 use json::JsonValue;
 use rust_decimal::Decimal;
 use std::path::PathBuf;
 use std::str::FromStr;
+use uuid::Uuid;
 
 pub(crate) struct SMemories {
   pub(crate) oid: ID,
@@ -161,6 +162,20 @@ impl SMemories {
     result.sort_by(|a, b| b.id.cmp(&a.id));
 
     Ok(result)
+  }
+
+  pub(crate) fn report(
+    &self,
+    app: &Application,
+    start_date: DateTime<Utc>,
+    end_date: DateTime<Utc>,
+    wh: Uuid,
+  ) -> Result<JsonValue, Error> {
+    if let Ok(res) = app.warehouse.database.get_report(start_date, end_date, wh) {
+      Ok(JsonValue::String(serde_json::to_string(&res)?))
+    } else {
+      Err(Error::NotFound("Report failed".to_string()))
+    }
   }
 }
 

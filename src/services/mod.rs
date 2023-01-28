@@ -56,6 +56,7 @@ pub trait Service: Send + Sync {
   fn update(&self, id: String, data: Data, params: Params) -> Result;
   fn patch(&self, id: String, data: Data, params: Params) -> Result;
   fn remove(&self, id: String, params: Params) -> Result;
+  fn report(&self, params: Params, start_date: String, end_date: String, wh: String) -> Result;
 
   fn id(&self, name: &str, params: &Params) -> std::result::Result<ID, Error> {
     if let Some(id) = params[name].as_str() {
@@ -233,6 +234,10 @@ impl Service for NoService {
   fn remove(&self, id: String, params: Params) -> Result {
     self.error()
   }
+
+  fn report(&self, params: Params, start_date: String, end_date: String, wh: String) -> Result {
+    self.error()
+  }
 }
 
 //     400: BadRequest
@@ -296,6 +301,12 @@ impl std::convert::From<uuid::Error> for Error {
 impl std::convert::From<store::WHError> for Error {
   fn from(e: store::WHError) -> Self {
     Error::IOError(e.message())
+  }
+}
+
+impl std::convert::From<serde_json::Error> for Error {
+  fn from(e: serde_json::Error) -> Self {
+    Error::IOError(e.to_string())
   }
 }
 

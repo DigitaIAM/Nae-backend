@@ -123,4 +123,8 @@ impl Service for Shifts {
 
     self.orgs.get(&oid).shift(id).delete()
   }
+
+  fn report(&self, params: Params, start_date: String, end_date: String, wh: String) -> crate::services::Result {
+    Err(Error::NotImplemented)
+  }
 }

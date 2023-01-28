@@ -4,10 +4,10 @@ mod balance;
 mod check_batch_store_date;
 mod check_date_store_batch;
 mod date_type_store_goods_id;
+mod db;
 mod error;
 mod store_date_type_goods_id;
 pub mod wh_storage;
-mod db;
 
 use chrono::{DateTime, Datelike, Month, NaiveDate, Utc};
 use json::{array, iterators::Members, JsonValue};
@@ -73,7 +73,6 @@ pub trait OrderedTopology {
     start_d: DateTime<Utc>,
     end_d: DateTime<Utc>,
     wh: Store,
-    db: &Db,
   ) -> Result<Vec<Op>, WHError>;
 
   fn get_report(
@@ -81,28 +80,13 @@ pub trait OrderedTopology {
     start_date: DateTime<Utc>,
     end_date: DateTime<Utc>,
     wh: Store,
-    db: &mut Db,
-  ) -> Result<Report, WHError> {
-    // TODO move to trait Checkpoint
-    let balances = db.get_checkpoints_before_date(start_date, wh)?;
-
-    // println!("BALANCES: {balances:#?}");
-
-    let ops = self.get_ops(first_day_current_month(start_date), end_date, wh, db)?;
-
-    // println!("OPS: {ops:#?}");
-
-    let items = new_get_agregations(balances, ops, start_date);
-
-    Ok(Report { start_date, end_date, items })
-  }
+    balances: Vec<Balance>,
+  ) -> Result<Report, WHError>;
 
   fn data_update(&self, op: &OpMutation) -> Result<(), WHError>;
 }
 
 pub trait CheckpointTopology {
-  // fn cf_name(&self) -> &str;
-
   fn key(&self, op: &Op, date_of_checkpoint: DateTime<Utc>) -> Vec<u8>;
 
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError>;
@@ -617,7 +601,7 @@ struct AgregationStoreGoods {
   close_balance: BalanceForGoods,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 struct AgregationStore {
   // ключ (контекст)
   store: Option<Store>,
@@ -866,7 +850,7 @@ impl KeyValueStore for AgregationStoreGoods {
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Report {
   start_date: DateTime<Utc>,
   end_date: DateTime<Utc>,
@@ -962,38 +946,6 @@ pub fn receive_data(
   while let Some(ref a) = after.next() {
     ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
   }
-
-  // while b_op.is_some() || a_op.is_some() {
-  //   if let (Some(b), Some(a)) = (&b_op, &a_op) {
-  //     if b.id == a.id && b.batch() == a.batch() {
-  //       // create new OpMut with both (delta will be finded and propagated later in receive_operations())
-  //       ops.push(OpMutation::new_from_ops(b_op, a_op)?);
-
-  //       b_op = before.next();
-  //       a_op = after.next();
-  //     } else if b.batch() > a.batch() {
-  //       // create new OpMut with a
-  //       ops.push(OpMutation::new_from_ops(None, a_op)?);
-
-  //       a_op = after.next();
-  //     } else if b.batch() < a.batch() {
-  //       //create new OpMut with b
-  //       ops.push(OpMutation::new_from_ops(b_op, None)?);
-
-  //       b_op = before.next();
-  //     }
-  //   } else if let Some(b) = &b_op {
-  //     // create new OpMut with b
-  //     ops.push(OpMutation::new_from_ops(b_op, None)?);
-
-  //     b_op = before.next();
-  //   } else if let Some(a) = &a_op {
-  //     // create new OpMut with a
-  //     ops.push(OpMutation::new_from_ops(None, a_op)?);
-
-  //     a_op = after.next();
-  //   }
-  // }
 
   app.warehouse.receive_operations(&ops)?;
 
