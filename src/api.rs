@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use actix_web::{post, web, Error, HttpRequest, HttpResponse, Responder};
+use actix_web::{get, post, web, Error, HttpRequest, HttpResponse, Responder};
 use json::{object, JsonValue};
 
 use crate::animo::db::AnimoDB;
@@ -80,6 +80,30 @@ pub(crate) async fn docs_update(
   let params: JsonValue = object! {"ctx": ctx, "oid": oid};
 
   let result = web::block(move || app.service("docs").update(id, data, params))
+    .await?
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
+  let result: serde_json::Value = serde_json::from_str(&result.dump()).unwrap();
+
+  Ok(HttpResponse::Ok().json(result))
+}
+
+#[get("/api/inventory")]
+pub(crate) async fn inventory_find(
+  req: HttpRequest,
+  app: web::Data<Application>,
+  params: web::Query<HashMap<String, String>>,
+) -> Result<HttpResponse, Error> {
+  let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
+  let oid = params["oid"].clone();
+
+  let from_date = params["from_date"].clone();
+  let till_date = params["till_date"].clone();
+  let storage = params["storage"].clone();
+
+  let params: JsonValue = object! {"ctx": ctx, "oid": oid, "storage": storage, dates: {"from": from_date, "till": till_date}};
+
+  let result = web::block(move || app.service("inventory").find(params))
     .await?
     .map_err(actix_web::error::ErrorInternalServerError)?;
 

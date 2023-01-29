@@ -4,10 +4,10 @@ mod balance;
 mod check_batch_store_date;
 mod check_date_store_batch;
 mod date_type_store_goods_id;
+mod db;
 mod error;
 mod store_date_type_goods_id;
 pub mod wh_storage;
-mod db;
 
 use chrono::{DateTime, Datelike, Month, NaiveDate, Utc};
 use json::{array, iterators::Members, JsonValue};
@@ -70,32 +70,18 @@ pub trait OrderedTopology {
 
   fn get_ops(
     &self,
-    start_d: DateTime<Utc>,
-    end_d: DateTime<Utc>,
-    wh: Store,
-    db: &Db,
+    storage: Store,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError>;
 
   fn get_report(
     &self,
-    start_date: DateTime<Utc>,
-    end_date: DateTime<Utc>,
-    wh: Store,
-    db: &mut Db,
-  ) -> Result<Report, WHError> {
-    // TODO move to trait Checkpoint
-    let balances = db.get_checkpoints_before_date(start_date, wh)?;
-
-    // println!("BALANCES: {balances:#?}");
-
-    let ops = self.get_ops(first_day_current_month(start_date), end_date, wh, db)?;
-
-    // println!("OPS: {ops:#?}");
-
-    let items = new_get_agregations(balances, ops, start_date);
-
-    Ok(Report { start_date, end_date, items })
-  }
+    db: &Db,
+    storage: Store,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Report, WHError>;
 
   fn data_update(&self, op: &OpMutation) -> Result<(), WHError>;
 }
@@ -145,8 +131,8 @@ pub trait CheckpointTopology {
 
   fn get_checkpoints_before_date(
     &self,
+    storage: Store,
     date: DateTime<Utc>,
-    wh: Store,
   ) -> Result<Vec<Balance>, WHError>;
 }
 
@@ -157,8 +143,11 @@ pub fn dt(date: &str) -> Result<DateTime<Utc>, WHError> {
 }
 
 fn first_day_current_month(date: DateTime<Utc>) -> DateTime<Utc> {
-  let naivedate = NaiveDate::from_ymd(date.year(), date.month(), 1).and_hms(0, 0, 0);
-  DateTime::<Utc>::from_utc(naivedate, Utc)
+  let date = NaiveDate::from_ymd_opt(date.year(), date.month(), 1)
+    .unwrap()
+    .and_hms_opt(0, 0, 0)
+    .unwrap();
+  DateTime::<Utc>::from_utc(date, Utc)
 }
 
 fn first_day_next_month(date: DateTime<Utc>) -> DateTime<Utc> {
@@ -169,8 +158,8 @@ fn first_day_next_month(date: DateTime<Utc>) -> DateTime<Utc> {
     (d.year(), d.month() + 1)
   };
 
-  let naivedate = NaiveDate::from_ymd(year, month, 1).and_hms(0, 0, 0);
-  DateTime::<Utc>::from_utc(naivedate, Utc)
+  let date = NaiveDate::from_ymd_opt(year, month, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
+  DateTime::<Utc>::from_utc(date, Utc)
 }
 
 fn min_batch() -> Vec<u8> {
@@ -868,12 +857,18 @@ impl KeyValueStore for AgregationStoreGoods {
 
 #[derive(Debug, PartialEq)]
 pub struct Report {
-  start_date: DateTime<Utc>,
-  end_date: DateTime<Utc>,
+  from_date: DateTime<Utc>,
+  till_date: DateTime<Utc>,
   items: (AgregationStore, Vec<AgregationStoreGoods>),
 }
 
-fn new_get_agregations(
+impl Report {
+  pub(crate) fn to_json(&self) -> JsonValue {
+    todo!()
+  }
+}
+
+fn new_get_aggregations(
   balances: Vec<Balance>,
   operations: Vec<Op>,
   start_date: DateTime<Utc>,
@@ -888,13 +883,13 @@ fn new_get_agregations(
       .collect()
   };
 
-  let keyFor = |op: &Op| -> Vec<u8> { key(&op.store, &op.goods, &op.batch) };
+  let key_for = |op: &Op| -> Vec<u8> { key(&op.store, &op.goods, &op.batch) };
 
-  let mut agregations = BTreeMap::new();
-  let mut master_agregation = AgregationStore::default();
+  let mut aggregations = BTreeMap::new();
+  let mut master_aggregation = AgregationStore::default();
 
   for balance in balances {
-    agregations.insert(
+    aggregations.insert(
       key(&balance.store, &balance.goods, &balance.batch),
       AgregationStoreGoods {
         store: Some(balance.store),
@@ -911,23 +906,23 @@ fn new_get_agregations(
 
   for op in operations {
     if op.date < start_date {
-      agregations
-        .entry(keyFor(&op))
+      aggregations
+        .entry(key_for(&op))
         .or_insert(AgregationStoreGoods::default())
         .add_to_open_balance(&op);
     } else {
-      *agregations.entry(keyFor(&op)).or_insert(AgregationStoreGoods::default()) += &op;
+      *aggregations.entry(key_for(&op)).or_insert(AgregationStoreGoods::default()) += &op;
     }
   }
 
   let mut res = Vec::new();
 
-  for (_, agr) in agregations {
-    master_agregation.apply_agregation(Some(&agr));
+  for (_, agr) in aggregations {
+    master_aggregation.apply_agregation(Some(&agr));
     res.push(agr);
   }
 
-  (master_agregation, res)
+  (master_aggregation, res)
 }
 
 pub fn receive_data(

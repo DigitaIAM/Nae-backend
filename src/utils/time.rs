@@ -1,9 +1,9 @@
 use crate::services::Error;
-use chrono::{Date, DateTime, Duration, SecondsFormat, Utc};
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use std::mem;
 use std::time::SystemTime;
 
-pub struct DateRange(pub Date<Utc>, pub Date<Utc>);
+pub struct DateRange(pub DateTime<Utc>, pub DateTime<Utc>);
 
 impl DateRange {
   fn iter(&self) -> DateRangeIter {
@@ -12,12 +12,12 @@ impl DateRange {
 }
 
 pub struct DateRangeIter {
-  till: Date<Utc>,
-  next: Date<Utc>,
+  till: DateTime<Utc>,
+  next: DateTime<Utc>,
 }
 
 impl Iterator for DateRangeIter {
-  type Item = Date<Utc>;
+  type Item = DateTime<Utc>;
   fn next(&mut self) -> Option<Self::Item> {
     if self.next <= self.till {
       let next = self.next + Duration::days(1);

@@ -1,4 +1,4 @@
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use super::{
   balance::BalanceForGoods, dt, first_day_next_month, Balance, CheckpointTopology, Db, Op,
@@ -59,8 +59,8 @@ impl CheckpointTopology for CheckBatchStoreDate {
 
   fn get_checkpoints_before_date(
     &self,
+    storage: Store,
     date: DateTime<Utc>,
-    wh: Store,
   ) -> Result<Vec<Balance>, WHError> {
     Err(WHError::new("Not supported"))
   }
@@ -94,12 +94,14 @@ impl CheckpointTopology for CheckBatchStoreDate {
   //   )?)
   // }
 
-    fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError> {
-    if let Some(bytes) = self.db.get_cf(
-      &self.cf().map_err(|_| WHError::new("get cf()"))?, 
-      self.key_latest_checkpoint_date()).map_err(|_| WHError::new("key_latest_checkpoint_date()"))? 
-      {
-      let date = serde_json::from_slice(&bytes).map_err(|_| WHError::new("get serde_json::from_slice"))?;
+  fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError> {
+    if let Some(bytes) = self
+      .db
+      .get_cf(&self.cf().map_err(|_| WHError::new("get cf()"))?, self.key_latest_checkpoint_date())
+      .map_err(|_| WHError::new("key_latest_checkpoint_date()"))?
+    {
+      let date =
+        serde_json::from_slice(&bytes).map_err(|_| WHError::new("get serde_json::from_slice"))?;
       Ok(DateTime::parse_from_rfc3339(date)?.into())
     } else {
       // Ok(DateTime::<Utc>::default())

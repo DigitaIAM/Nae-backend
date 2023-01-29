@@ -5,7 +5,7 @@ mod users;
 
 use crate::{store, ID};
 use actix_web::web::Json;
-use chrono::{Date, DateTime, NaiveDate, ParseResult, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, ParseResult, Utc};
 use json::JsonValue;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -61,7 +61,15 @@ pub trait Service: Send + Sync {
     if let Some(id) = params[name].as_str() {
       ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))
     } else {
-      Err(Error::GeneralError(format!("{name} not found")))
+      Err(Error::GeneralError(format!("id `{name}` not found")))
+    }
+  }
+
+  fn uuid(&self, name: &str, params: &Params) -> std::result::Result<uuid::Uuid, Error> {
+    if let Some(id) = params[name].as_str() {
+      uuid::Uuid::parse_str(id).map_err(|e| Error::GeneralError(e.to_string()))
+    } else {
+      Err(Error::GeneralError(format!("uuid `{name}` not found")))
     }
   }
 
@@ -98,14 +106,14 @@ pub trait Service: Send + Sync {
     }
   }
 
-  fn parse_date(&self, str: &str) -> std::result::Result<Date<Utc>, Error> {
+  fn parse_date(&self, str: &str) -> std::result::Result<DateTime<Utc>, Error> {
     match NaiveDate::parse_from_str(str, "%Y-%m-%d") {
-      Ok(d) => Ok(Date::<Utc>::from_utc(d, Utc)),
+      Ok(d) => Ok(DateTime::<Utc>::from_utc(NaiveDateTime::new(d, NaiveTime::default()), Utc)),
       Err(e) => Err(Error::GeneralError(e.to_string())),
     }
   }
 
-  fn date(&self, params: &Params) -> std::result::Result<Option<Date<Utc>>, Error> {
+  fn date(&self, name: &str, params: &Params) -> std::result::Result<Option<DateTime<Utc>>, Error> {
     let params = {
       if params.is_array() {
         &params[0]
@@ -114,7 +122,7 @@ pub trait Service: Send + Sync {
       }
     };
 
-    if let Some(date) = params["date"].as_str() {
+    if let Some(date) = params[name].as_str() {
       // if date == "today" {
       //   todo!() // Ok(Utc::now().into())
       // } else {

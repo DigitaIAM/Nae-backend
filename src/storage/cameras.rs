@@ -2,7 +2,7 @@ use crate::animo::memory::ID;
 use crate::services::Error;
 use crate::storage::{data, json, load, save};
 use chrono::SecondsFormat::Millis;
-use chrono::{Date, DateTime, Datelike, SecondsFormat, Utc};
+use chrono::{DateTime, Datelike, SecondsFormat, Utc};
 use json::JsonValue;
 use std::io::Write;
 use std::path::PathBuf;
@@ -87,7 +87,7 @@ impl SCamera {
     }
   }
 
-  pub(crate) fn events_month(&self, ts: Date<Utc>) -> Vec<SEvent> {
+  pub(crate) fn events_month(&self, ts: DateTime<Utc>) -> Vec<SEvent> {
     let mut result = Vec::new();
 
     let mut folder = self.folder.clone();
@@ -117,7 +117,7 @@ impl SCamera {
     result
   }
 
-  pub(crate) fn events_on_date(&self, ts: Date<Utc>) -> Vec<SEvent> {
+  pub(crate) fn events_on_date(&self, ts: DateTime<Utc>) -> Vec<SEvent> {
     let mut result = Vec::new();
 
     let mut folder = self.folder.clone();
@@ -131,7 +131,7 @@ impl SCamera {
       },
     };
 
-    let date = ts.and_hms(0, 0, 0).to_rfc3339_opts(SecondsFormat::Millis, true);
+    let date = ts.to_rfc3339_opts(SecondsFormat::Millis, true);
     let date: &str = &date.as_str()[..10];
 
     for entry in entries {

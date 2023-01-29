@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
+use crate::store::Report;
 use chrono::{DateTime, Utc};
 use rocksdb::DB;
 
-use super::{CheckpointTopology, OrderedTopology, WHError, OpMutation, Balance, first_day_next_month, balance::BalanceForGoods, Store};
-
+use super::{
+  balance::BalanceForGoods, first_day_next_month, Balance, CheckpointTopology, OpMutation,
+  OrderedTopology, Store, WHError,
+};
 
 #[derive(Clone)]
 pub struct Db {
@@ -65,12 +68,12 @@ impl Db {
   }
 
   pub fn get_checkpoints_before_date(
-    &mut self,
+    &self,
+    storage: Store,
     date: DateTime<Utc>,
-    wh: Store,
   ) -> Result<Vec<Balance>, WHError> {
     for checkpoint_topology in self.checkpoint_topologies.iter() {
-      match checkpoint_topology.get_checkpoints_before_date(date, wh) {
+      match checkpoint_topology.get_checkpoints_before_date(storage, date) {
         Ok(result) => return Ok(result),
         Err(e) => {
           if e.message() == "Not supported".to_string() {
@@ -82,5 +85,21 @@ impl Db {
       }
     }
     Err(WHError::new("can't get checkpoint before date"))
+  }
+
+  pub fn get_report(
+    &self,
+    storage: Store,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Report, WHError> {
+    for ordered_topology in self.ordered_topologies.iter() {
+      match ordered_topology.get_report(&self, storage, from_date, till_date) {
+        Ok(report) => return Ok(report),
+        Err(_) => {}, // ignore
+      }
+    }
+
+    Err(WHError::new("not implemented"))
   }
 }

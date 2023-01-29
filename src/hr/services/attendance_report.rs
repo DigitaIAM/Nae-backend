@@ -1,5 +1,5 @@
 use actix_web::error::ParseError::Status;
-use chrono::{Date, DateTime, Datelike, NaiveDate, ParseResult, SecondsFormat, TimeZone, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, ParseResult, SecondsFormat, TimeZone, Utc};
 use dbase::FieldConversionError;
 use json::object::Object;
 use json::JsonValue;
@@ -38,7 +38,7 @@ impl AttendanceReport {
     Arc::new(AttendanceReport { app, name: "attendance-report".to_string(), orgs })
   }
 
-  fn events(&self, camera: SCamera, date: Date<Utc>, events: &mut Vec<(String, JsonValue)>) {
+  fn events(&self, camera: SCamera, date: DateTime<Utc>, events: &mut Vec<(String, JsonValue)>) {
     let mut evs: Vec<(String, JsonValue)> = camera
       .events_on_date(date)
       .iter()
@@ -156,7 +156,7 @@ impl Service for AttendanceReport {
     //     return Err(Error::GeneralError("`date` or `dates` required".into()))
     //   }
     // };
-    let date = if let Some(date) = self.date(&params)? {
+    let date = if let Some(date) = self.date("date", &params)? {
       date
     } else {
       return Err(Error::GeneralError("`date` required".into()));

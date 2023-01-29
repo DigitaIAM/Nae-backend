@@ -14,6 +14,7 @@ use crate::{
 };
 
 use super::{store_date_type_goods_id::StoreDateTypeGoodsId, *};
+use crate::utils::time::time_to_string;
 use crate::warehouse::test_util::init;
 use actix_web::{http::header::ContentType, test, web, App};
 use futures::TryFutureExt;
@@ -35,6 +36,7 @@ async fn store_test_app_move() {
   application.storage = Some(storage.clone());
 
   application.register(MemoriesInFiles::new(application.clone(), "docs", storage.clone()));
+  application.register(crate::inventory::service::Inventory::new(application.clone()));
 
   let app = test::init_service(
     App::new()
@@ -43,8 +45,7 @@ async fn store_test_app_move() {
       // .wrap(middleware::Logger::default())
       .service(api::docs_create)
       .service(api::docs_update)
-      // .service(api::memory_modify)
-      // .service(api::memory_query)
+      .service(api::inventory_find)
       .default_service(web::route().to(api::not_implemented)),
   )
   .await;
@@ -130,18 +131,33 @@ async fn store_test_app_move() {
 
   assert_eq!(compare, result);
 
-//   let x = DateTypeStoreGoodsId { db:  };
+  //report
+  let from_date = dt("2023-01-17").unwrap();
+  let till_date = dt("2023-01-20").unwrap();
 
-  // let report = x
-  //   .get_report(
-  //     dt("2023-01-17").unwrap(),
-  //     dt("2023-01-20").unwrap(),
-  //     storage1,
-  //     &mut application.warehouse.database,
-  //   )
-  //   .unwrap();
+  println!(
+    "{}",
+    format!(
+      "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
+      oid.to_base64(),
+      storage1.to_string(),
+      time_to_string(from_date),
+      time_to_string(till_date),
+    )
+  );
 
-  // println!("REPORT: {report:#?}");
+  let req = test::TestRequest::get()
+    .uri(&format!(
+      "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
+      oid.to_base64(),
+      storage1.to_string(),
+      time_to_string(from_date),
+      time_to_string(till_date),
+    ))
+    .to_request();
+
+  let response = test::call_and_read_body(&app, req).await;
+  println!("RESPONSE: {response:#?}");
 }
 
 #[actix_web::test]
@@ -522,7 +538,7 @@ fn get_wh_ops(key: impl OrderedTopology) -> Result<(), WHError> {
 
   db.record_ops(&ops).unwrap();
 
-  let res = key.get_ops(start_d, end_d, w1, &db)?;
+  let res = key.get_ops(w1, start_d, end_d)?;
 
   for i in 0..ops.len() {
     assert_eq!(ops[i].to_op(), res[i]);
@@ -541,7 +557,7 @@ fn get_wh_ops(key: impl OrderedTopology) -> Result<(), WHError> {
 //     get_agregations_without_checkpoints(StoreDateTypeGoodsId()).expect("test_get_agregations");
 //   }
 
-fn get_agregations_without_checkpoints(key: impl OrderedTopology) -> Result<(), WHError> {
+fn get_aggregations_without_checkpoints(key: impl OrderedTopology) -> Result<(), WHError> {
   let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
 
   let wh = WHStorage::open(&tmp_dir.path()).unwrap();
@@ -628,7 +644,7 @@ fn get_agregations_without_checkpoints(key: impl OrderedTopology) -> Result<(), 
     },
   ];
 
-  let res = key.get_report(op_d, check_d, w1, &mut db)?;
+  let res = key.get_report(&db, w1, op_d, check_d)?;
   let mut iter = res.items.1.into_iter();
 
   // println!("MANY BALANCES: {:#?}", res);
@@ -1261,7 +1277,7 @@ async fn store_test_receive_change_op() {
   };
 
   let mut old_checkpoints = db
-    .get_checkpoints_before_date(start_d, w1)
+    .get_checkpoints_before_date(w1, start_d)
     .expect("test_receive_change_op")
     .into_iter();
 
@@ -1290,7 +1306,7 @@ async fn store_test_receive_change_op() {
   };
 
   let mut new_checkpoints = db
-    .get_checkpoints_before_date(start_d, w1)
+    .get_checkpoints_before_date(w1, start_d)
     .expect("test_receive_change_op")
     .into_iter();
 

@@ -4,6 +4,7 @@ use super::{
   CheckpointTopology, Db, KeyValueStore, Op, OpMutation, OrderedTopology, Store, WHError, UUID_MAX,
   UUID_NIL,
 };
+use crate::store::{first_day_current_month, new_get_aggregations, Balance, Report};
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 
@@ -30,13 +31,12 @@ impl DateTypeStoreGoodsId {
 impl OrderedTopology for DateTypeStoreGoodsId {
   fn get_ops(
     &self,
-    start_d: DateTime<Utc>,
-    end_d: DateTime<Utc>,
-    wh: Store,
-    db: &Db,
+    storage: Store,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
-    let start_date = start_d.timestamp() as u64;
-    let from: Vec<u8> = start_date
+    let from_date = from_date.timestamp() as u64;
+    let from: Vec<u8> = from_date
       .to_be_bytes()
       .iter()
       .chain(0_u8.to_be_bytes().iter())
@@ -44,8 +44,8 @@ impl OrderedTopology for DateTypeStoreGoodsId {
       .map(|b| *b)
       .collect();
 
-    let end_date = end_d.timestamp() as u64;
-    let till: Vec<u8> = end_date
+    let till_date = till_date.timestamp() as u64;
+    let till: Vec<u8> = till_date
       .to_be_bytes()
       .iter()
       .chain(u8::MAX.to_be_bytes().iter())
@@ -56,11 +56,9 @@ impl OrderedTopology for DateTypeStoreGoodsId {
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
 
-    let iter = db.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start);
-
     let mut res = Vec::new();
 
-    for item in iter {
+    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
       let (_, value) = item?;
       let op = serde_json::from_slice(&value)?;
       res.push(op);
@@ -99,5 +97,21 @@ impl OrderedTopology for DateTypeStoreGoodsId {
         return Err(WHError::new("There is no such operation in db"));
       }
     }
+  }
+
+  fn get_report(
+    &self,
+    db: &Db,
+    storage: Store,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Report, WHError> {
+    let balances = db.get_checkpoints_before_date(storage, from_date)?;
+
+    let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
+
+    let items = new_get_aggregations(balances, ops, from_date);
+
+    Ok(Report { from_date, till_date, items })
   }
 }

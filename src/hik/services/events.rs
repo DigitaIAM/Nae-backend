@@ -47,7 +47,7 @@ impl Service for Events {
     let oid = self.oid(&params)?;
     // let cid = self.cid(&params)?;
 
-    let date = Utc::today(); // self.date(&params)?;
+    let date = Utc::now(); // self.date(&params)?;
 
     let limit = self.limit(&params);
     let skip = self.skip(&params);

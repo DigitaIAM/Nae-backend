@@ -29,6 +29,7 @@ use structopt::StructOpt;
 mod auth;
 mod commutator;
 mod file;
+mod inventory;
 mod services;
 mod settings;
 mod storage;

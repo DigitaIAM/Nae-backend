@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use super::{Db, KeyValueStore, Op, OpMutation, OrderedTopology, Store, WHError};
+use crate::store::{first_day_current_month, new_get_aggregations, Balance, Report};
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 
@@ -25,27 +26,38 @@ impl StoreDateTypeGoodsId {
 }
 
 impl OrderedTopology for StoreDateTypeGoodsId {
+  fn put_op(&self, op: &OpMutation) -> Result<(), WHError> {
+    Ok(self.db.put_cf(
+      &self.cf()?,
+      op.key(&StoreDateTypeGoodsId::cf_name().to_string())?,
+      op.value()?,
+    )?)
+  }
+
+  fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
+    ColumnFamilyDescriptor::new(StoreDateTypeGoodsId::cf_name(), opts)
+  }
+
   fn get_ops(
     &self,
-    start_d: DateTime<Utc>,
-    end_d: DateTime<Utc>,
-    wh: Store,
-    db: &Db,
+    storage: Store,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
-    let start_date = start_d.timestamp() as u64;
-    let from: Vec<u8> = wh
+    let from_date = from_date.timestamp() as u64;
+    let from: Vec<u8> = storage
       .as_bytes()
       .iter()
-      .chain(start_date.to_be_bytes().iter())
+      .chain(from_date.to_be_bytes().iter())
       .chain(0_u8.to_be_bytes().iter())
       .map(|b| *b)
       .collect();
 
-    let end_date = end_d.timestamp() as u64;
-    let till = wh
+    let till_date = till_date.timestamp() as u64;
+    let till = storage
       .as_bytes()
       .iter()
-      .chain(end_date.to_be_bytes().iter())
+      .chain(till_date.to_be_bytes().iter())
       .chain(u8::MAX.to_be_bytes().iter())
       .map(|b| *b)
       .collect();
@@ -53,7 +65,7 @@ impl OrderedTopology for StoreDateTypeGoodsId {
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
 
-    let iter = db.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start);
+    let iter = self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start);
 
     let mut res = Vec::new();
     for item in iter {
@@ -65,16 +77,20 @@ impl OrderedTopology for StoreDateTypeGoodsId {
     Ok(res)
   }
 
-  fn put_op(&self, op: &OpMutation) -> Result<(), WHError> {
-    Ok(self.db.put_cf(
-      &self.cf()?,
-      op.key(&StoreDateTypeGoodsId::cf_name().to_string())?,
-      op.value()?,
-    )?)
-  }
+  fn get_report(
+    &self,
+    db: &Db,
+    storage: Store,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Report, WHError> {
+    let balances = db.get_checkpoints_before_date(storage, from_date)?;
 
-  fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
-    ColumnFamilyDescriptor::new(StoreDateTypeGoodsId::cf_name(), opts)
+    let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
+
+    let items = new_get_aggregations(balances, ops, from_date);
+
+    Ok(Report { from_date, till_date, items })
   }
 
   fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
