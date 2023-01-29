@@ -43,7 +43,6 @@ async fn store_test_app_move() {
       // .wrap(middleware::Logger::default())
       .service(api::docs_create)
       .service(api::docs_update)
-      .service(api::warehouse_report)
       // .service(api::memory_modify)
       // .service(api::memory_query)
       .default_service(web::route().to(api::not_implemented)),
@@ -118,7 +117,7 @@ async fn store_test_app_move() {
   };
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs/{id}?oid={}&ctx=warehouse,receive", oid.to_base64(),))
+    .uri(&format!("/api/docs/{id}?oid={}&ctx=warehouse,receive", oid.to_base64()))
     .set_payload(data1.dump())
     .insert_header(ContentType::json())
     .to_request();
@@ -131,23 +130,16 @@ async fn store_test_app_move() {
 
   assert_eq!(compare, result);
 
-  //report
-  let start_date = dt("2023-01-17").unwrap();
-  let end_date = dt("2023-01-20").unwrap();
-  let req = test::TestRequest::post()
-    .uri(&format!(
-      "/api/docs/report?oid={}&start_date={}&end_date={}&wh={}&ctx=warehouse,receive",
-      oid.to_base64(),
-      start_date.to_string(),
-      end_date.to_string(),
-      storage1.to_string(),
-    ))
-    .set_payload(data1.dump())
-    .insert_header(ContentType::json())
-    .to_request();
+//   let x = DateTypeStoreGoodsId { db:  };
 
-  let response = test::call_and_read_body(&app, req).await;
-  println!("RESPONSE: {response:#?}");
+  // let report = x
+  //   .get_report(
+  //     dt("2023-01-17").unwrap(),
+  //     dt("2023-01-20").unwrap(),
+  //     storage1,
+  //     &mut application.warehouse.database,
+  //   )
+  //   .unwrap();
 
   // println!("REPORT: {report:#?}");
 }
@@ -530,7 +522,7 @@ fn get_wh_ops(key: impl OrderedTopology) -> Result<(), WHError> {
 
   db.record_ops(&ops).unwrap();
 
-  let res = key.get_ops(start_d, end_d, w1)?;
+  let res = key.get_ops(start_d, end_d, w1, &db)?;
 
   for i in 0..ops.len() {
     assert_eq!(ops[i].to_op(), res[i]);
@@ -549,107 +541,107 @@ fn get_wh_ops(key: impl OrderedTopology) -> Result<(), WHError> {
 //     get_agregations_without_checkpoints(StoreDateTypeGoodsId()).expect("test_get_agregations");
 //   }
 
-// fn get_agregations_without_checkpoints(key: impl OrderedTopology) -> Result<(), WHError> {
-//   let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
+fn get_agregations_without_checkpoints(key: impl OrderedTopology) -> Result<(), WHError> {
+  let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
 
-//   let wh = WHStorage::open(&tmp_dir.path()).unwrap();
-//   let mut db = wh.database;
+  let wh = WHStorage::open(&tmp_dir.path()).unwrap();
+  let mut db = wh.database;
 
-//   let op_d = dt("2022-10-10")?;
-//   let check_d = dt("2022-10-11")?;
-//   let w1 = Uuid::new_v4();
-//   let doc1 = Batch { id: Uuid::new_v4(), date: dt("2022-10-09")? };
-//   let doc2 = Batch { id: Uuid::new_v4(), date: op_d };
+  let op_d = dt("2022-10-10")?;
+  let check_d = dt("2022-10-11")?;
+  let w1 = Uuid::new_v4();
+  let doc1 = Batch { id: Uuid::new_v4(), date: dt("2022-10-09")? };
+  let doc2 = Batch { id: Uuid::new_v4(), date: op_d };
 
-//   let id1 = Uuid::from_u128(101);
-//   let id2 = Uuid::from_u128(102);
-//   let id3 = Uuid::from_u128(103);
-//   let id4 = Uuid::from_u128(104);
+  let id1 = Uuid::from_u128(101);
+  let id2 = Uuid::from_u128(102);
+  let id3 = Uuid::from_u128(103);
+  let id4 = Uuid::from_u128(104);
 
-//   let ops = vec![
-//     OpMutation::new(
-//       id1,
-//       op_d,
-//       w1,
-//       None,
-//       G1,
-//       doc1.clone(),
-//       None,
-//       Some(InternalOperation::Receive(3.into(), 3000.into())),
-//       chrono::Utc::now(),
-//     ),
-//     OpMutation::new(
-//       id2,
-//       op_d,
-//       w1,
-//       None,
-//       G1,
-//       doc1.clone(),
-//       None,
-//       Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual)),
-//       chrono::Utc::now(),
-//     ),
-//     OpMutation::new(
-//       id3,
-//       op_d,
-//       w1,
-//       None,
-//       G2,
-//       doc2.clone(),
-//       None,
-//       Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
-//       chrono::Utc::now(),
-//     ),
-//     OpMutation::new(
-//       id4,
-//       op_d,
-//       w1,
-//       None,
-//       G2,
-//       doc2.clone(),
-//       None,
-//       Some(InternalOperation::Receive(2.into(), 2000.into())),
-//       chrono::Utc::now(),
-//     ),
-//   ];
+  let ops = vec![
+    OpMutation::new(
+      id1,
+      op_d,
+      w1,
+      None,
+      G1,
+      doc1.clone(),
+      None,
+      Some(InternalOperation::Receive(3.into(), 3000.into())),
+      chrono::Utc::now(),
+    ),
+    OpMutation::new(
+      id2,
+      op_d,
+      w1,
+      None,
+      G1,
+      doc1.clone(),
+      None,
+      Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual)),
+      chrono::Utc::now(),
+    ),
+    OpMutation::new(
+      id3,
+      op_d,
+      w1,
+      None,
+      G2,
+      doc2.clone(),
+      None,
+      Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
+      chrono::Utc::now(),
+    ),
+    OpMutation::new(
+      id4,
+      op_d,
+      w1,
+      None,
+      G2,
+      doc2.clone(),
+      None,
+      Some(InternalOperation::Receive(2.into(), 2000.into())),
+      chrono::Utc::now(),
+    ),
+  ];
 
-//   db.record_ops(&ops).unwrap();
+  db.record_ops(&ops).unwrap();
 
-//   let agregations = vec![
-//     AgregationStoreGoods {
-//       store: Some(w1),
-//       goods: Some(G1),
-//       batch: Some(doc1.clone()),
-//       open_balance: BalanceForGoods::default(),
-//       receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
-//       issue: BalanceDelta { qty: 1.into(), cost: 1000.into() },
-//       close_balance: BalanceForGoods { qty: 2.into(), cost: 2000.into() },
-//     },
-//     AgregationStoreGoods {
-//       store: Some(w1),
-//       goods: Some(G2),
-//       batch: Some(doc2.clone()),
-//       open_balance: BalanceForGoods::default(),
-//       receive: BalanceDelta { qty: 2.into(), cost: 2000.into() },
-//       issue: BalanceDelta { qty: 2.into(), cost: 2000.into() },
-//       close_balance: BalanceForGoods::default(),
-//     },
-//   ];
+  let agregations = vec![
+    AgregationStoreGoods {
+      store: Some(w1),
+      goods: Some(G1),
+      batch: Some(doc1.clone()),
+      open_balance: BalanceForGoods::default(),
+      receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
+      issue: BalanceDelta { qty: 1.into(), cost: 1000.into() },
+      close_balance: BalanceForGoods { qty: 2.into(), cost: 2000.into() },
+    },
+    AgregationStoreGoods {
+      store: Some(w1),
+      goods: Some(G2),
+      batch: Some(doc2.clone()),
+      open_balance: BalanceForGoods::default(),
+      receive: BalanceDelta { qty: 2.into(), cost: 2000.into() },
+      issue: BalanceDelta { qty: 2.into(), cost: 2000.into() },
+      close_balance: BalanceForGoods::default(),
+    },
+  ];
 
-//   let res = key.get_report(op_d, check_d, w1, &mut db)?;
-//   let mut iter = res.items.1.into_iter();
+  let res = key.get_report(op_d, check_d, w1, &mut db)?;
+  let mut iter = res.items.1.into_iter();
 
-//   // println!("MANY BALANCES: {:#?}", res);
+  // println!("MANY BALANCES: {:#?}", res);
 
-//   for agr in agregations {
-//     assert_eq!(iter.next().expect("option in get_agregations"), agr);
-//   }
-//   assert_eq!(iter.next(), None);
+  for agr in agregations {
+    assert_eq!(iter.next().expect("option in get_agregations"), agr);
+  }
+  assert_eq!(iter.next(), None);
 
-//   tmp_dir.close().expect("Can't close tmp dir in store_test_get_wh_balance");
+  tmp_dir.close().expect("Can't close tmp dir in store_test_get_wh_balance");
 
-//   Ok(())
-// }
+  Ok(())
+}
 
 #[actix_web::test]
 async fn store_test_op_iter() {

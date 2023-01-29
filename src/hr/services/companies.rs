@@ -115,14 +115,4 @@ impl Service for Companies {
 
     self.orgs.get(&id).delete()
   }
-
-  fn report(
-    &self,
-    params: Params,
-    start_date: String,
-    end_date: String,
-    wh: String,
-  ) -> crate::services::Result {
-    Err(Error::NotImplemented)
-  }
 }

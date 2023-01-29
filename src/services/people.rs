@@ -127,8 +127,4 @@ impl Service for People {
 
     self.orgs.get(&oid).shift(id).delete()
   }
-
-  fn report(&self, params: Params, start_date: String, end_date: String, wh: String) -> super::Result {
-    Err(Error::NotImplemented)
-  }
 }

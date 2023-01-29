@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::{
   CheckpointTopology, Db, KeyValueStore, Op, OpMutation, OrderedTopology, Store, WHError, UUID_MAX,
-  UUID_NIL, Balance, Report, first_day_current_month, new_get_agregations,
+  UUID_NIL,
 };
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
@@ -33,6 +33,7 @@ impl OrderedTopology for DateTypeStoreGoodsId {
     start_d: DateTime<Utc>,
     end_d: DateTime<Utc>,
     wh: Store,
+    db: &Db,
   ) -> Result<Vec<Op>, WHError> {
     let start_date = start_d.timestamp() as u64;
     let from: Vec<u8> = start_date
@@ -55,7 +56,7 @@ impl OrderedTopology for DateTypeStoreGoodsId {
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
 
-    let iter = self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start);
+    let iter = db.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start);
 
     let mut res = Vec::new();
 
@@ -98,20 +99,5 @@ impl OrderedTopology for DateTypeStoreGoodsId {
         return Err(WHError::new("There is no such operation in db"));
       }
     }
-  }
-
-  fn get_report(
-    &self,
-    start_date: DateTime<Utc>,
-    end_date: DateTime<Utc>,
-    wh: Store,
-    balances: Vec<Balance>
-  ) -> Result<Report, WHError> {
-
-    let ops = self.get_ops(first_day_current_month(start_date), end_date, wh)?;
-
-    let items = new_get_agregations(balances, ops, start_date);
-
-    Ok(Report { start_date, end_date, items })
   }
 }

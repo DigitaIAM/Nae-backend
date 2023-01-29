@@ -118,8 +118,4 @@ impl Service for Events {
   fn remove(&self, id: String, params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
-
-  fn report(&self, params: Params, start_date: String, end_date: String, wh: String) -> crate::services::Result {
-    Err(Error::NotImplemented)
-  }
 }
