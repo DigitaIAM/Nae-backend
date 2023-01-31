@@ -1,23 +1,23 @@
 use std::sync::Arc;
 
-use super::{Db, KeyValueStore, Op, OpMutation, OrderedTopology, Store, WHError};
+use super::{Db, InternalOperation, KeyValueStore, Op, OpMutation, OrderedTopology, Store, WHError};
 use crate::store::{first_day_current_month, new_get_aggregations, Balance, Report};
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 
 const CF_NAME: &str = "cf_store_date_type_batch_id";
 
-pub struct StoreDateTypeGoodsId {
+pub struct StoreDateTypeBatchId {
   pub db: Arc<DB>,
 }
 
-impl StoreDateTypeGoodsId {
+impl StoreDateTypeBatchId {
   pub fn cf_name() -> &'static str {
     CF_NAME
   }
 
   fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
-    if let Some(cf) = self.db.cf_handle(StoreDateTypeGoodsId::cf_name()) {
+    if let Some(cf) = self.db.cf_handle(StoreDateTypeBatchId::cf_name()) {
       Ok(cf)
     } else {
       Err(WHError::new("can't get CF"))
@@ -25,17 +25,13 @@ impl StoreDateTypeGoodsId {
   }
 }
 
-impl OrderedTopology for StoreDateTypeGoodsId {
+impl OrderedTopology for StoreDateTypeBatchId {
   fn put_op(&self, op: &OpMutation) -> Result<(), WHError> {
-    Ok(self.db.put_cf(
-      &self.cf()?,
-      op.key(&StoreDateTypeGoodsId::cf_name().to_string())?,
-      op.value()?,
-    )?)
+    Ok(self.db.put_cf(&self.cf()?, self.key(op), op.value()?)?)
   }
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
-    ColumnFamilyDescriptor::new(StoreDateTypeGoodsId::cf_name(), opts)
+    ColumnFamilyDescriptor::new(StoreDateTypeBatchId::cf_name(), opts)
   }
 
   fn get_ops(
@@ -70,8 +66,8 @@ impl OrderedTopology for StoreDateTypeGoodsId {
     let mut res = Vec::new();
     for item in iter {
       let (_, value) = item?;
-      let op = serde_json::from_slice(&value)?;
-      res.push(op);
+      let op: OpMutation = serde_json::from_slice(&value)?;
+      res.push(op.to_op());
     }
 
     Ok(res)
@@ -91,6 +87,7 @@ impl OrderedTopology for StoreDateTypeGoodsId {
     let items = new_get_aggregations(balances, ops, from_date);
 
     Ok(Report { from_date, till_date, items })
+    // Err(WHError::new("test"))
   }
 
   fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
@@ -99,7 +96,8 @@ impl OrderedTopology for StoreDateTypeGoodsId {
     } else {
       if let Ok(Some(bytes)) = self
         .db
-        .get_cf(&self.cf()?, op.key(&StoreDateTypeGoodsId::cf_name().to_string())?)
+        // .get_cf(&self.cf()?, op.key(&StoreDateTypeBatchId::cf_name().to_string())?)
+        .get_cf(&self.cf()?, self.key(op))
       {
         let o: OpMutation = serde_json::from_slice(&bytes)?;
         if op.before == o.after {
@@ -111,5 +109,28 @@ impl OrderedTopology for StoreDateTypeGoodsId {
         return Err(WHError::new("There is no such operation in db"));
       }
     }
+  }
+
+  fn key(&self, op: &OpMutation) -> Vec<u8> {
+    let ts = op.date.timestamp() as u64;
+    // if after == None, this operation will be recorded last (that's why op_type by default is 3)
+    let mut op_type = 3_u8;
+
+    if let Some(o) = &op.after {
+      op_type = match o {
+        InternalOperation::Receive(..) => 1_u8,
+        InternalOperation::Issue(..) => 2_u8,
+      };
+    }
+
+    op.store
+      .as_bytes()
+      .iter()
+      .chain(ts.to_be_bytes().iter())
+      .chain(op_type.to_be_bytes().iter())
+      .chain(op.batch().iter())
+      .chain(op.id.as_bytes().iter())
+      .map(|b| *b)
+      .collect()
   }
 }

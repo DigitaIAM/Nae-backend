@@ -3,13 +3,14 @@
 mod balance;
 mod check_batch_store_date;
 mod check_date_store_batch;
-mod date_type_store_goods_id;
+mod date_type_store_batch_id;
 mod db;
 mod error;
-mod store_date_type_goods_id;
+mod store_date_type_batch_id;
 pub mod wh_storage;
 
 use chrono::{DateTime, Datelike, Month, NaiveDate, Utc};
+use json::object;
 use json::{array, iterators::Members, JsonValue};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 use rust_decimal::{prelude::ToPrimitive, Decimal};
@@ -30,15 +31,16 @@ use chrono::ParseError;
 use std::string::FromUtf8Error;
 
 use crate::settings::Settings;
+use crate::utils::time::time_to_string;
 use crate::{commutator::Application, services, utils::json::JsonParams};
 
 use self::balance::{BalanceDelta, BalanceForGoods};
 use self::check_batch_store_date::CheckBatchStoreDate;
 use self::check_date_store_batch::CheckDateStoreBatch;
-use self::date_type_store_goods_id::DateTypeStoreGoodsId;
+use self::date_type_store_batch_id::DateTypeStoreBatchId;
 use self::db::Db;
 pub use self::error::WHError;
-use self::store_date_type_goods_id::StoreDateTypeGoodsId;
+use self::store_date_type_batch_id::StoreDateTypeBatchId;
 
 type Goods = Uuid;
 type Store = Uuid;
@@ -52,6 +54,28 @@ const G3: Uuid = Uuid::from_u128(3);
 const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
 const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
+pub(crate) trait ToJson {
+  fn to_json(&self) -> JsonValue;
+}
+
+impl ToJson for Uuid {
+  fn to_json(&self) -> JsonValue {
+    JsonValue::String(self.to_string())
+  }
+}
+
+impl ToJson for DateTime<Utc> {
+  fn to_json(&self) -> JsonValue {
+    JsonValue::String(time_to_string(*self))
+  }
+}
+
+impl ToJson for Decimal {
+  fn to_json(&self) -> JsonValue {
+    JsonValue::String(self.to_string())
+  }
+}
+
 #[derive(Eq, Ord, PartialOrd, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Batch {
   id: Uuid,
@@ -63,6 +87,16 @@ impl Batch {
     Batch { id: Default::default(), date: Default::default() }
   }
 }
+
+impl ToJson for Batch {
+  fn to_json(&self) -> JsonValue {
+    object! {
+      id: self.id.to_json(),
+      date: self.date.to_json()
+    }
+  }
+}
+
 pub trait OrderedTopology {
   fn put_op(&self, op: &OpMutation) -> Result<(), WHError>;
 
@@ -84,6 +118,8 @@ pub trait OrderedTopology {
   ) -> Result<Report, WHError>;
 
   fn data_update(&self, op: &OpMutation) -> Result<(), WHError>;
+
+  fn key(&self, op: &OpMutation) -> Vec<u8>;
 }
 
 pub trait CheckpointTopology {
@@ -434,6 +470,10 @@ impl OpMutation {
     }
   }
 
+  fn value(&self) -> Result<String, WHError> {
+    Ok(serde_json::to_string(&self)?)
+  }
+
   fn to_op(&self) -> Op {
     if let Some(op) = self.after.as_ref() {
       Op {
@@ -514,71 +554,6 @@ impl OpMutation {
   }
 }
 
-impl KeyValueStore for OpMutation {
-  fn key(&self, s: &String) -> Result<Vec<u8>, WHError> {
-    match s.as_str() {
-      STORE_DATE_TYPE_BATCH_ID => Ok(self.store_date_type_batch_id()),
-      DATE_TYPE_STORE_BATCH_ID => Ok(self.date_type_store_batch_id()),
-      _ => Err(WHError::new("Wrong Op key type")),
-    }
-  }
-
-  fn store_date_type_batch_id(&self) -> Vec<u8> {
-    let ts = self.date.timestamp() as u64;
-    // if after == None, this operation will be recorded last (that's why op_type by default is 3)
-    let mut op_type = 3_u8;
-
-    if let Some(o) = &self.after {
-      op_type = match o {
-        InternalOperation::Receive(..) => 1_u8,
-        InternalOperation::Issue(..) => 2_u8,
-      };
-    }
-
-    let key = self
-      .store
-      .as_bytes()
-      .iter()
-      .chain(ts.to_be_bytes().iter())
-      .chain(op_type.to_be_bytes().iter())
-      .chain(self.batch().iter())
-      .chain(self.id.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    key
-  }
-
-  fn value(&self) -> Result<String, WHError> {
-    Ok(serde_json::to_string(&self)?)
-  }
-
-  fn date_type_store_batch_id(&self) -> Vec<u8> {
-    let ts = self.date.timestamp() as u64;
-    // if after == None, this operation will be recorded last (that's why op_type by default is 3)
-    let mut op_type = 3_u8;
-
-    if let Some(o) = &self.after {
-      op_type = match o {
-        InternalOperation::Receive(..) => 1_u8,
-        InternalOperation::Issue(..) => 2_u8,
-      };
-    }
-
-    let key = ts
-      .to_be_bytes()
-      .iter()
-      .chain(op_type.to_be_bytes().iter())
-      .chain(self.store.as_bytes().iter())
-      .chain(self.batch().iter())
-      .chain(self.id.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    key
-  }
-}
-
 enum ReturnType {
   Good(AgregationStoreGoods),
   Store(AgregationStore),
@@ -593,7 +568,7 @@ trait Agregation {
   fn is_applyable_for(&self, op: &OpMutation) -> bool;
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 struct AgregationStoreGoods {
   // ключ
   store: Option<Store>,
@@ -604,17 +579,6 @@ struct AgregationStoreGoods {
   receive: BalanceDelta,
   issue: BalanceDelta,
   close_balance: BalanceForGoods,
-}
-
-#[derive(PartialEq, Debug, Clone)]
-struct AgregationStore {
-  // ключ (контекст)
-  store: Option<Store>,
-  // агрегация
-  open_balance: Cost,
-  receive: Cost,
-  issue: Cost,
-  close_balance: Cost,
 }
 
 impl AgregationStoreGoods {
@@ -655,6 +619,24 @@ impl AgregationStoreGoods {
   }
 }
 
+impl ToJson for AgregationStoreGoods {
+  fn to_json(&self) -> JsonValue {
+    if let (Some(s), Some(g), Some(b)) = (self.store, self.goods, &self.batch) {
+      object! {
+        store: s.to_json(),
+        goods: g.to_json(),
+        batch: b.to_json(),
+        open_balance: self.open_balance.to_json(),
+        receive: self.receive.to_json(),
+        issue: self.issue.to_json(),
+        close_balance: self.close_balance.to_json(),
+      }
+    } else {
+      JsonValue::Null
+    }
+  }
+}
+
 impl Default for AgregationStoreGoods {
   fn default() -> Self {
     Self {
@@ -675,6 +657,33 @@ impl AddAssign<&Op> for AgregationStoreGoods {
     self.goods = Some(rhs.goods);
     self.batch = Some(rhs.batch.clone());
     self.apply_operation(rhs);
+  }
+}
+
+#[derive(PartialEq, Debug, Clone)]
+struct AgregationStore {
+  // ключ (контекст)
+  store: Option<Store>,
+  // агрегация
+  open_balance: Cost,
+  receive: Cost,
+  issue: Cost,
+  close_balance: Cost,
+}
+
+impl ToJson for AgregationStore {
+  fn to_json(&self) -> JsonValue {
+    if let Some(s) = self.store {
+      object! {
+        store: s.to_json(),
+        open_balance: self.open_balance.to_json(),
+        receive: self.receive.to_json(),
+        issue: self.issue.to_json(),
+        close_balance: self.close_balance.to_json(),
+      }
+    } else {
+      JsonValue::Null
+    }
   }
 }
 
@@ -842,8 +851,9 @@ impl KeyValueStore for AgregationStoreGoods {
     todo!()
   }
 
+  // is it ok to make this with to_json() method?
   fn value(&self) -> Result<String, WHError> {
-    Ok(serde_json::to_string(&self)?)
+    Ok(self.to_json().dump())
   }
 
   fn date_type_store_batch_id(&self) -> Vec<u8> {
@@ -862,10 +872,26 @@ pub struct Report {
   items: (AgregationStore, Vec<AgregationStoreGoods>),
 }
 
-impl Report {
-  pub(crate) fn to_json(&self) -> JsonValue {
-    todo!()
+impl ToJson for Report {
+  fn to_json(&self) -> JsonValue {
+    let mut arr = JsonValue::new_array();
+
+    for agr in self.items.1.iter() {
+      arr.push(agr.to_json());
+    }
+
+    object! {
+      from_date: time_to_naive_string(self.from_date),
+      till_date: time_to_naive_string(self.till_date),
+      items: vec![self.items.0.to_json(), arr]
+    }
   }
+}
+
+fn time_to_naive_string(time: DateTime<Utc>) -> String {
+  let mut res = time.clone().to_string();
+  res.split_off(10);
+  res
 }
 
 fn new_get_aggregations(

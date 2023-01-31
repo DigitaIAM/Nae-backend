@@ -10,10 +10,10 @@ use crate::{
   services::{Error, Services},
   settings::{self, Settings},
   storage::SOrganizations,
-  store::{date_type_store_goods_id::DateTypeStoreGoodsId, wh_storage::WHStorage},
+  store::{date_type_store_batch_id::DateTypeStoreBatchId, wh_storage::WHStorage},
 };
 
-use super::{store_date_type_goods_id::StoreDateTypeGoodsId, *};
+use super::{store_date_type_batch_id::StoreDateTypeBatchId, *};
 use crate::utils::time::time_to_string;
 use crate::warehouse::test_util::init;
 use actix_web::{http::header::ContentType, test, web, App};
@@ -132,32 +132,34 @@ async fn store_test_app_move() {
   assert_eq!(compare, result);
 
   //report
-  let from_date = dt("2023-01-17").unwrap();
-  let till_date = dt("2023-01-20").unwrap();
+  let from_date = "2023-01-17";
+  let till_date = "2023-01-20";
 
-  println!(
-    "{}",
-    format!(
-      "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
-      oid.to_base64(),
-      storage1.to_string(),
-      time_to_string(from_date),
-      time_to_string(till_date),
-    )
-  );
+  // println!(
+  //   "{}",
+  //   format!(
+  //     "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
+  //     oid.to_base64(),
+  //     storage1.to_string(),
+  //     time_to_string(from_date),
+  //     time_to_string(till_date),
+  //   )
+  // );
 
   let req = test::TestRequest::get()
     .uri(&format!(
       "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
       oid.to_base64(),
       storage1.to_string(),
-      time_to_string(from_date),
-      time_to_string(till_date),
+      from_date,
+      till_date,
     ))
     .to_request();
 
   let response = test::call_and_read_body(&app, req).await;
-  println!("RESPONSE: {response:#?}");
+  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+  println!("REPORT: {result:#?}");
 }
 
 #[actix_web::test]
@@ -173,6 +175,7 @@ async fn store_test_app_receive_issue_change() {
   application.storage = Some(storage.clone());
 
   application.register(MemoriesInFiles::new(application.clone(), "docs", storage.clone()));
+  application.register(crate::inventory::service::Inventory::new(application.clone()));
 
   let app = test::init_service(
     App::new()
@@ -181,6 +184,7 @@ async fn store_test_app_receive_issue_change() {
       // .wrap(middleware::Logger::default())
       .service(api::docs_create)
       .service(api::docs_update)
+      .service(api::inventory_find)
       // .service(api::memory_modify)
       // .service(api::memory_query)
       .default_service(web::route().to(api::not_implemented)),
@@ -296,18 +300,25 @@ async fn store_test_app_receive_issue_change() {
 
   assert_eq!(compare, result);
 
-  // let x = DateTypeStoreGoodsId();
+  //report
+  let from_date = "2023-01-17";
+  let till_date = "2023-01-20";
 
-  // let report = x
-  //   .get_report(
-  //     dt("2023-01-17").unwrap(),
-  //     dt("2023-01-20").unwrap(),
-  //     storage1,
-  //     &mut application.warehouse.database,
-  //   )
-  //   .unwrap();
+  let req = test::TestRequest::get()
+    .uri(&format!(
+      "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
+      oid.to_base64(),
+      storage1.to_string(),
+      from_date,
+      till_date,
+    ))
+    .to_request();
 
-  // println!("REPORT: {report:#?}");
+  let response = test::call_and_read_body(&app, req).await;
+  // println!("RESPONSE: {response:#?}");
+
+  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  println!("REPORT: {result:#?}");
 }
 
 #[actix_web::test]
@@ -722,10 +733,7 @@ async fn store_test_op_iter() {
     ),
   ];
 
-  for op in &ops {
-    db.put(&op.store_date_type_batch_id(), &op.value().expect("test_op_iter"))
-      .expect("Can't put op in db in test_op_iter");
-  }
+  db.record_ops(&ops).unwrap();
 
   let iter = db.db.iterator(IteratorMode::Start);
 

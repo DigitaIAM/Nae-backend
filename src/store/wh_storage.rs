@@ -1,6 +1,6 @@
 use super::{
   check_batch_store_date::CheckBatchStoreDate, check_date_store_batch::CheckDateStoreBatch,
-  date_type_store_goods_id::DateTypeStoreGoodsId, store_date_type_goods_id::StoreDateTypeGoodsId,
+  date_type_store_batch_id::DateTypeStoreBatchId, store_date_type_batch_id::StoreDateTypeBatchId,
   CheckpointTopology, Db, OpMutation, OrderedTopology, WHError,
 };
 use chrono::DateTime;
@@ -24,8 +24,8 @@ impl WHStorage {
     let mut cfs = Vec::new();
 
     let mut cf_names: Vec<&str> = vec![
-      StoreDateTypeGoodsId::cf_name(),
-      DateTypeStoreGoodsId::cf_name(),
+      StoreDateTypeBatchId::cf_name(),
+      DateTypeStoreBatchId::cf_name(),
       CheckDateStoreBatch::cf_name(),
       CheckBatchStoreDate::cf_name(),
     ];
@@ -48,8 +48,8 @@ impl WHStorage {
     ];
 
     let ordered_topologies: Vec<Box<dyn OrderedTopology + Sync + Send>> = vec![
-      Box::new(StoreDateTypeGoodsId { db: inner_db.clone() }),
-      Box::new(DateTypeStoreGoodsId { db: inner_db.clone() }),
+      Box::new(StoreDateTypeBatchId { db: inner_db.clone() }),
+      Box::new(DateTypeStoreBatchId { db: inner_db.clone() }),
     ];
 
     let outer_db = Db {

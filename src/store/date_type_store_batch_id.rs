@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use super::{
-  CheckpointTopology, Db, KeyValueStore, Op, OpMutation, OrderedTopology, Store, WHError, UUID_MAX,
-  UUID_NIL,
+  CheckpointTopology, Db, InternalOperation, KeyValueStore, Op, OpMutation, OrderedTopology, Store,
+  WHError, UUID_MAX, UUID_NIL,
 };
 use crate::store::{first_day_current_month, new_get_aggregations, Balance, Report};
 use chrono::{DateTime, Utc};
@@ -10,17 +10,17 @@ use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, 
 
 const CF_NAME: &str = "cf_date_type_store_batch_id";
 
-pub struct DateTypeStoreGoodsId {
+pub struct DateTypeStoreBatchId {
   pub db: Arc<DB>,
 }
 
-impl DateTypeStoreGoodsId {
+impl DateTypeStoreBatchId {
   pub fn cf_name() -> &'static str {
     CF_NAME
   }
 
   fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
-    if let Some(cf) = self.db.cf_handle(DateTypeStoreGoodsId::cf_name()) {
+    if let Some(cf) = self.db.cf_handle(DateTypeStoreBatchId::cf_name()) {
       Ok(cf)
     } else {
       Err(WHError::new("can't get CF"))
@@ -28,7 +28,7 @@ impl DateTypeStoreGoodsId {
   }
 }
 
-impl OrderedTopology for DateTypeStoreGoodsId {
+impl OrderedTopology for DateTypeStoreBatchId {
   fn get_ops(
     &self,
     storage: Store,
@@ -41,6 +41,10 @@ impl OrderedTopology for DateTypeStoreGoodsId {
       .iter()
       .chain(0_u8.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(u64::MIN.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
       .map(|b| *b)
       .collect();
 
@@ -49,6 +53,10 @@ impl OrderedTopology for DateTypeStoreGoodsId {
       .to_be_bytes()
       .iter()
       .chain(u8::MAX.to_be_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
       .map(|b| *b)
       .collect();
@@ -60,23 +68,19 @@ impl OrderedTopology for DateTypeStoreGoodsId {
 
     for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
       let (_, value) = item?;
-      let op = serde_json::from_slice(&value)?;
-      res.push(op);
+      let op: OpMutation = serde_json::from_slice(&value)?;
+      res.push(op.to_op());
     }
 
     Ok(res)
   }
 
   fn put_op(&self, op: &OpMutation) -> Result<(), WHError> {
-    Ok(self.db.put_cf(
-      &self.cf()?,
-      op.key(&DateTypeStoreGoodsId::cf_name().to_string())?,
-      op.value()?,
-    )?)
+    Ok(self.db.put_cf(&self.cf()?, self.key(op), op.value()?)?)
   }
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
-    ColumnFamilyDescriptor::new(DateTypeStoreGoodsId::cf_name(), opts)
+    ColumnFamilyDescriptor::new(DateTypeStoreBatchId::cf_name(), opts)
   }
 
   fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
@@ -85,7 +89,8 @@ impl OrderedTopology for DateTypeStoreGoodsId {
     } else {
       if let Ok(Some(bytes)) = self
         .db
-        .get_cf(&self.cf()?, op.key(&DateTypeStoreGoodsId::cf_name().to_string())?)
+        // .get_cf(&self.cf()?, op.key(&DateTypeStoreBatchId::cf_name().to_string())?)
+        .get_cf(&self.cf()?, self.key(op))
       {
         let o: OpMutation = serde_json::from_slice(&bytes)?;
         if op.before == o.after {
@@ -113,5 +118,28 @@ impl OrderedTopology for DateTypeStoreGoodsId {
     let items = new_get_aggregations(balances, ops, from_date);
 
     Ok(Report { from_date, till_date, items })
+  }
+
+  fn key(&self, op: &OpMutation) -> Vec<u8> {
+    let ts = op.date.timestamp() as u64;
+
+    // if after == None, this operation will be recorded last (that's why op_type by default is 3)
+    let mut op_type = 3_u8;
+
+    if let Some(o) = &op.after {
+      op_type = match o {
+        InternalOperation::Receive(..) => 1_u8,
+        InternalOperation::Issue(..) => 2_u8,
+      };
+    }
+
+    ts.to_be_bytes()
+      .iter()
+      .chain(op_type.to_be_bytes().iter())
+      .chain(op.store.as_bytes().iter())
+      .chain(op.batch().iter())
+      .chain(op.id.as_bytes().iter())
+      .map(|b| *b)
+      .collect()
   }
 }

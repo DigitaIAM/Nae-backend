@@ -3,6 +3,7 @@ mod people;
 pub(crate) mod persistent;
 mod users;
 
+use crate::store::dt;
 use crate::{store, ID};
 use actix_web::web::Json;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, ParseResult, Utc};
@@ -147,7 +148,7 @@ pub trait Service: Send + Sync {
 
     if let Some(date) = dates["from"].as_str() {
       let from = self.parse_date(date)?;
-
+      // println!("FN_DATE_RANGE {date:?}");
       if let Some(date) = dates["till"].as_str() {
         let till = self.parse_date(date)?;
 

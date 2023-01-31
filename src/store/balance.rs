@@ -1,3 +1,4 @@
+use json::{object, JsonValue};
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 use serde::{Deserialize, Serialize};
 use std::ops::Neg;
@@ -10,7 +11,7 @@ use std::{
   sync::Arc,
 };
 
-use super::{Cost, Qty};
+use super::{Cost, Qty, ToJson};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BalanceForGoods {
@@ -22,6 +23,15 @@ impl BalanceForGoods {
   pub fn is_zero(&self) -> bool {
     self.qty.is_zero() && self.cost.is_zero()
   }
+}
+
+impl ToJson for BalanceForGoods {
+    fn to_json(&self) -> JsonValue {
+        object!{
+          qty: self.qty.to_string(),
+          cost: self.cost.to_string(),
+        }
+    }
 }
 
 // impl Neg for BalanceForGoods {
@@ -81,6 +91,15 @@ impl Add<BalanceDelta> for BalanceForGoods {
 pub struct BalanceDelta {
   pub qty: Qty,
   pub cost: Cost,
+}
+
+impl ToJson for BalanceDelta {
+    fn to_json(&self) -> JsonValue {
+      object!{
+        qty: self.qty.to_string(),
+        cost: self.cost.to_string(),
+      }
+    }
 }
 
 impl AddAssign<Self> for BalanceDelta {
