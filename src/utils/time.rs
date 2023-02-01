@@ -1,5 +1,5 @@
 use crate::services::Error;
-use chrono::{DateTime, Duration, SecondsFormat, Utc};
+use chrono::{DateTime, Duration, SecondsFormat, Utc, NaiveDateTime};
 use std::mem;
 use std::time::SystemTime;
 
@@ -26,6 +26,15 @@ impl Iterator for DateRangeIter {
       None
     }
   }
+}
+
+pub fn timestamp_to_time(ts: u64) -> Result<DateTime<Utc>, Error> {
+  if let Some(t) = NaiveDateTime::from_timestamp_opt(ts as i64, 0) {
+    Ok(DateTime::<Utc>::from_utc(t, Utc))
+  } else {
+    Err(Error::GeneralError("Incorrect timestamp".to_string()))
+  }
+  
 }
 
 pub fn string_to_time<S: AsRef<str>>(data: S) -> Result<DateTime<Utc>, Error> {

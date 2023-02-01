@@ -742,7 +742,7 @@ impl Agregation for AgregationStore {
         self.close_balance += cost;
       },
       InternalOperation::Issue(qty, cost, mode) => {
-        self.issue += cost;
+        self.issue -= cost;
         self.close_balance -= cost;
       },
     }
@@ -958,15 +958,28 @@ pub fn receive_data(
   ctx: &Vec<String>,
   mut before: JsonValue,
 ) -> Result<JsonValue, WHError> {
+  // TODO if structure of input Json is invalid, should return it without changes and save it to memories anyway
+  // If my data was corrupted, should rewrite it and do the operations
+  // TODO tests with invalid structure of incoming JsonValue
   let store = data["storage"].uuid();
 
-  let mut before = json_to_ops(&mut before, store.clone(), time.clone(), ctx)?.into_iter();
+  // let mut before = json_to_ops(&mut before, store.clone(), time.clone(), ctx)?.into_iter();
+
+  let mut before = match json_to_ops(&mut before, store.clone(), time.clone(), ctx) {
+    Ok(res) => res.into_iter(),
+    Err(_) => return Ok(data),
+  };
 
   // let tmp = json_to_ops(&mut data, store, time, ctx)?;
   // println!("AFTER: {tmp:#?}");
   // let mut after = tmp.into_iter();
 
-  let mut after = json_to_ops(&mut data, store, time, ctx)?;
+  // let mut after = json_to_ops(&mut data, store, time, ctx)?;
+
+  let mut after = match json_to_ops(&mut data, store, time, ctx) {
+    Ok(res) => res,
+    Err(_) => return Ok(data),
+  };
 
   let mut ops: Vec<OpMutation> = Vec::new();
 
@@ -983,38 +996,6 @@ pub fn receive_data(
   while let Some(ref a) = after.next() {
     ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
   }
-
-  // while b_op.is_some() || a_op.is_some() {
-  //   if let (Some(b), Some(a)) = (&b_op, &a_op) {
-  //     if b.id == a.id && b.batch() == a.batch() {
-  //       // create new OpMut with both (delta will be finded and propagated later in receive_operations())
-  //       ops.push(OpMutation::new_from_ops(b_op, a_op)?);
-
-  //       b_op = before.next();
-  //       a_op = after.next();
-  //     } else if b.batch() > a.batch() {
-  //       // create new OpMut with a
-  //       ops.push(OpMutation::new_from_ops(None, a_op)?);
-
-  //       a_op = after.next();
-  //     } else if b.batch() < a.batch() {
-  //       //create new OpMut with b
-  //       ops.push(OpMutation::new_from_ops(b_op, None)?);
-
-  //       b_op = before.next();
-  //     }
-  //   } else if let Some(b) = &b_op {
-  //     // create new OpMut with b
-  //     ops.push(OpMutation::new_from_ops(b_op, None)?);
-
-  //     b_op = before.next();
-  //   } else if let Some(a) = &a_op {
-  //     // create new OpMut with a
-  //     ops.push(OpMutation::new_from_ops(None, a_op)?);
-
-  //     a_op = after.next();
-  //   }
-  // }
 
   app.warehouse.receive_operations(&ops)?;
 

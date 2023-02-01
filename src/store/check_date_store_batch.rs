@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
+use crate::utils::time::timestamp_to_time;
+
 use super::{
   balance::BalanceForGoods, dt, first_day_current_month, first_day_next_month, max_batch, min_batch,
-  Balance, CheckpointTopology, Db, Op, OpMutation, Store, WHError, UUID_NIL,
+  Balance, CheckpointTopology, Db, Op, OpMutation, Store, WHError, UUID_NIL, Goods, Batch,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, NaiveDateTime};
 use rocksdb::{BoundColumnFamily, IteratorMode, ReadOptions, DB};
+use uuid::Uuid;
 
 const CF_NAME: &str = "cf_checkpoint_date_store_batch";
 
@@ -25,14 +28,34 @@ impl CheckDateStoreBatch {
       Err(WHError::new("can't get CF"))
     }
   }
+
+  fn key_to_data(&self, k: Vec<u8>) -> Result<(DateTime<Utc>, Store, Goods, Batch), WHError> {
+    // u64 8 bytes
+    // Uuid 16 bytes
+
+    let ts = u64::from_be_bytes(k[0..7].try_into().unwrap());
+    let date = timestamp_to_time(ts)?;
+
+    let store = Uuid::from_slice(&k[8..23])?;
+    let goods = Uuid::from_slice(&k[24..39])?;
+    
+
+    let ts = u64::from_be_bytes(k[40..47].try_into().unwrap());
+    let batch = Batch {
+        id: serde_json::from_slice(&k[48..63]).unwrap(),
+        date: timestamp_to_time(ts)?,
+    };
+
+    Ok((date, store, goods, batch))
+  }
 }
 
 impl CheckpointTopology for CheckDateStoreBatch {
   fn key(&self, op: &Op, date: DateTime<Utc>) -> Vec<u8> {
     [].iter()
-      .chain(op.goods.as_bytes().iter())
       .chain((date.timestamp() as u64).to_be_bytes().iter())
       .chain(op.store.as_bytes().iter())
+      .chain(op.goods.as_bytes().iter())
       .chain((op.batch.date.timestamp() as u64).to_be_bytes().iter())
       .chain(op.batch.id.as_bytes().iter())
       .map(|b| *b)
@@ -88,9 +111,12 @@ impl CheckpointTopology for CheckDateStoreBatch {
     let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
 
     while let Some(res) = iter.next() {
-      let (_, value) = res?;
-      let balance = serde_json::from_slice(&value)?;
-      println!("BAL: {balance:#?}");
+      let (k, v) = res?;
+      let b: BalanceForGoods = serde_json::from_slice(&v)?;
+      // println!("BAL: {b:#?}");
+      let (date, store, goods, batch) = self.key_to_data(k.to_vec())?;
+
+      let balance = Balance { date, store, goods, batch, number: b };
       result.push(balance);
     }
 
