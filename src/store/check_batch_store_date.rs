@@ -38,6 +38,10 @@ impl CheckpointTopology for CheckBatchStoreDate {
       .collect()
   }
 
+  fn key_checkpoint(&self, balance: &Balance, date_of_checkpoint: DateTime<Utc>) -> Vec<u8> {
+    todo!()
+  }
+
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError> {
     match self.db.get_cf(&self.cf()?, key)? {
       Some(v) => Ok(serde_json::from_slice(&v)?),
@@ -57,11 +61,7 @@ impl CheckpointTopology for CheckBatchStoreDate {
     Ok(())
   }
 
-  fn get_checkpoints_before_date(
-    &self,
-    storage: Store,
-    date: DateTime<Utc>,
-  ) -> Result<Vec<Balance>, WHError> {
+  fn get_checkpoints_before_date(&self, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError> {
     Err(WHError::new("Not supported"))
   }
 

@@ -126,6 +126,7 @@ pub trait CheckpointTopology {
   // fn cf_name(&self) -> &str;
 
   fn key(&self, op: &Op, date_of_checkpoint: DateTime<Utc>) -> Vec<u8>;
+  fn key_checkpoint(&self, balance: &Balance, date_of_checkpoint: DateTime<Utc>) -> Vec<u8>;
 
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError>;
   fn set_balance(&self, key: &Vec<u8>, balance: BalanceForGoods) -> Result<(), WHError>;
@@ -140,7 +141,14 @@ pub trait CheckpointTopology {
     let mut last_checkpoint_date = self.get_latest_checkpoint_date()?;
 
     if last_checkpoint_date < op.date {
+      let old_checkpoints = self.get_checkpoints_before_date(last_checkpoint_date)?;
+
       last_checkpoint_date = first_day_next_month(op.date);
+
+      for old_checkpoint in old_checkpoints.iter() {
+        let key = self.key_checkpoint(old_checkpoint, last_checkpoint_date);
+        self.set_balance(&key, old_checkpoint.clone().number)?;
+      }
     }
 
     while check_point_date < last_checkpoint_date {
@@ -165,11 +173,7 @@ pub trait CheckpointTopology {
     Ok(())
   }
 
-  fn get_checkpoints_before_date(
-    &self,
-    storage: Store,
-    date: DateTime<Utc>,
-  ) -> Result<Vec<Balance>, WHError>;
+  fn get_checkpoints_before_date(&self, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError>;
 }
 
 pub fn dt(date: &str) -> Result<DateTime<Utc>, WHError> {
@@ -487,7 +491,20 @@ impl OpMutation {
         event: self.event.clone(),
       }
     } else {
-      todo!()
+      Op {
+        id: self.id.clone(),
+        date: self.date.clone(),
+        store: self.store.clone(),
+        goods: self.goods.clone(),
+        batch: self.batch.clone(),
+        transfer: self.transfer.clone(),
+        op: if let Some(b) = self.before.clone() {
+          b
+        } else {
+          InternalOperation::Receive(0.into(), 0.into())
+        },
+        event: self.event.clone(),
+      }
     }
   }
 

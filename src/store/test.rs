@@ -54,13 +54,12 @@ async fn store_test_app_checkpoints() {
   let goods1 = Uuid::from_u128(101);
   let goods2 = Uuid::from_u128(102);
   let storage1 = Uuid::from_u128(201);
-  let storage2 = Uuid::from_u128(202);
   let oid = ID::from("99");
 
   //receive0
   let data0: JsonValue = object! {
       _id: "",
-      date: "2022-12-15",
+      date: "2022-11-15",
       storage: storage1.to_string(),
       goods: [
           {
@@ -71,14 +70,6 @@ async fn store_test_app_checkpoints() {
               cost: 10,
               _tid: ""
           },
-          // {
-          //     goods: goods2.to_string(),
-          //     uom: "",
-          //     qty: 2,
-          //     price: 8,
-          //     cost: 16,
-          //     _tid: ""
-          // }
       ]
   };
 
@@ -98,30 +89,21 @@ async fn store_test_app_checkpoints() {
   // println!("RESULT_0: {result0:#?}");
 
   assert_ne!("", result0["goods"][0]["_tid"].as_str().unwrap());
-  // assert_ne!("", result0["goods"][1]["_tid"].as_str().unwrap());
 
   //receive1
   let data1: JsonValue = object! {
       _id: "",
-      date: "2023-01-18",
+      date: "2022-12-18",
       storage: storage1.to_string(),
       goods: [
           {
-              goods: goods1.to_string(),
+              goods: goods2.to_string(),
               uom: "",
               qty: 2,
               price: 7,
               cost: 14,
               _tid: ""
           },
-          // {
-          //     goods: goods2.to_string(),
-          //     uom: "",
-          //     qty: 2,
-          //     price: 8,
-          //     cost: 16,
-          //     _tid: ""
-          // }
       ]
   };
 
@@ -139,22 +121,10 @@ async fn store_test_app_checkpoints() {
   let result1: serde_json::Value = serde_json::from_slice(&response).unwrap();
 
   assert_ne!("", result0["goods"][0]["_tid"].as_str().unwrap());
-  // assert_ne!("", result0["goods"][1]["_tid"].as_str().unwrap());
 
   //report
-  let from_date = "2023-01-17";
-  let till_date = "2023-01-20";
-
-  // println!(
-  //   "{}",
-  //   format!(
-  //     "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
-  //     oid.to_base64(),
-  //     storage1.to_string(),
-  //     time_to_string(from_date),
-  //     time_to_string(till_date),
-  //   )
-  // );
+  let from_date = "2023-01-05";
+  let till_date = "2023-01-06";
 
   let req = test::TestRequest::get()
     .uri(&format!(
@@ -167,72 +137,99 @@ async fn store_test_app_checkpoints() {
     .to_request();
 
   let response = test::call_and_read_body(&app, req).await;
-  println!("RESPONSE: {response:#?}");
-  // let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  // println!("RESPONSE: {response:#?}");
 
-  // let example = json!([
-  //    {
-  //       "close_balance": "36",
-  //       "issue": "0",
-  //       "open_balance": "0",
-  //       "receive": "36",
-  //       "store": "00000000-0000-0000-0000-0000000000c9",
-  //   },
-  //   [
-  //      {
-  //         "batch": {
-  //             "date": "2023-01-18T00:00:00.000Z",
-  //             "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
-  //         },
-  //         "close_balance": {
-  //             "cost": "20",
-  //             "qty": "2",
-  //         },
-  //         "goods": "00000000-0000-0000-0000-000000000065",
-  //         "issue": {
-  //             "cost": "0",
-  //             "qty": "0",
-  //         },
-  //         "open_balance": {
-  //             "cost": "0",
-  //             "qty": "0",
-  //         },
-  //         "receive": {
-  //             "cost": "20",
-  //             "qty": "2",
-  //         },
-  //         "store": "00000000-0000-0000-0000-0000000000c9",
-  //     },
-  //      {
-  //         "batch": {
-  //             "date": "2023-01-18T00:00:00.000Z",
-  //             "id": result["data"][0]["items"][1][1]["batch"]["id"].as_str().unwrap(),
-  //         },
-  //         "close_balance": {
-  //             "cost": "16",
-  //             "qty": "2",
-  //         },
-  //         "goods": "00000000-0000-0000-0000-000000000066",
-  //         "issue": {
-  //             "cost": "0",
-  //             "qty": "0",
-  //         },
-  //         "open_balance": {
-  //             "cost": "0",
-  //             "qty": "0",
-  //         },
-  //         "receive": {
-  //             "cost": "16",
-  //             "qty": "2",
-  //         },
-  //         "store": "00000000-0000-0000-0000-0000000000c9",
-  //     },
-  //   ],
-  // ]);
-
+  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
   // println!("REPORT: {:#?}", result["data"][0]["items"]);
 
-  // assert_eq!(result["data"][0]["items"], example);
+  let example = json!([
+     {
+        "close_balance": "24",
+        "issue": "0",
+        "open_balance": "24",
+        "receive": "0",
+        "store": "00000000-0000-0000-0000-0000000000c9",
+    },
+    [
+       {
+          "batch": {
+              "date": "2022-11-15T00:00:00.000Z",
+              "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
+          },
+          "close_balance": {
+              "cost": "10",
+              "qty": "1",
+          },
+          "goods": "00000000-0000-0000-0000-000000000065",
+          "issue": {
+              "cost": "0",
+              "qty": "0",
+          },
+          "open_balance": {
+              "cost": "10",
+              "qty": "1",
+          },
+          "receive": {
+              "cost": "0",
+              "qty": "0",
+          },
+          "store": "00000000-0000-0000-0000-0000000000c9",
+      },
+       {
+          "batch": {
+              "date": "2022-12-18T00:00:00.000Z",
+              "id": result["data"][0]["items"][1][1]["batch"]["id"].as_str().unwrap(),
+          },
+          "close_balance": {
+              "cost": "14",
+              "qty": "2",
+          },
+          "goods": "00000000-0000-0000-0000-000000000066",
+          "issue": {
+              "cost": "0",
+              "qty": "0",
+          },
+          "open_balance": {
+              "cost": "14",
+              "qty": "2",
+          },
+          "receive": {
+              "cost": "0",
+              "qty": "0",
+          },
+          "store": "00000000-0000-0000-0000-0000000000c9",
+      },
+    ],
+  ]);
+
+  assert_eq!(result["data"][0]["items"], example);
+}
+
+#[actix_web::test]
+async fn store_test_key_to_data() {
+  let date1 = dt("2022-12-15").unwrap();
+  let storage1 = Uuid::from_u128(201);
+  let goods1 = Uuid::from_u128(101);
+  let batch = Batch { id: Uuid::from_u128(102), date: date1 };
+
+  let key: Vec<u8> = []
+    .iter()
+    .chain((date1.timestamp() as u64).to_be_bytes().iter())
+    .chain(storage1.as_bytes().iter())
+    .chain(goods1.as_bytes().iter())
+    .chain((batch.date.timestamp() as u64).to_be_bytes().iter())
+    .chain(batch.id.as_bytes().iter())
+    .map(|b| *b)
+    .collect();
+
+  let (d, s, g, b) = CheckDateStoreBatch::key_to_data(key).unwrap();
+
+  // println!("{d:?}, {s:?}, {g:?}, {b:?}");
+
+  assert_eq!(date1, d);
+  assert_eq!(storage1, s);
+  assert_eq!(goods1, g);
+  assert_eq!(batch, b);
 }
 
 #[actix_web::test]
@@ -713,27 +710,18 @@ async fn store_test_receive_ops() {
 
   db.record_ops(&ops).expect("test_receive_ops");
 
-  let balance = Balance {
+  let balance = vec![Balance {
     date: check_d,
     store: w1,
     goods: G1,
     batch: party,
     number: BalanceForGoods { qty: 2.into(), cost: 2000.into() },
-  };
+  }];
 
-  // for checkpoint_topology in db. ...
-  todo!();
-  // let b1 = db.find_checkpoint(&ops[0], CHECK_DATE_STORE_BATCH).expect("test_receive_ops");
-  // assert_eq!(b1, Some(balance.clone()));
-
-  // let b2 = db.find_checkpoint(&ops[0], CHECK_BATCH_STORE_DATE).expect("test_receive_ops");
-  // assert_eq!(b2, Some(balance));
-
-  // let b3 = db.find_checkpoint(&ops[2], CHECK_DATE_STORE_BATCH).expect("test_receive_ops");
-  // assert_eq!(b3, None);
-
-  // let b4 = db.find_checkpoint(&ops[2], CHECK_BATCH_STORE_DATE).expect("test_receive_ops");
-  // assert_eq!(b4, None);
+  for checkpoint_topology in db.checkpoint_topologies.iter() {
+    let res = checkpoint_topology.get_checkpoints_before_date(check_d).unwrap();
+    assert_eq!(&res, &balance);
+  }
 
   tmp_dir.close().expect("Can't close tmp dir in test_receive_ops");
 }
@@ -772,16 +760,14 @@ async fn store_test_neg_balance_date_type_store_goods_id() {
     batch: Some(party.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta::default(),
-    issue: BalanceDelta { qty: 2.into(), cost: 2000.into() },
+    issue: BalanceDelta { qty: (-2).into(), cost: (-2000).into() },
     close_balance: BalanceForGoods { qty: (-2).into(), cost: (-2000).into() },
   };
 
-  // let st = DateTypeStoreGoodsId();
-  // let res = st.get_report(op_d, check_d, w1, &mut db).expect("test_get_neg_balance");
+  let res = db.get_report(w1, op_d, check_d).unwrap();
+  assert_eq!(res.items.1[0], agr);
 
-  // assert_eq!(res.items.1[0], agr);
-
-  // tmp_dir.close().expect("Can't close tmp dir in test_get_neg_balance");
+  tmp_dir.close().expect("Can't close tmp dir in test_get_neg_balance");
 }
 
 #[actix_web::test]
@@ -816,35 +802,25 @@ async fn store_test_zero_balance_date_type_store_goods_id() {
 
   db.record_ops(&ops);
 
-  // let st = DateTypeStoreGoodsId();
-  // let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_get_zero_balance");
+  let res = db.get_report(w1, start_d, end_d).unwrap();
 
-  // let agr = AgregationStoreGoods {
-  //   store: Some(w1),
-  //   goods: Some(G1),
-  //   batch: Some(party.clone()),
-  //   open_balance: BalanceForGoods::default(),
-  //   receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
-  //   issue: BalanceDelta { qty: 3.into(), cost: 3000.into() },
-  //   close_balance: BalanceForGoods::default(),
-  // };
+  let agr = AgregationStoreGoods {
+    store: Some(w1),
+    goods: Some(G1),
+    batch: Some(party.clone()),
+    open_balance: BalanceForGoods::default(),
+    receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
+    issue: BalanceDelta { qty: (-3).into(), cost: (-3000).into() },
+    close_balance: BalanceForGoods::default(),
+  };
 
-  // assert_eq!(res.items.1[0], agr);
+  assert_eq!(res.items.1[0], agr);
 
   tmp_dir.close().expect("Can't close tmp dir in test_get_zero_balance");
 }
 
-//   #[actix_web::test]
-//   async fn store_test_get_wh_ops_date_type_store_goods_id() {
-//     get_wh_ops(DateTypeStoreGoodsId()).expect("test_get_wh_ops_date_type_store_goods_id");
-//   }
-
-//   #[actix_web::test]
-//   async fn store_test_get_wh_ops_store_date_type_goods_id() {
-//     get_wh_ops(StoreDateTypeGoodsId()).expect("test_get_wh_ops_store_date_type_goods_id");
-//   }
-
-fn get_wh_ops(key: impl OrderedTopology) -> Result<(), WHError> {
+#[actix_web::test]
+async fn store_test_get_wh_ops() -> Result<(), WHError> {
   let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
 
   let wh = WHStorage::open(&tmp_dir.path()).unwrap();
@@ -885,26 +861,18 @@ fn get_wh_ops(key: impl OrderedTopology) -> Result<(), WHError> {
 
   db.record_ops(&ops).unwrap();
 
-  let res = key.get_ops(w1, start_d, end_d)?;
-
-  for i in 0..ops.len() {
-    assert_eq!(ops[i].to_op(), res[i]);
+  for ordered_topology in db.ordered_topologies.iter() {
+    let res = ordered_topology.get_ops(w1, start_d, end_d).unwrap();
+    for i in 0..res.len() {
+      assert_eq!(res[i], ops[i].to_op());
+    }
   }
 
   Ok(())
 }
 
-//   #[actix_web::test]
-//   async fn store_test_get_agregations_without_checkpoints_date_type_store_goods_id() {
-//     get_agregations_without_checkpoints(DateTypeStoreGoodsId()).expect("test_get_agregations");
-//   }
-
-//   #[actix_web::test]
-//   async fn store_test_get_agregations_without_checkpoints_store_date_type_goods_id() {
-//     get_agregations_without_checkpoints(StoreDateTypeGoodsId()).expect("test_get_agregations");
-//   }
-
-fn get_aggregations_without_checkpoints(key: impl OrderedTopology) -> Result<(), WHError> {
+#[actix_web::test]
+async fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
   let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
 
   let wh = WHStorage::open(&tmp_dir.path()).unwrap();
@@ -977,7 +945,7 @@ fn get_aggregations_without_checkpoints(key: impl OrderedTopology) -> Result<(),
       batch: Some(doc1.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
-      issue: BalanceDelta { qty: 1.into(), cost: 1000.into() },
+      issue: BalanceDelta { qty: (-1).into(), cost: (-1000).into() },
       close_balance: BalanceForGoods { qty: 2.into(), cost: 2000.into() },
     },
     AgregationStoreGoods {
@@ -986,20 +954,14 @@ fn get_aggregations_without_checkpoints(key: impl OrderedTopology) -> Result<(),
       batch: Some(doc2.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta { qty: 2.into(), cost: 2000.into() },
-      issue: BalanceDelta { qty: 2.into(), cost: 2000.into() },
+      issue: BalanceDelta { qty: (-2).into(), cost: (-2000).into() },
       close_balance: BalanceForGoods::default(),
     },
   ];
 
-  let res = key.get_report(&db, w1, op_d, check_d)?;
-  let mut iter = res.items.1.into_iter();
-
-  // println!("MANY BALANCES: {:#?}", res);
-
-  for agr in agregations {
-    assert_eq!(iter.next().expect("option in get_agregations"), agr);
-  }
-  assert_eq!(iter.next(), None);
+  let res = db.get_report(w1, op_d, check_d)?;
+  
+  assert_eq!(agregations, res.items.1);
 
   tmp_dir.close().expect("Can't close tmp dir in store_test_get_wh_balance");
 
@@ -1104,9 +1066,6 @@ async fn store_test_op_iter() {
 async fn store_test_report() {
   let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_report");
 
-  // let key1 = DateTypeStoreGoodsId();
-  // let key2 = StoreDateTypeGoodsId();
-
   let wh = WHStorage::open(&tmp_dir.path()).unwrap();
   let mut db = wh.database;
 
@@ -1190,7 +1149,7 @@ async fn store_test_report() {
     store: Some(w1),
     open_balance: 10000.into(),
     receive: 2000.into(),
-    issue: 3000.into(),
+    issue: (-3000).into(),
     close_balance: 9000.into(),
   };
 
@@ -1219,30 +1178,15 @@ async fn store_test_report() {
       batch: Some(party.clone()),
       open_balance: BalanceForGoods { qty: 2.into(), cost: 6000.into() },
       receive: BalanceDelta::default(),
-      issue: BalanceDelta { qty: 1.into(), cost: 3000.into() },
+      issue: BalanceDelta { qty: (-1).into(), cost: (-3000).into() },
       close_balance: BalanceForGoods { qty: 1.into(), cost: 3000.into() },
     },
   ];
 
-  let mut ex_map: HashMap<Goods, AgregationStoreGoods> = HashMap::new();
+  let report = db.get_report(w1, start_d, end_d).unwrap();
 
-  for agr in ex_items.clone() {
-    ex_map.insert(agr.goods.unwrap(), agr);
-  }
-
-  // let report1 = key1.get_report(start_d, end_d, w1, &mut db).expect("test_report");
-  // let report2 = key2.get_report(start_d, end_d, w1, &mut db).expect("test_report");
-
-  // println!("ITEMS: {:#?}", report1.items);
-
-  // assert_eq!(report1, report2);
-
-  // assert_eq!(report1.items.0, agr_store);
-  // assert_eq!(report1.items.1, ex_items);
-
-  // for item in report2.items.1 {
-  //   assert_eq!(&item, ex_map.get(&item.goods.unwrap()).unwrap());
-  // }
+  assert_eq!(report.items.0, agr_store);
+  assert_eq!(report.items.1, ex_items);
 
   tmp_dir.close().expect("Can't remove tmp dir in test_report");
 }
@@ -1302,8 +1246,7 @@ async fn store_test_parties_date_type_store_goods_id() {
 
   db.record_ops(&ops).expect("test_parties");
 
-  // let st = DateTypeStoreGoodsId();
-  // let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_parties");
+  let res = db.get_report(w1, start_d, end_d).unwrap();
 
   let agrs = vec![
     AgregationStoreGoods {
@@ -1321,13 +1264,13 @@ async fn store_test_parties_date_type_store_goods_id() {
       batch: Some(doc2.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta { qty: 4.into(), cost: 2000.into() },
-      issue: BalanceDelta { qty: 1.into(), cost: 500.into() },
+      issue: BalanceDelta { qty: (-1).into(), cost: (-500).into() },
       close_balance: BalanceForGoods { qty: 3.into(), cost: 1500.into() },
     },
   ];
 
-  // assert_eq!(res.items.1[0], agrs[0]);
-  // assert_eq!(res.items.1[1], agrs[1]);
+  assert_eq!(res.items.1[0], agrs[0]);
+  assert_eq!(res.items.1[1], agrs[1]);
 
   tmp_dir.close().expect("Can't close tmp dir in test_parties");
 }
@@ -1375,8 +1318,7 @@ async fn store_test_issue_cost_none() {
 
   db.record_ops(&ops).expect("test_issue_cost_none");
 
-  // let st = DateTypeStoreGoodsId();
-  // let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_issue_cost_none");
+  let res = db.get_report(w1, start_d, end_d).unwrap();
 
   let agr = AgregationStoreGoods {
     store: Some(w1),
@@ -1384,11 +1326,11 @@ async fn store_test_issue_cost_none() {
     batch: Some(doc.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta { qty: 4.into(), cost: 2000.into() },
-    issue: BalanceDelta { qty: 1.into(), cost: 500.into() },
+    issue: BalanceDelta { qty: (-1).into(), cost: (-500).into() },
     close_balance: BalanceForGoods { qty: 3.into(), cost: 1500.into() },
   };
 
-  // assert_eq!(agr, res.items.1[0]);
+  assert_eq!(agr, res.items.1[0]);
 
   tmp_dir.close().expect("Can't remove tmp dir in test_issue_cost_none");
 }
@@ -1436,8 +1378,7 @@ async fn store_test_receive_cost_none() {
 
   db.record_ops(&ops).expect("test_receive_cost_none");
 
-  // let st = DateTypeStoreGoodsId();
-  // let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_receive_cost_none");
+  let res = db.get_report(w1, start_d, end_d).unwrap();
 
   let agr = AgregationStoreGoods {
     store: Some(w1),
@@ -1449,7 +1390,7 @@ async fn store_test_receive_cost_none() {
     close_balance: BalanceForGoods { qty: 5.into(), cost: 2000.into() },
   };
 
-  // assert_eq!(agr, res.items.1[0]);
+  assert_eq!(agr, res.items.1[0]);
 
   tmp_dir.close().expect("Can't remove tmp dir in test_receive_cost_none");
 }
@@ -1491,7 +1432,7 @@ async fn store_test_issue_remainder() {
       G1,
       doc.clone(),
       None,
-      Some(InternalOperation::Issue(1.into(), 0.into(), Mode::Auto)),
+      Some(InternalOperation::Issue((-1).into(), 0.into(), Mode::Auto)),
       chrono::Utc::now(),
     ),
     OpMutation::new(
@@ -1502,7 +1443,7 @@ async fn store_test_issue_remainder() {
       G1,
       doc.clone(),
       None,
-      Some(InternalOperation::Issue(2.into(), 0.into(), Mode::Auto)),
+      Some(InternalOperation::Issue((-2).into(), 0.into(), Mode::Auto)),
       chrono::Utc::now(),
     ),
   ];
@@ -1514,17 +1455,19 @@ async fn store_test_issue_remainder() {
 
   // println!("HELLO: {:#?}", res.items.1);
 
+  let res = db.get_report(w1, start_d, end_d).unwrap();
+
   let agr = AgregationStoreGoods {
     store: Some(w1),
     goods: Some(G1),
     batch: Some(doc.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta { qty: 3.into(), cost: 10.into() },
-    issue: BalanceDelta { qty: 3.into(), cost: 10.into() },
+    issue: BalanceDelta { qty: (-3).into(), cost: (-10).into() },
     close_balance: BalanceForGoods { qty: 0.into(), cost: 0.into() },
   };
 
-  // assert_eq!(agr, res.items.1[0]);
+  assert_eq!(agr, res.items.1[0]);
 
   tmp_dir.close().expect("Can't remove tmp dir in test_issue_remainder");
 }
@@ -1562,10 +1505,11 @@ async fn store_test_issue_op_none() {
     OpMutation::new(id3, start_d, w1, None, G1, doc.clone(), None, None, chrono::Utc::now()),
   ];
 
-  db.record_ops(&ops).expect("test_issue_op_none");
+  db.record_ops(&ops).unwrap();
 
-  // let st = DateTypeStoreGoodsId();
-  // let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_issue_op_none");
+  let res = db.get_report(w1, start_d, end_d).unwrap();
+
+  // println!("REPORT: {res:#?}");
 
   let agr = AgregationStoreGoods {
     store: Some(w1),
@@ -1573,11 +1517,11 @@ async fn store_test_issue_op_none() {
     batch: Some(doc.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta { qty: 3.into(), cost: 10.into() },
-    issue: BalanceDelta { qty: 3.into(), cost: 10.into() },
-    close_balance: BalanceForGoods { qty: 0.into(), cost: 0.into() },
+    issue: BalanceDelta { qty: 0.into(), cost: 0.into() },
+    close_balance: BalanceForGoods { qty: 3.into(), cost: 10.into() },
   };
 
-  // assert_eq!(agr, res.items.1[0]);
+  assert_eq!(agr, res.items.1[0]);
 
   tmp_dir.close().expect("Can't remove tmp dir in test_issue_op_none");
 }
@@ -1633,55 +1577,54 @@ async fn store_test_receive_change_op() {
   };
 
   let mut old_checkpoints =
-    db.get_checkpoints_before_date(w1, start_d).expect("test_receive_change_op");
-  // .into_iter();
-  println!("OLD_CHECKPOINTS: {old_checkpoints:#?}");
+    db.get_checkpoints_before_date(start_d).expect("test_receive_change_op");
+  
+  // println!("OLD_CHECKPOINTS: {old_checkpoints:#?}");
 
-  // assert_eq!(Some(old_check), old_checkpoints.next());
+  assert_eq!(old_check, old_checkpoints[0]);
 
-  // let ops_new = vec![OpMutation::new(
-  //   id1,
-  //   dt("2022-08-25").expect("test_receive_change_op"),
-  //   w1,
-  //   None,
-  //   G1,
-  //   doc.clone(),
-  //   Some(InternalOperation::Receive(3.into(), 10.into())),
-  //   Some(InternalOperation::Receive(4.into(), 100.into())),
-  //   chrono::Utc::now(),
-  // )];
+  let ops_new = vec![OpMutation::new(
+    id1,
+    dt("2022-08-25").expect("test_receive_change_op"),
+    w1,
+    None,
+    G1,
+    doc.clone(),
+    Some(InternalOperation::Receive(3.into(), 10.into())),
+    Some(InternalOperation::Receive(4.into(), 100.into())),
+    chrono::Utc::now(),
+  )];
 
-  // db.record_ops(&ops_new).expect("test_receive_change_op");
+  db.record_ops(&ops_new).expect("test_receive_change_op");
 
-  // let new_check = Balance {
-  //   date: dt("2022-10-01").expect("test_receive_change_op"),
-  //   store: w1,
-  //   goods: G1,
-  //   batch: doc.clone(),
-  //   number: BalanceForGoods { qty: 5.into(), cost: 130.into() },
-  // };
+  let new_check = Balance {
+    date: dt("2022-10-01").expect("test_receive_change_op"),
+    store: w1,
+    goods: G1,
+    batch: doc.clone(),
+    number: BalanceForGoods { qty: 5.into(), cost: 130.into() },
+  };
 
-  // let mut new_checkpoints = db
-  //   .get_checkpoints_before_date(w1, start_d)
-  //   .expect("test_receive_change_op")
-  //   .into_iter();
+  let mut new_checkpoints = db
+    .get_checkpoints_before_date(start_d)
+    .expect("test_receive_change_op")
+    .into_iter();
 
-  // assert_eq!(Some(new_check), new_checkpoints.next());
+  assert_eq!(Some(new_check), new_checkpoints.next());
 
-  // // let st = DateTypeStoreGoodsId();
-  // // let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_receive_change_op");
+  let res = db.get_report(w1, start_d, end_d).unwrap();
 
-  // let agr = AgregationStoreGoods {
-  //   store: Some(w1),
-  //   goods: Some(G1),
-  //   batch: Some(doc.clone()),
-  //   open_balance: BalanceForGoods { qty: 5.into(), cost: 130.into() },
-  //   receive: BalanceDelta::default(),
-  //   issue: BalanceDelta { qty: 0.into(), cost: 0.into() },
-  //   close_balance: BalanceForGoods { qty: 5.into(), cost: 130.into() },
-  // };
+  let agr = AgregationStoreGoods {
+    store: Some(w1),
+    goods: Some(G1),
+    batch: Some(doc.clone()),
+    open_balance: BalanceForGoods { qty: 5.into(), cost: 130.into() },
+    receive: BalanceDelta::default(),
+    issue: BalanceDelta { qty: 0.into(), cost: 0.into() },
+    close_balance: BalanceForGoods { qty: 5.into(), cost: 130.into() },
+  };
 
-  // // assert_eq!(res.items.1[0], agr);
+  assert_eq!(res.items.1[0], agr);
 
   tmp_dir.close().expect("Can't remove tmp dir in test_receive_change_op");
 }

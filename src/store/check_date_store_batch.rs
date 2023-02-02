@@ -4,9 +4,9 @@ use crate::utils::time::timestamp_to_time;
 
 use super::{
   balance::BalanceForGoods, dt, first_day_current_month, first_day_next_month, max_batch, min_batch,
-  Balance, CheckpointTopology, Db, Op, OpMutation, Store, WHError, UUID_NIL, Goods, Batch,
+  Balance, Batch, CheckpointTopology, Db, Goods, Op, OpMutation, Store, WHError, UUID_NIL, UUID_MAX,
 };
-use chrono::{DateTime, Utc, NaiveDateTime};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rocksdb::{BoundColumnFamily, IteratorMode, ReadOptions, DB};
 use uuid::Uuid;
 
@@ -29,22 +29,21 @@ impl CheckDateStoreBatch {
     }
   }
 
-  fn key_to_data(&self, k: Vec<u8>) -> Result<(DateTime<Utc>, Store, Goods, Batch), WHError> {
+  pub fn key_to_data(k: Vec<u8>) -> Result<(DateTime<Utc>, Store, Goods, Batch), WHError> {
     // u64 8 bytes
     // Uuid 16 bytes
 
-    let ts = u64::from_be_bytes(k[0..7].try_into().unwrap());
+    let ts = u64::from_be_bytes(k[0..=7].try_into().unwrap());
     let date = timestamp_to_time(ts)?;
 
-    let store = Uuid::from_slice(&k[8..23])?;
-    let goods = Uuid::from_slice(&k[24..39])?;
-    
+    let store = Uuid::from_slice(&k[8..=23])?;
+    let goods = Uuid::from_slice(&k[24..=39])?;
 
-    let ts = u64::from_be_bytes(k[40..47].try_into().unwrap());
-    let batch = Batch {
-        id: serde_json::from_slice(&k[48..63]).unwrap(),
-        date: timestamp_to_time(ts)?,
-    };
+    let batch_id = Uuid::from_slice(&k[48..=63])?;
+
+    let ts = u64::from_be_bytes(k[40..=47].try_into().unwrap());
+    let batch =
+      Batch { id: Uuid::from_slice(&k[48..=63])?, date: timestamp_to_time(ts)? };
 
     Ok((date, store, goods, batch))
   }
@@ -61,6 +60,17 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .map(|b| *b)
       .collect()
   }
+
+  fn key_checkpoint(&self, balance: &Balance, date_of_checkpoint: DateTime<Utc>) -> Vec<u8> {
+    [].iter()
+    .chain((date_of_checkpoint.timestamp() as u64).to_be_bytes().iter())
+    .chain(balance.store.as_bytes().iter())
+    .chain(balance.goods.as_bytes().iter())
+    .chain((balance.batch.date.timestamp() as u64).to_be_bytes().iter())
+    .chain(balance.batch.id.as_bytes().iter())
+    .map(|b| *b)
+    .collect()
+}
 
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError> {
     match self.db.get_cf(&self.cf()?, key)? {
@@ -83,7 +93,6 @@ impl CheckpointTopology for CheckDateStoreBatch {
 
   fn get_checkpoints_before_date(
     &self,
-    storage: Store,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError> {
     let mut result = Vec::new();
@@ -93,14 +102,14 @@ impl CheckpointTopology for CheckDateStoreBatch {
     let from: Vec<u8> = ts
       .to_be_bytes()
       .iter()
-      .chain(storage.as_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
       .chain(min_batch().iter())
       .map(|b| *b)
       .collect();
     let till: Vec<u8> = ts
       .to_be_bytes()
       .iter()
-      .chain(storage.as_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
       .chain(max_batch().iter())
       .map(|b| *b)
       .collect();
@@ -114,7 +123,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       let (k, v) = res?;
       let b: BalanceForGoods = serde_json::from_slice(&v)?;
       // println!("BAL: {b:#?}");
-      let (date, store, goods, batch) = self.key_to_data(k.to_vec())?;
+      let (date, store, goods, batch) = CheckDateStoreBatch::key_to_data(k.to_vec())?;
 
       let balance = Balance { date, store, goods, batch, number: b };
       result.push(balance);

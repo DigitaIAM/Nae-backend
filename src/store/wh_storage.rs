@@ -27,7 +27,7 @@ impl WHStorage {
       StoreDateTypeBatchId::cf_name(),
       DateTypeStoreBatchId::cf_name(),
       CheckDateStoreBatch::cf_name(),
-      CheckBatchStoreDate::cf_name(),
+      // CheckBatchStoreDate::cf_name(),
     ];
 
     for name in cf_names {
@@ -44,7 +44,7 @@ impl WHStorage {
 
     let checkpoint_topologies: Vec<Box<dyn CheckpointTopology + Sync + Send>> = vec![
       Box::new(CheckDateStoreBatch { db: inner_db.clone() }),
-      Box::new(CheckBatchStoreDate { db: inner_db.clone() }),
+      // Box::new(CheckBatchStoreDate { db: inner_db.clone() }),
     ];
 
     let ordered_topologies: Vec<Box<dyn OrderedTopology + Sync + Send>> = vec![
