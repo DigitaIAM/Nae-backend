@@ -100,6 +100,10 @@ impl ToJson for Batch {
 pub trait OrderedTopology {
   fn put_op(&self, op: &OpMutation) -> Result<(), WHError>;
 
+  // fn put_move_op(&self, op: &OpMutation) -> Result<(), WHError>;
+
+  fn delete_op(&self, op: &OpMutation) -> Result<(), WHError>;
+
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor;
 
   fn get_ops(
@@ -169,6 +173,10 @@ pub trait CheckpointTopology {
     }
 
     self.set_latest_checkpoint_date(check_point_date)?;
+
+    if op.transfer.is_some() {
+      self.checkpoint_update(&op.dependent()?);
+    }
 
     Ok(())
   }
@@ -243,7 +251,7 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum InternalOperation {
   Receive(Qty, Cost),
-  Issue(Qty, Cost, Mode),
+  Issue(Qty, Cost, Mode, Option<Uuid>),
 }
 
 trait Operation {}
@@ -252,7 +260,7 @@ impl Into<BalanceDelta> for InternalOperation {
   fn into(self) -> BalanceDelta {
     match self {
       InternalOperation::Receive(qty, cost) => BalanceDelta { qty, cost },
-      InternalOperation::Issue(qty, cost, mode) => BalanceDelta { qty: -qty, cost: -cost },
+      InternalOperation::Issue(qty, cost, mode, _) => BalanceDelta { qty: -qty, cost: -cost },
     }
   }
 }
@@ -266,7 +274,7 @@ impl Add<InternalOperation> for BalanceForGoods {
         self.qty += qty;
         self.cost += cost;
       },
-      InternalOperation::Issue(qty, cost, mode) => {
+      InternalOperation::Issue(qty, cost, mode, _) => {
         self.qty -= qty;
         self.cost -= if mode == Mode::Manual {
           cost
@@ -289,7 +297,7 @@ impl AddAssign<&InternalOperation> for BalanceForGoods {
         self.qty += qty;
         self.cost += cost;
       },
-      InternalOperation::Issue(qty, cost, mode) => {
+      InternalOperation::Issue(qty, cost, mode, _) => {
         self.qty -= qty;
         self.cost -= if mode == &Mode::Manual {
           *cost
@@ -569,6 +577,23 @@ impl OpMutation {
       OpMutation::default()
     }
   }
+
+  fn dependent(&self) -> Result<OpMutation, WHError> {
+    match self.after.as_ref().unwrap() {
+      InternalOperation::Receive(_, _) => Err(WHError::new("Wrong op type in fn dependent")),
+      InternalOperation::Issue(q, c, _, id) => Ok(OpMutation {
+        id: id.unwrap(),
+        date: self.date,
+        store: self.transfer.unwrap(),
+        transfer: None,
+        goods: self.goods,
+        batch: self.batch.clone(),
+        before: self.before.clone(),
+        after: Some(InternalOperation::Receive(q.clone(), c.clone())),
+        event: self.event.clone(),
+      }),
+    }
+  }
 }
 
 enum ReturnType {
@@ -758,7 +783,7 @@ impl Agregation for AgregationStore {
         self.receive += cost;
         self.close_balance += cost;
       },
-      InternalOperation::Issue(qty, cost, mode) => {
+      InternalOperation::Issue(qty, cost, mode, _) => {
         self.issue -= cost;
         self.close_balance -= cost;
       },
@@ -841,7 +866,7 @@ impl Agregation for AgregationStoreGoods {
         self.receive.qty += qty;
         self.receive.cost += cost;
       },
-      InternalOperation::Issue(qty, cost, mode) => {
+      InternalOperation::Issue(qty, cost, mode, _) => {
         self.issue.qty -= qty;
         if mode == &Mode::Auto {
           let balance = self.open_balance.clone() + self.receive.clone();
@@ -978,45 +1003,47 @@ pub fn receive_data(
   // TODO if structure of input Json is invalid, should return it without changes and save it to memories anyway
   // If my data was corrupted, should rewrite it and do the operations
   // TODO tests with invalid structure of incoming JsonValue
-  let store = data["storage"].uuid();
+  let old_data = data.clone();
 
-  // let mut before = json_to_ops(&mut before, store.clone(), time.clone(), ctx)?.into_iter();
+  if let Some(store) = data["storage"].uuid_or_none() {
+    let mut before = match json_to_ops(&mut before, store.clone(), time.clone(), ctx) {
+      Ok(res) => res.into_iter(),
+      Err(_) => return Ok(old_data),
+    };
 
-  let mut before = match json_to_ops(&mut before, store.clone(), time.clone(), ctx) {
-    Ok(res) => res.into_iter(),
-    Err(_) => return Ok(data),
-  };
+    let mut after = match json_to_ops(&mut data, store, time, ctx) {
+      Ok(res) => res,
+      Err(_) => return Ok(old_data),
+    };
 
-  // let tmp = json_to_ops(&mut data, store, time, ctx)?;
-  // println!("AFTER: {tmp:#?}");
-  // let mut after = tmp.into_iter();
+    let mut ops: Vec<OpMutation> = Vec::new();
 
-  // let mut after = json_to_ops(&mut data, store, time, ctx)?;
-
-  let mut after = match json_to_ops(&mut data, store, time, ctx) {
-    Ok(res) => res,
-    Err(_) => return Ok(data),
-  };
-
-  let mut ops: Vec<OpMutation> = Vec::new();
-
-  while let Some(ref b) = before.next() {
-    if let Some(a) = after.remove_entry(&b.0) {
-      ops.push(OpMutation::new_from_ops(Some(b.1.clone()), Some(a.1)));
-    } else {
-      ops.push(OpMutation::new_from_ops(Some(b.1.clone()), None));
+    while let Some(ref b) = before.next() {
+      if let Some(a) = after.remove_entry(&b.0) {
+        ops.push(OpMutation::new_from_ops(Some(b.1.clone()), Some(a.1)));
+      } else {
+        ops.push(OpMutation::new_from_ops(Some(b.1.clone()), None));
+      }
     }
+
+    let mut after = after.into_iter();
+
+    while let Some(ref a) = after.next() {
+      ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
+    }
+
+    //  println!("OPS: {ops:?}");
+
+    app.warehouse.receive_operations(&ops)?;
+
+    if ops.is_empty() {
+      Ok(old_data)
+    } else {
+      Ok(data)
+    }
+  } else {
+    Ok(old_data)
   }
-
-  let mut after = after.into_iter();
-
-  while let Some(ref a) = after.next() {
-    ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
-  }
-
-  app.warehouse.receive_operations(&ops)?;
-
-  Ok(data)
 }
 
 fn json_to_ops(
@@ -1030,6 +1057,11 @@ fn json_to_ops(
   if *data != JsonValue::Null {
     let d_date = data["date"].date()?;
     for goods in data["goods"].members_mut() {
+      let (transf, dependent_id) = match goods["transfer"].uuid_or_none() {
+        Some(id) => (Some(id), Some(Uuid::new_v4())),
+        None => (None, None),
+      };
+
       let op = Op {
         id: if let Some(tid) = goods["_tid"].uuid_or_none() {
           tid
@@ -1039,9 +1071,13 @@ fn json_to_ops(
         },
         date: d_date,
         store,
-        transfer: goods["transfer"].uuid_or_none(),
+        transfer: transf,
         goods: goods["goods"].uuid(),
-        batch: Batch { id: goods["_tid"].uuid(), date: d_date },
+        batch: if transf.is_some() {
+          Batch { id: goods["batch_id"].uuid(), date: goods["batch_date"].date()? }
+        } else {
+          Batch { id: goods["_tid"].uuid(), date: d_date }
+        },
         op: if ctx == &vec!["warehouse".to_string(), "receive".to_string()] {
           InternalOperation::Receive(goods["qty"].number(), goods["cost"].number())
         } else if ctx == &vec!["warehouse".to_string(), "issue".to_string()] {
@@ -1050,7 +1086,7 @@ fn json_to_ops(
           } else {
             (0.into(), Mode::Auto)
           };
-          InternalOperation::Issue(goods["qty"].number(), cost, mode)
+          InternalOperation::Issue(goods["qty"].number(), cost, mode, dependent_id)
         } else {
           break;
         },

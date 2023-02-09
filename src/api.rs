@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use actix_web::http::header;
 use actix_web::{get, post, web, Error, HttpRequest, HttpResponse, Responder};
 use json::{object, JsonValue};
 
@@ -107,7 +108,11 @@ pub(crate) async fn inventory_find(
     .await?
     .map_err(actix_web::error::ErrorInternalServerError)?;
 
-  let result: serde_json::Value = serde_json::from_str(&result.dump()).unwrap();
+  // let result: serde_json::Value = serde_json::from_str(&result.dump()).unwrap();
 
-  Ok(HttpResponse::Ok().json(result))
+  let res = HttpResponse::Ok()
+    .append_header(header::ContentType(mime::APPLICATION_JSON))
+    .body(result.dump());
+
+  Ok(res)
 }

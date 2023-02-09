@@ -25,6 +25,62 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 #[actix_web::test]
+async fn store_test_app_incomplete_data() {
+  let (tmp_dir, settings, db) = init();
+
+  let (mut application, events_receiver) = Application::new(Arc::new(settings), Arc::new(db))
+    .await
+    .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
+    .unwrap();
+
+  let storage = SOrganizations::new(tmp_dir.path().join("companies"));
+  application.storage = Some(storage.clone());
+
+  application.register(MemoriesInFiles::new(application.clone(), "docs", storage.clone()));
+  application.register(crate::inventory::service::Inventory::new(application.clone()));
+
+  let app = test::init_service(
+    App::new()
+      .app_data(web::Data::new(application.clone()))
+      .service(api::docs_create)
+      .service(api::docs_update)
+      .service(api::inventory_find)
+      .default_service(web::route().to(api::not_implemented)),
+  )
+  .await;
+
+  let goods = Uuid::from_u128(101);
+  let storage = Uuid::from_u128(201);
+  let oid = ID::from("99");
+
+  let data: JsonValue = object! {
+      _id: "",
+      date: "2022-11-15",
+      storage: storage.to_string(),
+  };
+
+  let req = test::TestRequest::post()
+    .uri(&format!("/api/docs?oid={}&ctx=warehouse,receive", oid.to_base64()))
+    .set_payload(data.dump())
+    .insert_header(ContentType::json())
+    .to_request();
+
+  let response = test::call_and_read_body(&app, req).await;
+
+  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+  let compare_data: JsonValue = object! {
+      _id: result["_id"].as_str().unwrap(),
+      date: "2022-11-15",
+      storage: storage.to_string(),
+  };
+
+  // println!("RESULT: {result:#?}");
+
+  assert_eq!(compare_data.dump(), result.to_string());
+}
+
+#[actix_web::test]
 async fn store_test_app_checkpoints() {
   let (tmp_dir, settings, db) = init();
 
@@ -144,27 +200,20 @@ async fn store_test_app_checkpoints() {
 
   let example = json!([
      {
-        "close_balance": "24",
-        "issue": "0",
+        "store": "00000000-0000-0000-0000-0000000000c9",
         "open_balance": "24",
         "receive": "0",
-        "store": "00000000-0000-0000-0000-0000000000c9",
+        "issue": "0",
+        "close_balance": "24",
     },
     [
        {
+         "store": "00000000-0000-0000-0000-0000000000c9",
+         "goods": "00000000-0000-0000-0000-000000000065",
           "batch": {
               "date": "2022-11-15T00:00:00.000Z",
               "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
           },
-          "close_balance": {
-              "cost": "10",
-              "qty": "1",
-          },
-          "goods": "00000000-0000-0000-0000-000000000065",
-          "issue": {
-              "cost": "0",
-              "qty": "0",
-          },
           "open_balance": {
               "cost": "10",
               "qty": "1",
@@ -173,22 +222,22 @@ async fn store_test_app_checkpoints() {
               "cost": "0",
               "qty": "0",
           },
-          "store": "00000000-0000-0000-0000-0000000000c9",
+          "issue": {
+              "cost": "0",
+              "qty": "0",
+          },
+          "close_balance": {
+              "cost": "10",
+              "qty": "1",
+          },
       },
        {
+         "store": "00000000-0000-0000-0000-0000000000c9",
+         "goods": "00000000-0000-0000-0000-000000000066",
           "batch": {
               "date": "2022-12-18T00:00:00.000Z",
               "id": result["data"][0]["items"][1][1]["batch"]["id"].as_str().unwrap(),
           },
-          "close_balance": {
-              "cost": "14",
-              "qty": "2",
-          },
-          "goods": "00000000-0000-0000-0000-000000000066",
-          "issue": {
-              "cost": "0",
-              "qty": "0",
-          },
           "open_balance": {
               "cost": "14",
               "qty": "2",
@@ -197,7 +246,14 @@ async fn store_test_app_checkpoints() {
               "cost": "0",
               "qty": "0",
           },
-          "store": "00000000-0000-0000-0000-0000000000c9",
+          "issue": {
+            "cost": "0",
+            "qty": "0",
+          },
+          "close_balance": {
+              "cost": "14",
+              "qty": "2",
+          },
       },
     ],
   ]);
@@ -263,6 +319,7 @@ async fn store_test_app_move() {
   let goods2 = Uuid::from_u128(102);
   let storage1 = Uuid::from_u128(201);
   let storage2 = Uuid::from_u128(202);
+
   let oid = ID::from("99");
 
   //receive
@@ -274,9 +331,9 @@ async fn store_test_app_move() {
           {
               goods: goods1.to_string(),
               uom: "",
-              qty: 1,
-              price: 10,
-              cost: 10,
+              qty: 2,
+              price: 9,
+              cost: 18,
               _tid: ""
           },
           {
@@ -306,54 +363,54 @@ async fn store_test_app_move() {
   assert_ne!("", result0["goods"][0]["_tid"].as_str().unwrap());
   assert_ne!("", result0["goods"][1]["_tid"].as_str().unwrap());
 
-  // move
-  let id = result0["goods"][0]["_tid"].as_str().unwrap();
+  //report for move
+  let from_date = "2023-01-17";
+  let till_date = "2023-01-20";
 
+  let req = test::TestRequest::get()
+    .uri(&format!(
+      "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
+      oid.to_base64(),
+      storage1.to_string(),
+      from_date,
+      till_date,
+    ))
+    .to_request();
+
+  let response = test::call_and_read_body(&app, req).await;
+  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+  // move
   let data1: JsonValue = object! {
       _id: "",
-      date: "2023-01-18",
+      date: "2023-01-19",
       storage: storage1.to_string(),
-      transfer: storage2.to_string(),
       goods: [
-          {
-              goods: goods1.to_string(),
-              uom: "",
-              qty: 2,
-              price: 10,
-              cost: 20,
-              _tid: id,
-          }
+        {
+          goods: goods1.to_string(),
+          transfer: storage2.to_string(),
+          batch_date: "2023-01-18",
+          batch_id: result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
+          uom: "",
+          qty: 1,
+          price: 9,
+          cost: 9,
+          _tid: "",
+        }
       ]
   };
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs/{id}?oid={}&ctx=warehouse,receive", oid.to_base64()))
+    .uri(&format!("/api/docs?oid={}&ctx=warehouse,issue", oid.to_base64()))
     .set_payload(data1.dump())
     .insert_header(ContentType::json())
     .to_request();
 
   let response = test::call_and_read_body(&app, req).await;
 
-  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
-
-  let compare: serde_json::Value = serde_json::from_str(&data1.dump()).unwrap();
-
-  assert_eq!(compare, result);
-
-  //report
+  //report store1
   let from_date = "2023-01-17";
   let till_date = "2023-01-20";
-
-  // println!(
-  //   "{}",
-  //   format!(
-  //     "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
-  //     oid.to_base64(),
-  //     storage1.to_string(),
-  //     time_to_string(from_date),
-  //     time_to_string(till_date),
-  //   )
-  // );
 
   let req = test::TestRequest::get()
     .uri(&format!(
@@ -370,60 +427,60 @@ async fn store_test_app_move() {
 
   let example = json!([
      {
-        "close_balance": "36",
-        "issue": "0",
-        "open_balance": "0",
-        "receive": "36",
-        "store": "00000000-0000-0000-0000-0000000000c9",
+      "store": &storage1.to_string(),
+      "open_balance": "0",
+      "receive": "34",
+      "issue": "-9",
+      "close_balance": "25",
     },
     [
        {
-          "batch": {
-              "date": "2023-01-18T00:00:00.000Z",
-              "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
-          },
-          "close_balance": {
-              "cost": "20",
-              "qty": "2",
-          },
-          "goods": "00000000-0000-0000-0000-000000000065",
-          "issue": {
-              "cost": "0",
-              "qty": "0",
-          },
-          "open_balance": {
-              "cost": "0",
-              "qty": "0",
-          },
-          "receive": {
-              "cost": "20",
-              "qty": "2",
-          },
-          "store": "00000000-0000-0000-0000-0000000000c9",
+        "store": &storage1.to_string(),
+        "goods": &goods1.to_string(),
+        "batch": {
+          "date": result["data"][0]["items"][1][0]["batch"]["date"].as_str().unwrap(),
+          "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
+        },
+        "open_balance": {
+          "cost": "0",
+          "qty": "0",
+        },
+        "receive": {
+          "cost": "18",
+          "qty": "2",
+        },
+        "issue": {
+          "cost": "-9",
+          "qty": "-1",
+        },
+        "close_balance": {
+          "cost": "9",
+          "qty": "1",
+        },
       },
-       {
-          "batch": {
-              "date": "2023-01-18T00:00:00.000Z",
-              "id": result["data"][0]["items"][1][1]["batch"]["id"].as_str().unwrap(),
-          },
-          "close_balance": {
-              "cost": "16",
-              "qty": "2",
-          },
-          "goods": "00000000-0000-0000-0000-000000000066",
-          "issue": {
-              "cost": "0",
-              "qty": "0",
-          },
-          "open_balance": {
-              "cost": "0",
-              "qty": "0",
-          },
-          "receive": {
-              "cost": "16",
-              "qty": "2",
-          },
-          "store": "00000000-0000-0000-0000-0000000000c9",
+      {
+        "store": &storage1.to_string(),
+        "goods": &goods2.to_string(),
+        "batch": {
+          "date": "2023-01-18T00:00:00.000Z",
+          "id": result["data"][0]["items"][1][1]["batch"]["id"].as_str().unwrap(),
+        },
+        "open_balance": {
+          "cost": "0",
+          "qty": "0",
+        },
+        "receive": {
+            "cost": "16",
+            "qty": "2",
+        },
+        "issue": {
+          "cost": "0",
+          "qty": "0",
+        },
+        "close_balance": {
+          "cost": "16",
+          "qty": "2",
+        },
       },
     ],
   ]);
@@ -431,6 +488,270 @@ async fn store_test_app_move() {
   // println!("REPORT: {:#?}", result["data"][0]["items"]);
 
   assert_eq!(result["data"][0]["items"], example);
+
+  //report store2
+  let from_date = "2023-01-17";
+  let till_date = "2023-01-20";
+
+  let req = test::TestRequest::get()
+    .uri(&format!(
+      "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
+      oid.to_base64(),
+      storage2.to_string(),
+      from_date,
+      till_date,
+    ))
+    .to_request();
+
+  let response = test::call_and_read_body(&app, req).await;
+  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+  let example = json!([
+    {
+      "store": &storage2.to_string(),
+      "open_balance": "0",
+      "receive": "9",
+      "issue": "0",
+      "close_balance": "9",
+    },
+
+    [
+      {
+        "store": &storage2.to_string(),
+        "goods": &goods1.to_string(),
+        "batch": {
+          "date": "2023-01-18T00:00:00.000Z",
+          "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
+        },
+        "open_balance": {
+          "cost": "0",
+          "qty": "0",
+        },
+        "receive": {
+          "cost": "9",
+          "qty": "1",
+        },
+        "issue": {
+          "cost": "0",
+          "qty": "0",
+        },
+        "close_balance": {
+          "cost": "9",
+          "qty": "1",
+        },
+      },
+    ],
+  ]);
+
+  // println!("REPORT: {:#?}", result["data"][0]["items"]);
+
+  assert_eq!(result["data"][0]["items"], example);
+}
+
+#[actix_web::test]
+async fn store_test_app_receive_many_stores() {
+  let (tmp_dir, settings, db) = init();
+
+  let (mut application, events_receiver) = Application::new(Arc::new(settings), Arc::new(db))
+    .await
+    .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
+    .unwrap();
+
+  let storage = SOrganizations::new(tmp_dir.path().join("companies"));
+  application.storage = Some(storage.clone());
+
+  application.register(MemoriesInFiles::new(application.clone(), "docs", storage.clone()));
+  application.register(crate::inventory::service::Inventory::new(application.clone()));
+
+  let app = test::init_service(
+    App::new()
+      .app_data(web::Data::new(application.clone()))
+      .service(api::docs_create)
+      .service(api::docs_update)
+      .service(api::inventory_find)
+      .default_service(web::route().to(api::not_implemented)),
+  )
+  .await;
+
+  let goods1 = Uuid::from_u128(201);
+  let goods2 = Uuid::from_u128(101);
+  let storage1 = Uuid::from_u128(202);
+  let storage2 = Uuid::from_u128(203);
+  let oid = ID::from("99");
+
+  //receive1
+  let data1: JsonValue = object! {
+      _id: "",
+      date: "2023-01-18",
+      storage: storage1.to_string(),
+      goods: [
+          {
+              goods: goods1.to_string(),
+              uom: "",
+              qty: 1,
+              price: 10,
+              cost: 10,
+              _tid: ""
+          },
+      ]
+  };
+
+  let req = test::TestRequest::post()
+    .uri(&format!("/api/docs?oid={}&ctx=warehouse,receive", oid.to_base64()))
+    .set_payload(data1.dump())
+    .insert_header(ContentType::json())
+    .to_request();
+
+  let response = test::call_and_read_body(&app, req).await;
+
+  let result1: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+  assert_ne!("", result1["goods"][0]["_tid"].as_str().unwrap());
+
+  //receive2
+  let data2: JsonValue = object! {
+      _id: "",
+      date: "2023-01-19",
+      storage: storage2.to_string(),
+      goods: [
+          {
+              goods: goods2.to_string(),
+              uom: "",
+              qty: 3,
+              price: 8,
+              cost: 24,
+              _tid: ""
+          }
+      ]
+  };
+
+  let req = test::TestRequest::post()
+    .uri(&format!("/api/docs?oid={}&ctx=warehouse,receive", oid.to_base64()))
+    .set_payload(data2.dump())
+    .insert_header(ContentType::json())
+    .to_request();
+
+  let response = test::call_and_read_body(&app, req).await;
+
+  let result2: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+  assert_ne!("", result2["goods"][0]["_tid"].as_str().unwrap());
+
+  //report storage1
+  let from_date = "2023-01-17";
+  let till_date = "2023-01-20";
+
+  let req = test::TestRequest::get()
+    .uri(&format!(
+      "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
+      oid.to_base64(),
+      storage1.to_string(),
+      from_date,
+      till_date,
+    ))
+    .to_request();
+
+  let response = test::call_and_read_body(&app, req).await;
+  // println!("RESPONSE: {response:#?}\n");
+
+  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  // println!("REPORT1: {result:#?}");
+
+  let example1 = json!([
+     {
+       "store": storage1.to_string(),
+       "open_balance": "0",
+       "receive": "10",
+       "issue": "0",
+       "close_balance": "10",
+    },
+    [
+       {
+         "store": storage1.to_string(),
+         "goods": goods1.to_string(),
+         "batch": {
+             "date": "2023-01-18T00:00:00.000Z",
+             "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
+         },
+         "open_balance": {
+           "qty": "0",
+           "cost": "0",
+         },
+         "receive": {
+           "qty": "1",
+           "cost": "10",
+         },
+         "issue": {
+           "qty": "0",
+           "cost": "0",
+         },
+         "close_balance": {
+           "qty": "1",
+           "cost": "10",
+         },
+       },
+    ],
+  ]);
+
+  assert_eq!(result["data"][0]["items"], example1);
+
+  //report storage2
+  let from_date = "2023-01-17";
+  let till_date = "2023-01-20";
+
+  let req = test::TestRequest::get()
+    .uri(&format!(
+      "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
+      oid.to_base64(),
+      storage2.to_string(),
+      from_date,
+      till_date,
+    ))
+    .to_request();
+
+  let response = test::call_and_read_body(&app, req).await;
+  // println!("RESPONSE: {response:#?}\n");
+
+  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  // println!("REPORT2: {result:#?}");
+
+  let example2 = json!([
+     {
+       "store": storage2.to_string(),
+       "open_balance": "0",
+       "receive": "24",
+       "issue": "0",
+       "close_balance": "24",
+    },
+    [
+      {
+        "store": storage2.to_string(),
+        "goods": goods2.to_string(),
+        "batch": {
+            "date": "2023-01-19T00:00:00.000Z",
+            "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
+        },
+        "open_balance": {
+          "qty": "0",
+          "cost": "0",
+        },
+        "receive": {
+          "qty": "3",
+          "cost": "24",
+        },
+        "issue": {
+          "qty": "0",
+          "cost": "0",
+        },
+        "close_balance": {
+          "qty": "3",
+          "cost": "24",
+        },
+      },
+    ],
+  ]);
+
+  assert_eq!(result["data"][0]["items"], example2);
 }
 
 #[actix_web::test]
@@ -586,67 +907,67 @@ async fn store_test_app_receive_issue_change() {
     .to_request();
 
   let response = test::call_and_read_body(&app, req).await;
-  // println!("RESPONSE: {response:#?}");
+  // println!("RESPONSE: {response:#?}\n");
 
   let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
   // println!("REPORT: {result:#?}");
 
   let example = json!([
      {
-        "close_balance": "28",
-        "issue": "-8",
-        "open_balance": "0",
-        "receive": "36",
-        "store": "00000000-0000-0000-0000-0000000000ca",
+       "store": "00000000-0000-0000-0000-0000000000ca",
+       "open_balance": "0",
+       "receive": "36",
+       "issue": "-8",
+       "close_balance": "28",
     },
     [
-       {
+        {
+          "store": "00000000-0000-0000-0000-0000000000ca",
+          "goods": "00000000-0000-0000-0000-000000000065",
           "batch": {
               "date": "2023-01-18T00:00:00.000Z",
               "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
           },
-          "close_balance": {
-              "cost": "8",
-              "qty": "1",
-          },
-          "goods": "00000000-0000-0000-0000-000000000065",
-          "issue": {
-              "cost": "-8",
-              "qty": "-1",
-          },
           "open_balance": {
-              "cost": "0",
-              "qty": "0",
+            "cost": "0",
+            "qty": "0",
           },
           "receive": {
-              "cost": "16",
-              "qty": "2",
+            "cost": "16",
+            "qty": "2",
           },
-          "store": "00000000-0000-0000-0000-0000000000ca",
-      },
+          "issue": {
+            "cost": "-8",
+            "qty": "-1",
+          },
+          "close_balance": {
+            "cost": "8",
+            "qty": "1",
+          },
+       },
        {
-          "batch": {
-              "date": "2023-01-18T00:00:00.000Z",
-              "id": result["data"][0]["items"][1][1]["batch"]["id"].as_str().unwrap(),
-          },
-          "close_balance": {
-              "cost": "20",
-              "qty": "2",
-          },
+          "store": "00000000-0000-0000-0000-0000000000ca",
           "goods": "00000000-0000-0000-0000-0000000000c9",
-          "issue": {
-              "cost": "0",
-              "qty": "0",
+          "batch": {
+            "date": "2023-01-18T00:00:00.000Z",
+            "id": result["data"][0]["items"][1][1]["batch"]["id"].as_str().unwrap(),
           },
           "open_balance": {
-              "cost": "0",
-              "qty": "0",
+            "cost": "0",
+            "qty": "0",
           },
           "receive": {
-              "cost": "20",
-              "qty": "2",
+            "cost": "20",
+            "qty": "2",
           },
-          "store": "00000000-0000-0000-0000-0000000000ca",
+          "issue": {
+            "cost": "0",
+            "qty": "0",
+          },
+          "close_balance": {
+            "cost": "20",
+            "qty": "2",
+          },
       },
     ],
   ]);
@@ -681,7 +1002,7 @@ async fn store_test_receive_ops() {
       G1,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual, None)),
       chrono::Utc::now(),
     ),
     OpMutation::new(
@@ -692,7 +1013,7 @@ async fn store_test_receive_ops() {
       G2,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual, None)),
       chrono::Utc::now(),
     ),
     OpMutation::new(
@@ -748,7 +1069,7 @@ async fn store_test_neg_balance_date_type_store_goods_id() {
     G1,
     party.clone(),
     None,
-    Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
+    Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual, None)),
     chrono::Utc::now(),
   )];
 
@@ -795,7 +1116,7 @@ async fn store_test_zero_balance_date_type_store_goods_id() {
       G1,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(3.into(), 3000.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(3.into(), 3000.into(), Mode::Manual, None)),
       chrono::Utc::now(),
     ),
   ];
@@ -909,7 +1230,7 @@ async fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError
       G1,
       doc1.clone(),
       None,
-      Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual, None)),
       chrono::Utc::now(),
     ),
     OpMutation::new(
@@ -920,7 +1241,7 @@ async fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError
       G2,
       doc2.clone(),
       None,
-      Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual, None)),
       chrono::Utc::now(),
     ),
     OpMutation::new(
@@ -960,7 +1281,7 @@ async fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError
   ];
 
   let res = db.get_report(w1, op_d, check_d)?;
-  
+
   assert_eq!(agregations, res.items.1);
 
   tmp_dir.close().expect("Can't close tmp dir in store_test_get_wh_balance");
@@ -1015,7 +1336,7 @@ async fn store_test_op_iter() {
       G3,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual, None)),
       chrono::Utc::now(),
     ),
     OpMutation::new(
@@ -1026,7 +1347,7 @@ async fn store_test_op_iter() {
       G3,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual, None)),
       chrono::Utc::now(),
     ),
   ];
@@ -1127,7 +1448,7 @@ async fn store_test_report() {
       G3,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual, None)),
       chrono::Utc::now(),
     ),
     OpMutation::new(
@@ -1138,7 +1459,7 @@ async fn store_test_report() {
       G3,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual, None)),
       chrono::Utc::now(),
     ),
   ];
@@ -1239,7 +1560,7 @@ async fn store_test_parties_date_type_store_goods_id() {
       G1,
       doc2.clone(),
       None,
-      Some(InternalOperation::Issue(1.into(), 500.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(1.into(), 500.into(), Mode::Manual, None)),
       chrono::Utc::now(),
     ),
   ];
@@ -1311,7 +1632,7 @@ async fn store_test_issue_cost_none() {
       G1,
       doc.clone(),
       None,
-      Some(InternalOperation::Issue(1.into(), 0.into(), Mode::Auto)),
+      Some(InternalOperation::Issue(1.into(), 0.into(), Mode::Auto, None)),
       chrono::Utc::now(),
     ),
   ];
@@ -1432,7 +1753,7 @@ async fn store_test_issue_remainder() {
       G1,
       doc.clone(),
       None,
-      Some(InternalOperation::Issue((-1).into(), 0.into(), Mode::Auto)),
+      Some(InternalOperation::Issue(1.into(), 0.into(), Mode::Auto, None)),
       chrono::Utc::now(),
     ),
     OpMutation::new(
@@ -1443,7 +1764,7 @@ async fn store_test_issue_remainder() {
       G1,
       doc.clone(),
       None,
-      Some(InternalOperation::Issue((-2).into(), 0.into(), Mode::Auto)),
+      Some(InternalOperation::Issue(2.into(), 0.into(), Mode::Auto, None)),
       chrono::Utc::now(),
     ),
   ];
@@ -1576,9 +1897,8 @@ async fn store_test_receive_change_op() {
     number: BalanceForGoods { qty: 4.into(), cost: 40.into() },
   };
 
-  let mut old_checkpoints =
-    db.get_checkpoints_before_date(start_d).expect("test_receive_change_op");
-  
+  let mut old_checkpoints = db.get_checkpoints_before_date(start_d).expect("test_receive_change_op");
+
   // println!("OLD_CHECKPOINTS: {old_checkpoints:#?}");
 
   assert_eq!(old_check, old_checkpoints[0]);

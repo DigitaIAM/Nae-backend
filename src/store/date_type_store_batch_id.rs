@@ -7,6 +7,7 @@ use super::{
 use crate::store::{first_day_current_month, new_get_aggregations, Balance, Report};
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
+use uuid::Uuid;
 
 const CF_NAME: &str = "cf_date_type_store_batch_id";
 
@@ -29,6 +30,27 @@ impl DateTypeStoreBatchId {
 }
 
 impl OrderedTopology for DateTypeStoreBatchId {
+  fn put_op(&self, op: &OpMutation) -> Result<(), WHError> {
+    if op.transfer.is_some() {
+      self
+        .db
+        .put_cf(&self.cf()?, self.key(&op.dependent()?), op.dependent()?.value()?)?
+    }
+
+    Ok(self.db.put_cf(&self.cf()?, self.key(op), op.value()?)?)
+  }
+
+  fn delete_op(&self, op: &OpMutation) -> Result<(), WHError> {
+    if op.transfer.is_some() {
+      self.db.delete_cf(&self.cf()?, self.key(&op.dependent()?))?
+    }
+    Ok(self.db.delete_cf(&self.cf()?, self.key(op))?)
+  }
+
+  fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
+    ColumnFamilyDescriptor::new(DateTypeStoreBatchId::cf_name(), opts)
+  }
+
   fn get_ops(
     &self,
     storage: Store,
@@ -75,35 +97,6 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(res)
   }
 
-  fn put_op(&self, op: &OpMutation) -> Result<(), WHError> {
-    Ok(self.db.put_cf(&self.cf()?, self.key(op), op.value()?)?)
-  }
-
-  fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
-    ColumnFamilyDescriptor::new(DateTypeStoreBatchId::cf_name(), opts)
-  }
-
-  fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
-    if op.before.is_none() {
-      self.put_op(op)
-    } else {
-      if let Ok(Some(bytes)) = self
-        .db
-        // .get_cf(&self.cf()?, op.key(&DateTypeStoreBatchId::cf_name().to_string())?)
-        .get_cf(&self.cf()?, self.key(op))
-      {
-        let o: OpMutation = serde_json::from_slice(&bytes)?;
-        if op.before == o.after {
-          self.put_op(op)
-        } else {
-          return Err(WHError::new("Wrong 'before' state in operation"));
-        }
-      } else {
-        return Err(WHError::new("There is no such operation in db"));
-      }
-    }
-  }
-
   fn get_report(
     &self,
     db: &Db,
@@ -118,6 +111,28 @@ impl OrderedTopology for DateTypeStoreBatchId {
     let items = new_get_aggregations(balances, ops, from_date);
 
     Ok(Report { from_date, till_date, items })
+  }
+
+  fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
+    if op.before.is_none() {
+      self.put_op(op)
+    } else {
+      if let Ok(Some(bytes)) = self.db.get_cf(&self.cf()?, self.key(op)) {
+        let o: OpMutation = serde_json::from_slice(&bytes)?;
+        if op.before == o.after {
+          self.put_op(op)
+        } else if op.after.is_none() {
+          self.delete_op(op)
+        } else {
+          return Err(WHError::new("Wrong 'before' state in operation"));
+        }
+      } else {
+        return Err(WHError::new("There is no such operation in db"));
+      }
+    }
+    // 1. before none after some - transfer
+    // 2. before some after none - delete
+    // 3. before some after some - change
   }
 
   fn key(&self, op: &OpMutation) -> Vec<u8> {

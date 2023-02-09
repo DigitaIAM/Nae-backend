@@ -27,7 +27,21 @@ impl StoreDateTypeBatchId {
 
 impl OrderedTopology for StoreDateTypeBatchId {
   fn put_op(&self, op: &OpMutation) -> Result<(), WHError> {
+    if op.transfer.is_some() {
+      self
+        .db
+        .put_cf(&self.cf()?, self.key(&op.dependent()?), op.dependent()?.value()?)?
+    }
+
     Ok(self.db.put_cf(&self.cf()?, self.key(op), op.value()?)?)
+  }
+
+  fn delete_op(&self, op: &OpMutation) -> Result<(), WHError> {
+    if op.transfer.is_some() {
+      self.db.delete_cf(&self.cf()?, self.key(&op.dependent()?))?
+    }
+
+    Ok(self.db.delete_cf(&self.cf()?, self.key(op))?)
   }
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
@@ -94,14 +108,12 @@ impl OrderedTopology for StoreDateTypeBatchId {
     if op.before.is_none() {
       self.put_op(op)
     } else {
-      if let Ok(Some(bytes)) = self
-        .db
-        // .get_cf(&self.cf()?, op.key(&StoreDateTypeBatchId::cf_name().to_string())?)
-        .get_cf(&self.cf()?, self.key(op))
-      {
+      if let Ok(Some(bytes)) = self.db.get_cf(&self.cf()?, self.key(op)) {
         let o: OpMutation = serde_json::from_slice(&bytes)?;
         if op.before == o.after {
           self.put_op(op)
+        } else if op.after.is_none() {
+          self.delete_op(op)
         } else {
           return Err(WHError::new("Wrong 'before' state in operation"));
         }
@@ -109,6 +121,9 @@ impl OrderedTopology for StoreDateTypeBatchId {
         return Err(WHError::new("There is no such operation in db"));
       }
     }
+    // 1. before none after some - transfer
+    // 2. before some after none - delete
+    // 3. before some after some - change
   }
 
   fn key(&self, op: &OpMutation) -> Vec<u8> {

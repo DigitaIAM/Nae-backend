@@ -46,6 +46,7 @@ impl Service for Inventory {
       Ok(report) => report.to_json(),
       Err(error) => return Err(Error::GeneralError(error.message())),
     };
+
     Ok(json::object! {
       data: JsonValue::Array(vec![report]),
       total: 1,
