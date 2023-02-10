@@ -30,7 +30,9 @@ fn save_data(
   //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data["_id"])));
   // }
 
-  let file_name = format!("{id}.json");
+  let time = time_to_string(time);
+
+  let file_name = format!("{time}.json");
   let mut path_current = folder.clone();
   path_current.push(&file_name);
 
@@ -52,15 +54,33 @@ fn save_data(
 
   let data = receive_data(app, time, data, ctx, before)?;
 
+  println!("saving");
   save(&path_current, data.dump())?;
 
-  symlink::symlink_file(file_name, path_latest)?;
+  println!("remove symlink_file ${path_latest:?}");
+  symlink::remove_symlink_file(&path_latest);
+  println!("create symlink_file ${file_name:?}");
+  symlink::symlink_file(&file_name, &path_latest)?;
+  println!("done");
 
   Ok(data)
 }
 
 impl SMemories {
+  // remove context details
+  fn remove_prefix(&self, id: &String) -> String {
+    if let Some(pos) = &id.rfind('/') {
+      id[(*pos + 1)..].to_string()
+    } else {
+      id.to_string()
+    }
+  }
+
   fn folder(&self, id: &String) -> PathBuf {
+    println!("before: {id}");
+    let id = self.remove_prefix(id);
+    println!("after: {id}");
+
     let year = &id[0..4];
     let month = &id[5..7];
 
@@ -81,11 +101,10 @@ impl SMemories {
     time: DateTime<Utc>,
     mut data: JsonValue,
   ) -> Result<JsonValue, Error> {
-    let id = time_to_string(time);
+    let id = format!("{}/{}", self.ctx.join("/"), time_to_string(time));
+    println!("id: {id}");
 
-    data["_id"] = id.clone().into();
-
-    // 2023/01/2023-01-06T12:43:15Z/
+    // context/2023/01/2023-01-06T12:43:15Z/
     let mut folder = self.folder(&id);
 
     println!("creating folder {folder:?}");
@@ -93,6 +112,8 @@ impl SMemories {
     std::fs::create_dir_all(&folder).map_err(|e| {
       Error::IOError(format!("can't create folder {}: {}", folder.to_string_lossy(), e))
     })?;
+
+    data["_id"] = id.clone().into();
 
     save_data(app, &folder, &self.ctx, &id, time, data)
   }
@@ -104,12 +125,15 @@ impl SMemories {
     data: Data,
   ) -> Result<JsonValue, Error> {
     let time = Utc::now();
-    save_data(app, &self.folder, &self.ctx, &id, time, data)
+    save_data(app, &self.folder(&id), &self.ctx, &id, time, data)
   }
 
   pub(crate) fn get(&self, id: &String) -> SDoc {
+    // remove prefix (context)
+    let id = self.remove_prefix(id);
+
     let year = &id[..4];
-    let month = &id[6..8];
+    let month = &id[5..7];
 
     println!("get id {id} year {year} month {month}");
 

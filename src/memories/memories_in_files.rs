@@ -68,6 +68,10 @@ impl Service for MemoriesInFiles {
     let oid = self.oid(&params)?;
     let ctx = self.ctx(&params);
 
+    if id.len() < 10 {
+      return Err(Error::GeneralError(format!("id `{id}` not valid")));
+    }
+
     let memories = self.orgs.get(&oid).memories(ctx).get(&id);
     memories.json()
   }
@@ -88,6 +92,10 @@ impl Service for MemoriesInFiles {
       let oid = self.oid(&params)?;
       let ctx = self.ctx(&params);
 
+      if id.len() < 10 {
+        return Err(Error::GeneralError(format!("id `{id}` not valid")));
+      }
+
       let memories = self.orgs.get(&oid).memories(ctx);
 
       memories.update(&self.app, id, data)
@@ -97,6 +105,10 @@ impl Service for MemoriesInFiles {
   fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
     let ctx = self.ctx(&params);
+
+    if id.len() < 10 {
+      return Err(Error::GeneralError(format!("id `{id}` not valid")));
+    }
 
     let memories = self.orgs.get(&oid).memories(ctx);
 
