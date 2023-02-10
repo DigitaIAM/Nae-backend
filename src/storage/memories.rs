@@ -30,9 +30,9 @@ fn save_data(
   //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data["_id"])));
   // }
 
-  let time = time_to_string(time);
+  let time_str = time_to_string(time);
 
-  let file_name = format!("{time}.json");
+  let file_name = format!("{time_str}.json");
   let mut path_current = folder.clone();
   path_current.push(&file_name);
 
