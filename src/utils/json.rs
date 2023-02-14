@@ -59,7 +59,6 @@ impl JsonParams for JsonValue {
   }
 
   fn number(&self) -> Decimal {
-    // Decimal::from_str(self.as_str().unwrap_or("0")).expect("These error can't occur")
     Decimal::from_str(&self.to_string()).unwrap_or_default()
   }
 

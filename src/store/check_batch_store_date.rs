@@ -61,7 +61,11 @@ impl CheckpointTopology for CheckBatchStoreDate {
     Ok(())
   }
 
-  fn get_checkpoints_before_date(&self, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError> {
+  fn get_checkpoints_before_date(
+    &self,
+    store: Store,
+    date: DateTime<Utc>,
+  ) -> Result<Vec<Balance>, WHError> {
     Err(WHError::new("Not supported"))
   }
 

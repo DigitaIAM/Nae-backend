@@ -11,7 +11,7 @@ use std::{
   sync::Arc,
 };
 
-use super::{Cost, Qty, ToJson};
+use super::{Cost, InternalOperation, Op, Qty, ToJson};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BalanceForGoods {
@@ -23,15 +23,32 @@ impl BalanceForGoods {
   pub fn is_zero(&self) -> bool {
     self.qty.is_zero() && self.cost.is_zero()
   }
+
+  pub fn get_new_balance(&self, op: &Op) -> BalanceForGoods {
+    match op.op {
+      InternalOperation::Receive(q, c) => BalanceForGoods { qty: self.qty + q, cost: self.cost + c },
+      InternalOperation::Issue(q, c, _) => {
+        BalanceForGoods { qty: self.qty - q, cost: self.cost - c }
+      },
+    }
+  }
+
+  pub fn delta(&self, other: &BalanceForGoods) -> Option<BalanceDelta> {
+    if self != other {
+      Some(BalanceDelta { qty: other.qty - self.qty, cost: other.cost - self.cost })
+    } else {
+      None
+    }
+  }
 }
 
 impl ToJson for BalanceForGoods {
-    fn to_json(&self) -> JsonValue {
-        object!{
-          qty: self.qty.to_string(),
-          cost: self.cost.to_string(),
-        }
+  fn to_json(&self) -> JsonValue {
+    object! {
+      qty: self.qty.to_string(),
+      cost: self.cost.to_string(),
     }
+  }
 }
 
 // impl Neg for BalanceForGoods {
@@ -54,10 +71,7 @@ impl Add<BalanceDelta> for BalanceForGoods {
   type Output = Self;
 
   fn add(self, rhs: BalanceDelta) -> Self::Output {
-    BalanceForGoods {
-      qty: self.qty + rhs.qty,
-      cost: self.cost + rhs.cost,
-    }
+    BalanceForGoods { qty: self.qty + rhs.qty, cost: self.cost + rhs.cost }
   }
 }
 
@@ -94,19 +108,19 @@ pub struct BalanceDelta {
 }
 
 impl ToJson for BalanceDelta {
-    fn to_json(&self) -> JsonValue {
-      object!{
-        qty: self.qty.to_string(),
-        cost: self.cost.to_string(),
-      }
+  fn to_json(&self) -> JsonValue {
+    object! {
+      qty: self.qty.to_string(),
+      cost: self.cost.to_string(),
     }
+  }
 }
 
 impl AddAssign<Self> for BalanceDelta {
-    fn add_assign(&mut self, rhs: Self) {
-        self.qty += rhs.qty;
-        self.cost += rhs.cost;
-    }
+  fn add_assign(&mut self, rhs: Self) {
+    self.qty += rhs.qty;
+    self.cost += rhs.cost;
+  }
 }
 
 impl Sub for BalanceDelta {

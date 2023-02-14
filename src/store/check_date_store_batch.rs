@@ -93,6 +93,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
 
   fn get_checkpoints_before_date(
     &self,
+    store: Store,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError> {
     let mut result = Vec::new();
@@ -102,14 +103,16 @@ impl CheckpointTopology for CheckDateStoreBatch {
     let from: Vec<u8> = ts
       .to_be_bytes()
       .iter()
-      .chain(UUID_NIL.as_bytes().iter())
+      // .chain(UUID_NIL.as_bytes().iter())
+      .chain(store.as_bytes().iter())
       .chain(min_batch().iter())
       .map(|b| *b)
       .collect();
     let till: Vec<u8> = ts
       .to_be_bytes()
       .iter()
-      .chain(UUID_MAX.as_bytes().iter())
+      // .chain(UUID_MAX.as_bytes().iter())
+      .chain(store.as_bytes().iter())
       .chain(max_batch().iter())
       .map(|b| *b)
       .collect();

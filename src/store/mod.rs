@@ -76,6 +76,12 @@ impl ToJson for Decimal {
   }
 }
 
+impl ToJson for String {
+  fn to_json(&self) -> JsonValue {
+    JsonValue::String(self.clone())
+  }
+}
+
 #[derive(Eq, Ord, PartialOrd, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Batch {
   id: Uuid,
@@ -98,13 +104,86 @@ impl ToJson for Batch {
 }
 
 pub trait OrderedTopology {
-  fn put_op(&self, op: &OpMutation) -> Result<(), WHError>;
+  fn mutate_op(&self, op: &OpMutation) -> Result<(), WHError>;
 
-  // fn put_move_op(&self, op: &OpMutation) -> Result<(), WHError>;
+  fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError>;
 
-  fn delete_op(&self, op: &OpMutation) -> Result<(), WHError>;
+  // fn evaluate(&self, before_balance: &BalanceForGoods, op: &Op) -> (BalanceForGoods, Op);
+
+  fn operations_after(&self, calculated_op: &Op) -> Vec<(BalanceForGoods, Op)>;
+
+  // fn old_delta(&self, op: &Op, calc_op: &Op) -> Option<BalanceDelta>;
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor;
+
+  fn evaluate(&self, before_balance: &BalanceForGoods, op: &Op) -> (BalanceForGoods, Op) {
+    let calculated_op = match &op.op {
+      InternalOperation::Receive(_, _) => op.clone(),
+      InternalOperation::Issue(q, _, m) => {
+        if m == &Mode::Auto {
+          let cost = match before_balance.cost.checked_div(before_balance.qty) {
+            Some(price) => price * q,
+            None => 0.into(),
+          };
+          Op {
+            id: op.id,
+            date: op.date,
+            store: op.store,
+            goods: op.goods,
+            batch: op.batch.clone(),
+            transfer: op.transfer,
+            op: InternalOperation::Issue(q.clone(), cost.clone(), m.clone()),
+            event: op.event.clone(),
+          }
+        } else {
+          op.clone()
+        }
+      },
+    };
+
+    let new_balance = before_balance.get_new_balance(&calculated_op);
+
+    (new_balance, calculated_op)
+  }
+
+  fn get_balance_and_op(&self, js: JsonValue) -> Result<(BalanceForGoods, Op), WHError> {
+    let balance = BalanceForGoods {
+      qty: Decimal::from_str(js[0]["qty"].to_string().as_str())?,
+      cost: Decimal::from_str(js[0]["cost"].to_string().as_str())?,
+    };
+
+    let mode = if js[1]["op"]["mode"] == JsonValue::String("Auto".to_string()) {
+      Mode::Auto
+    } else {
+      Mode::Manual
+    };
+
+    let operation = if js[1]["op"]["type"] == JsonValue::String("Receive".to_string()) {
+      InternalOperation::Receive(
+        js[1]["op"]["qty"].number(),
+        js[1]["op"]["cost"].number(),
+      )
+    } else {
+      InternalOperation::Issue(
+        js[1]["op"]["qty"].number(),
+        js[1]["op"]["cost"].number(),
+        mode
+      )
+    };
+
+    let op = Op {
+      id: js[1]["id"].uuid(),
+      date: js[1]["date"].date()?,
+      store: js[1]["store"].uuid(),
+      goods: js[1]["goods"].uuid(),
+      batch: Batch { id: js[1]["batch"]["id"].uuid(), date: js[1]["batch"]["date"].date()? },
+      transfer: js[1]["transfer"].uuid_or_none(),
+      op: operation,
+      event: js[1]["event"].to_string(),
+    };
+
+    Ok((balance, op))
+  }
 
   fn get_ops(
     &self,
@@ -123,7 +202,7 @@ pub trait OrderedTopology {
 
   fn data_update(&self, op: &OpMutation) -> Result<(), WHError>;
 
-  fn key(&self, op: &OpMutation) -> Vec<u8>;
+  fn key(&self, op: &Op) -> Vec<u8>;
 }
 
 pub trait CheckpointTopology {
@@ -145,7 +224,7 @@ pub trait CheckpointTopology {
     let mut last_checkpoint_date = self.get_latest_checkpoint_date()?;
 
     if last_checkpoint_date < op.date {
-      let old_checkpoints = self.get_checkpoints_before_date(last_checkpoint_date)?;
+      let old_checkpoints = self.get_checkpoints_before_date(op.store, last_checkpoint_date)?;
 
       last_checkpoint_date = first_day_next_month(op.date);
 
@@ -175,13 +254,19 @@ pub trait CheckpointTopology {
     self.set_latest_checkpoint_date(check_point_date)?;
 
     if op.transfer.is_some() {
-      self.checkpoint_update(&op.dependent()?);
+      if let Some(dep) = &op.dependent() {
+        self.checkpoint_update(dep);
+      }
     }
 
     Ok(())
   }
 
-  fn get_checkpoints_before_date(&self, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError>;
+  fn get_checkpoints_before_date(
+    &self,
+    store: Store,
+    date: DateTime<Utc>,
+  ) -> Result<Vec<Balance>, WHError>;
 }
 
 pub fn dt(date: &str) -> Result<DateTime<Utc>, WHError> {
@@ -251,7 +336,34 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum InternalOperation {
   Receive(Qty, Cost),
-  Issue(Qty, Cost, Mode, Option<Uuid>),
+  Issue(Qty, Cost, Mode),
+}
+
+impl ToJson for InternalOperation {
+  fn to_json(&self) -> JsonValue {
+    // JsonValue::String(serde_json::to_string(&self).unwrap_or_default())
+
+    match self {
+      InternalOperation::Receive(q, c) => {
+        object! {
+          type: JsonValue::String("Receive".to_string()),
+          qty: q.to_json(),
+          cost: c.to_json(),
+        }
+      },
+      InternalOperation::Issue(q, c, m) => {
+        object! {
+          type: JsonValue::String("Issue".to_string()),
+          qty: q.to_json(),
+          cost: c.to_json(),
+          mode: match m {
+            Mode::Auto => JsonValue::String("Auto".to_string()),
+            Mode::Manual => JsonValue::String("Manual".to_string()),
+          }
+        }
+      }
+    }
+  }
 }
 
 trait Operation {}
@@ -260,7 +372,7 @@ impl Into<BalanceDelta> for InternalOperation {
   fn into(self) -> BalanceDelta {
     match self {
       InternalOperation::Receive(qty, cost) => BalanceDelta { qty, cost },
-      InternalOperation::Issue(qty, cost, mode, _) => BalanceDelta { qty: -qty, cost: -cost },
+      InternalOperation::Issue(qty, cost, mode) => BalanceDelta { qty: -qty, cost: -cost },
     }
   }
 }
@@ -274,7 +386,7 @@ impl Add<InternalOperation> for BalanceForGoods {
         self.qty += qty;
         self.cost += cost;
       },
-      InternalOperation::Issue(qty, cost, mode, _) => {
+      InternalOperation::Issue(qty, cost, mode) => {
         self.qty -= qty;
         self.cost -= if mode == Mode::Manual {
           cost
@@ -297,7 +409,7 @@ impl AddAssign<&InternalOperation> for BalanceForGoods {
         self.qty += qty;
         self.cost += cost;
       },
-      InternalOperation::Issue(qty, cost, mode, _) => {
+      InternalOperation::Issue(qty, cost, mode) => {
         self.qty -= qty;
         self.cost -= if mode == &Mode::Manual {
           *cost
@@ -412,9 +524,64 @@ impl Op {
   fn to_delta(&self) -> BalanceDelta {
     self.op.clone().into()
   }
+
+  fn value(&self, new_balance: &BalanceForGoods) -> String {
+    array![new_balance.to_json(), self.to_json()].dump()
+  }
+
+  fn batch(&self) -> Vec<u8> {
+    let dt = self.batch.date.timestamp() as u64;
+
+    self
+      .goods
+      .as_bytes()
+      .iter()
+      .chain(dt.to_be_bytes().iter())
+      .chain(self.batch.id.as_bytes().iter())
+      .map(|b| *b)
+      .collect()
+  }
+
+  fn dependent(&self) -> Option<Op> {
+    if let Some(transfer) = self.transfer {
+      match &self.op {
+        InternalOperation::Issue(q, c, m) => Some(Op {
+          id: self.id,
+          date: self.date,
+          store: transfer,
+          goods: self.goods,
+          batch: self.batch.clone(),
+          transfer: None,
+          op: InternalOperation::Receive(q.clone(), c.clone()),
+          event: self.event.clone(),
+        }),
+        _ => None,
+      }
+    } else {
+      None
+    }
+  }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+impl ToJson for Op {
+  fn to_json(&self) -> JsonValue {
+    object! {
+      id: self.id.to_json(),
+      date: self.date.to_json(),
+      store: self.store.to_json(),
+      goods: self.goods.to_json(),
+      batch: self.batch.to_json(),
+      transfer: match self.transfer {
+        Some(t) => t.to_json(),
+        None => JsonValue::Null,
+      },
+      op: self.op.to_json(),
+      event: self.event.to_json(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpMutation {
   // key
   id: Uuid,
@@ -516,19 +683,6 @@ impl OpMutation {
     }
   }
 
-  fn batch(&self) -> Vec<u8> {
-    let dt = self.batch.date.timestamp() as u64;
-
-    self
-      .goods
-      .as_bytes()
-      .iter()
-      .chain(dt.to_be_bytes().iter())
-      .chain(self.batch.id.as_bytes().iter())
-      .map(|b| *b)
-      .collect()
-  }
-
   fn to_delta(&self) -> BalanceDelta {
     let n: BalanceDelta = self.after.as_ref().map(|i| i.clone().into()).unwrap_or_default();
     let o: BalanceDelta = self.before.as_ref().map(|i| i.clone().into()).unwrap_or_default();
@@ -578,20 +732,29 @@ impl OpMutation {
     }
   }
 
-  fn dependent(&self) -> Result<OpMutation, WHError> {
-    match self.after.as_ref().unwrap() {
-      InternalOperation::Receive(_, _) => Err(WHError::new("Wrong op type in fn dependent")),
-      InternalOperation::Issue(q, c, _, id) => Ok(OpMutation {
-        id: id.unwrap(),
-        date: self.date,
-        store: self.transfer.unwrap(),
-        transfer: None,
-        goods: self.goods,
-        batch: self.batch.clone(),
-        before: self.before.clone(),
-        after: Some(InternalOperation::Receive(q.clone(), c.clone())),
-        event: self.event.clone(),
-      }),
+  fn dependent(&self) -> Option<OpMutation> {
+    if let Some(transfer) = self.transfer {
+      let before = match self.before.clone() {
+        Some(b) => Some(b),
+        None => None,
+      };
+      // TODO check if cost in operation already calculated - No!
+      match self.after.as_ref() {
+        Some(InternalOperation::Issue(q, c, _)) => Some(OpMutation {
+          id: self.id,
+          date: self.date,
+          store: transfer,
+          transfer: None,
+          goods: self.goods,
+          batch: self.batch.clone(),
+          before,
+          after: Some(InternalOperation::Receive(q.clone(), c.clone())),
+          event: self.event.clone(),
+        }),
+        _ => None,
+      }
+    } else {
+      None
     }
   }
 }
@@ -783,7 +946,7 @@ impl Agregation for AgregationStore {
         self.receive += cost;
         self.close_balance += cost;
       },
-      InternalOperation::Issue(qty, cost, mode, _) => {
+      InternalOperation::Issue(qty, cost, mode) => {
         self.issue -= cost;
         self.close_balance -= cost;
       },
@@ -866,7 +1029,7 @@ impl Agregation for AgregationStoreGoods {
         self.receive.qty += qty;
         self.receive.cost += cost;
       },
-      InternalOperation::Issue(qty, cost, mode, _) => {
+      InternalOperation::Issue(qty, cost, mode) => {
         self.issue.qty -= qty;
         if mode == &Mode::Auto {
           let balance = self.open_balance.clone() + self.receive.clone();
@@ -1057,6 +1220,7 @@ fn json_to_ops(
   if *data != JsonValue::Null {
     let d_date = data["date"].date()?;
     for goods in data["goods"].members_mut() {
+      // TODO remove dependent_id, use op.id instead
       let (transf, dependent_id) = match goods["transfer"].uuid_or_none() {
         Some(id) => (Some(id), Some(Uuid::new_v4())),
         None => (None, None),
@@ -1086,7 +1250,7 @@ fn json_to_ops(
           } else {
             (0.into(), Mode::Auto)
           };
-          InternalOperation::Issue(goods["qty"].number(), cost, mode, dependent_id)
+          InternalOperation::Issue(goods["qty"].number(), cost, mode)
         } else {
           break;
         },

@@ -69,10 +69,11 @@ impl Db {
 
   pub fn get_checkpoints_before_date(
     &self,
+    store: Store,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError> {
     for checkpoint_topology in self.checkpoint_topologies.iter() {
-      match checkpoint_topology.get_checkpoints_before_date(date) {
+      match checkpoint_topology.get_checkpoints_before_date(store, date) {
         Ok(result) => return Ok(result),
         Err(e) => {
           if e.message() == "Not supported".to_string() {
