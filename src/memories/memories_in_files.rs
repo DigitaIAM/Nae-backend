@@ -49,13 +49,45 @@ impl Service for MemoriesInFiles {
     let memories = self.orgs.get(&oid).memories(ctx);
     let list = memories.list()?;
 
-    let total = list.len();
-    let list = list
-      .into_iter()
-      .skip(skip)
-      .take(limit)
-      .map(|o| o.json())
-      .collect::<Result<_, _>>()?;
+    let filters = &self.params(&params)["filter"];
+    let (total, list): (isize, Vec<JsonValue>) = if filters.is_object() {
+      let mut total = 0;
+      let list: Vec<JsonValue> = list
+        .into_iter()
+        .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+        .filter(|o| o.is_object())
+        .filter(|o| {
+          for (name, value) in filters.entries() {
+            if &o[name] != value {
+              return false;
+            }
+          }
+          return true;
+        })
+        .map(|o| {
+          total += 1;
+          o
+        })
+        .skip(skip)
+        .take(limit)
+        .collect::<_>();
+
+      if list.is_empty() {
+        (total, list)
+      } else {
+        (-1, list)
+      }
+    } else {
+      (
+        list.len() as isize,
+        list
+          .into_iter()
+          .skip(skip)
+          .take(limit)
+          .map(|o| o.json())
+          .collect::<Result<_, _>>()?,
+      )
+    };
 
     Ok(json::object! {
       data: JsonValue::Array(list),
@@ -67,6 +99,10 @@ impl Service for MemoriesInFiles {
   fn get(&self, id: String, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
     let ctx = self.ctx(&params);
+
+    if id.len() < 10 {
+      return Err(Error::GeneralError(format!("id `{id}` not valid")));
+    }
 
     let memories = self.orgs.get(&oid).memories(ctx).get(&id);
     memories.json()
@@ -88,6 +124,10 @@ impl Service for MemoriesInFiles {
       let oid = self.oid(&params)?;
       let ctx = self.ctx(&params);
 
+      if id.len() < 10 {
+        return Err(Error::GeneralError(format!("id `{id}` not valid")));
+      }
+
       let memories = self.orgs.get(&oid).memories(ctx);
 
       memories.update(&self.app, id, data)
@@ -97,6 +137,10 @@ impl Service for MemoriesInFiles {
   fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
     let oid = self.oid(&params)?;
     let ctx = self.ctx(&params);
+
+    if id.len() < 10 {
+      return Err(Error::GeneralError(format!("id `{id}` not valid")));
+    }
 
     let memories = self.orgs.get(&oid).memories(ctx);
 
