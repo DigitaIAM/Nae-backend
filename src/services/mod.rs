@@ -188,6 +188,8 @@ pub trait Service: Send + Sync {
 
     if let Some(skip) = params["$skip"].as_number() {
       usize::try_from(skip).unwrap_or(0)
+    } else if let Some(skip) = params["$skip"].as_str() {
+      skip.parse::<usize>().unwrap_or(0)
     } else {
       0
     }
