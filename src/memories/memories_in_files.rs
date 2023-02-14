@@ -56,14 +56,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| {
-          for (name, value) in filters.entries() {
-            if &o[name] != value {
-              return false;
-            }
-          }
-          return true;
-        })
+        .filter(|o| filters.entries().all(|(n, v)| &o[n] == v))
         .map(|o| {
           total += 1;
           o
