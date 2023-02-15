@@ -11,7 +11,9 @@ use std::{
   sync::Arc,
 };
 
-use super::{Cost, InternalOperation, Op, Qty, ToJson};
+use crate::utils::json::JsonParams;
+
+use super::{Cost, InternalOperation, Op, Qty, ToJson, WHError};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BalanceForGoods {
@@ -24,21 +26,12 @@ impl BalanceForGoods {
     self.qty.is_zero() && self.cost.is_zero()
   }
 
-  pub fn get_new_balance(&self, op: &Op) -> BalanceForGoods {
-    match op.op {
-      InternalOperation::Receive(q, c) => BalanceForGoods { qty: self.qty + q, cost: self.cost + c },
-      InternalOperation::Issue(q, c, _) => {
-        BalanceForGoods { qty: self.qty - q, cost: self.cost - c }
-      },
-    }
+  pub fn delta(&self, other: &BalanceForGoods) -> BalanceDelta {
+    BalanceDelta { qty: other.qty - self.qty, cost: other.cost - self.cost }
   }
 
-  pub fn delta(&self, other: &BalanceForGoods) -> Option<BalanceDelta> {
-    if self != other {
-      Some(BalanceDelta { qty: other.qty - self.qty, cost: other.cost - self.cost })
-    } else {
-      None
-    }
+  pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
+    Ok(BalanceForGoods { qty: data["qty"].number(), cost: data["cost"].number() })
   }
 }
 
@@ -105,6 +98,11 @@ impl Add<BalanceDelta> for BalanceForGoods {
 pub struct BalanceDelta {
   pub qty: Qty,
   pub cost: Cost,
+}
+impl BalanceDelta {
+  pub(crate) fn is_zero(&self) -> bool {
+    self.qty.is_zero() && self.cost.is_zero()
+  }
 }
 
 impl ToJson for BalanceDelta {

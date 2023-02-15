@@ -104,26 +104,95 @@ impl ToJson for Batch {
 }
 
 pub trait OrderedTopology {
-  fn mutate_op(&self, op: &OpMutation) -> Result<(), WHError>;
+  fn put(&self, op: &Op, balance: &BalanceForGoods) -> Result<(), WHError>;
+  fn get(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError>;
+  fn del(&self, op: &Op) -> Result<(), WHError>;
+
+  // TODO:
+  // 1. keep Balances together with OpMutations in db
+  // 2. fn to get previous operation from db
+  // 3. calculate new balance from old balance and new op
+  // 3. calculate delta between old balance and new balance
+  // 4. fn to propagate delta to next operations and balances in db
+
+  fn mutate_op(&self, op_mut: &OpMutation) -> Result<(), WHError> {
+    let mut ops: Vec<Op> = vec![];
+    ops.push(op_mut.to_op());
+
+    while ops.len() > 0 {
+      let op = ops.remove(0);
+
+      println!("processing {op:?}");
+
+      // calculate balance
+      let before_balance: BalanceForGoods = self.balance_before(&op)?;
+      let (calculated_op, new_balance) = self.evaluate(&before_balance, &op);
+
+      let current_balance =
+        if let Some((o, b)) = self.get(&op)? { b } else { BalanceForGoods::default() };
+
+      println!("before_balance: {before_balance:?}");
+      println!("calculated_op: {calculated_op:?}");
+      println!("current_balance: {current_balance:?}");
+      println!("new_balance: {new_balance:?}");
+
+      // store update op with balance or delete
+      if calculated_op.is_zero() {
+        self.del(&calculated_op)?;
+      } else {
+        self.put(&calculated_op, &new_balance)?;
+      }
+
+      // if next op have dependant add it to ops
+      if let Some(dep) = calculated_op.dependent() {
+        ops.push(dep);
+      }
+
+      // propagate delta
+      if !current_balance.delta(&new_balance).is_zero() {
+        let mut before_balance = new_balance;
+        for (next_operation, next_current_balance) in self.operations_after(&calculated_op)? {
+          let (calculated_op, new_balance) = self.evaluate(&before_balance, &next_operation);
+
+          if calculated_op.is_zero() {
+            self.del(&calculated_op)?;
+          } else {
+            self.put(&calculated_op, &new_balance)?;
+          }
+
+          if !next_current_balance.delta(&new_balance).is_zero() {
+            break;
+          }
+
+          before_balance = new_balance;
+
+          // if next op have dependant add it to ops
+          if let Some(dep) = calculated_op.dependent() {
+            ops.push(dep);
+          }
+        }
+      }
+    }
+
+    Ok(())
+  }
 
   fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError>;
 
-  // fn evaluate(&self, before_balance: &BalanceForGoods, op: &Op) -> (BalanceForGoods, Op);
-
-  fn operations_after(&self, calculated_op: &Op) -> Vec<(BalanceForGoods, Op)>;
-
-  // fn old_delta(&self, op: &Op, calc_op: &Op) -> Option<BalanceDelta>;
+  fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError>;
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor;
 
-  fn evaluate(&self, before_balance: &BalanceForGoods, op: &Op) -> (BalanceForGoods, Op) {
-    let calculated_op = match &op.op {
-      InternalOperation::Receive(_, _) => op.clone(),
-      InternalOperation::Issue(q, _, m) => {
-        if m == &Mode::Auto {
-          let cost = match before_balance.cost.checked_div(before_balance.qty) {
+  fn evaluate(&self, balance: &BalanceForGoods, op: &Op) -> (Op, BalanceForGoods) {
+    match &op.op {
+      InternalOperation::Receive(q, c) => {
+        (op.clone(), BalanceForGoods { qty: balance.qty + q, cost: balance.cost + c })
+      },
+      InternalOperation::Issue(q, c, m) => {
+        let op = if m == &Mode::Auto {
+          let cost = match balance.cost.checked_div(balance.qty) {
             Some(price) => price * q,
-            None => 0.into(),
+            None => 0.into(), // TODO raise exeption?
           };
           Op {
             id: op.id,
@@ -133,56 +202,30 @@ pub trait OrderedTopology {
             batch: op.batch.clone(),
             transfer: op.transfer,
             op: InternalOperation::Issue(q.clone(), cost.clone(), m.clone()),
-            event: op.event.clone(),
           }
         } else {
           op.clone()
-        }
+        };
+        (op, BalanceForGoods { qty: balance.qty - q, cost: balance.cost - c })
       },
-    };
-
-    let new_balance = before_balance.get_new_balance(&calculated_op);
-
-    (new_balance, calculated_op)
+    }
   }
 
-  fn get_balance_and_op(&self, js: JsonValue) -> Result<(BalanceForGoods, Op), WHError> {
-    let balance = BalanceForGoods {
-      qty: Decimal::from_str(js[0]["qty"].to_string().as_str())?,
-      cost: Decimal::from_str(js[0]["cost"].to_string().as_str())?,
-    };
+  fn to_bytes(&self, op: &Op, balance: &BalanceForGoods) -> String {
+    array![op.to_json(), balance.to_json()].dump()
+  }
 
-    let mode = if js[1]["op"]["mode"] == JsonValue::String("Auto".to_string()) {
-      Mode::Auto
+  fn from_bytes(&self, bytes: &[u8]) -> Result<(Op, BalanceForGoods), WHError> {
+    let data = String::from_utf8_lossy(bytes).to_string();
+    let array = json::parse(&data)?;
+
+    if array.is_array() {
+      let op = Op::from_json(array[0].clone())?;
+      let balance = BalanceForGoods::from_json(array[1].clone())?;
+      Ok((op, balance))
     } else {
-      Mode::Manual
-    };
-
-    let operation = if js[1]["op"]["type"] == JsonValue::String("Receive".to_string()) {
-      InternalOperation::Receive(
-        js[1]["op"]["qty"].number(),
-        js[1]["op"]["cost"].number(),
-      )
-    } else {
-      InternalOperation::Issue(
-        js[1]["op"]["qty"].number(),
-        js[1]["op"]["cost"].number(),
-        mode
-      )
-    };
-
-    let op = Op {
-      id: js[1]["id"].uuid(),
-      date: js[1]["date"].date()?,
-      store: js[1]["store"].uuid(),
-      goods: js[1]["goods"].uuid(),
-      batch: Batch { id: js[1]["batch"]["id"].uuid(), date: js[1]["batch"]["date"].date()? },
-      transfer: js[1]["transfer"].uuid_or_none(),
-      op: operation,
-      event: js[1]["event"].to_string(),
-    };
-
-    Ok((balance, op))
+      Err(WHError::new("unexpected structure"))
+    }
   }
 
   fn get_ops(
@@ -361,7 +404,7 @@ impl ToJson for InternalOperation {
             Mode::Manual => JsonValue::String("Manual".to_string()),
           }
         }
-      }
+      },
     }
   }
 }
@@ -517,16 +560,35 @@ pub struct Op {
 
   // value
   op: InternalOperation,
-  event: String,
 }
 
 impl Op {
-  fn to_delta(&self) -> BalanceDelta {
-    self.op.clone().into()
+  pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
+    let op = &data["op"];
+
+    let operation = match op["type"].as_str() {
+      Some("Receive") => InternalOperation::Receive(op["qty"].number(), op["cost"].number()),
+      Some("Issue") => {
+        let mode = if op["mode"].as_str() == Some("Auto") { Mode::Auto } else { Mode::Manual };
+        InternalOperation::Issue(op["qty"].number(), op["cost"].number(), mode)
+      },
+      _ => return Err(WHError::new(&format!("unknown operation type {}", op["type"]))),
+    };
+
+    let op = Op {
+      id: data["id"].uuid()?,
+      date: data["date"].datetime()?,
+      store: data["store"].uuid()?,
+      goods: data["goods"].uuid()?,
+      batch: Batch { id: data["batch"]["id"].uuid()?, date: data["batch"]["date"].datetime()? },
+      transfer: data["transfer"].uuid_or_none(),
+      op: operation,
+    };
+    Ok(op)
   }
 
-  fn value(&self, new_balance: &BalanceForGoods) -> String {
-    array![new_balance.to_json(), self.to_json()].dump()
+  fn to_delta(&self) -> BalanceDelta {
+    self.op.clone().into()
   }
 
   fn batch(&self) -> Vec<u8> {
@@ -553,12 +615,18 @@ impl Op {
           batch: self.batch.clone(),
           transfer: None,
           op: InternalOperation::Receive(q.clone(), c.clone()),
-          event: self.event.clone(),
         }),
         _ => None,
       }
     } else {
       None
+    }
+  }
+
+  fn is_zero(&self) -> bool {
+    match &self.op {
+      InternalOperation::Receive(q, c) => q.is_zero() && c.is_zero(),
+      InternalOperation::Issue(q, c, _) => q.is_zero() && c.is_zero(),
     }
   }
 }
@@ -576,7 +644,6 @@ impl ToJson for Op {
         None => JsonValue::Null,
       },
       op: self.op.to_json(),
-      event: self.event.to_json(),
     }
   }
 }
@@ -593,7 +660,6 @@ pub struct OpMutation {
   // value
   before: Option<InternalOperation>,
   after: Option<InternalOperation>,
-  event: String,
 }
 
 impl Default for OpMutation {
@@ -607,7 +673,6 @@ impl Default for OpMutation {
       batch: Batch::new(),
       before: None,
       after: None,
-      event: Default::default(),
     }
   }
 }
@@ -622,9 +687,8 @@ impl OpMutation {
     batch: Batch,
     before: Option<InternalOperation>,
     after: Option<InternalOperation>,
-    event: DateTime<Utc>,
   ) -> OpMutation {
-    OpMutation { id, date, store, transfer, goods, batch, before, after, event: event.to_string() }
+    OpMutation { id, date, store, transfer, goods, batch, before, after }
   }
 
   fn receive_new(
@@ -645,7 +709,6 @@ impl OpMutation {
       batch,
       before: None,
       after: Some(InternalOperation::Receive(qty, cost)),
-      event: chrono::Utc::now().to_string(),
     }
   }
 
@@ -663,7 +726,6 @@ impl OpMutation {
         batch: self.batch.clone(),
         transfer: self.transfer.clone(),
         op: op.clone(),
-        event: self.event.clone(),
       }
     } else {
       Op {
@@ -678,7 +740,6 @@ impl OpMutation {
         } else {
           InternalOperation::Receive(0.into(), 0.into())
         },
-        event: self.event.clone(),
       }
     }
   }
@@ -701,7 +762,6 @@ impl OpMutation {
         batch: a.batch.clone(),
         before: Some(b.op.clone()),
         after: Some(a.op.clone()),
-        event: a.event.clone(),
       }
     } else if let Some(b) = &before {
       OpMutation {
@@ -713,7 +773,6 @@ impl OpMutation {
         batch: b.batch.clone(),
         before: Some(b.op.clone()),
         after: None,
-        event: b.event.clone(),
       }
     } else if let Some(a) = &after {
       OpMutation {
@@ -725,7 +784,6 @@ impl OpMutation {
         batch: a.batch.clone(),
         before: None,
         after: Some(a.op.clone()),
-        event: a.event.clone(),
       }
     } else {
       OpMutation::default()
@@ -749,7 +807,6 @@ impl OpMutation {
           batch: self.batch.clone(),
           before,
           after: Some(InternalOperation::Receive(q.clone(), c.clone())),
-          event: self.event.clone(),
         }),
         _ => None,
       }
@@ -1215,50 +1272,90 @@ fn json_to_ops(
   time: DateTime<Utc>,
   ctx: &Vec<String>,
 ) -> Result<HashMap<String, Op>, WHError> {
+  println!("json_to_ops {data:?}");
+
   let mut ops = HashMap::new();
 
-  if *data != JsonValue::Null {
-    let d_date = data["date"].date()?;
-    for goods in data["goods"].members_mut() {
-      // TODO remove dependent_id, use op.id instead
-      let (transf, dependent_id) = match goods["transfer"].uuid_or_none() {
-        Some(id) => (Some(id), Some(Uuid::new_v4())),
-        None => (None, None),
-      };
-
-      let op = Op {
-        id: if let Some(tid) = goods["_tid"].uuid_or_none() {
-          tid
-        } else {
-          goods["_tid"] = JsonValue::String(Uuid::new_v4().to_string());
-          goods["_tid"].uuid()
-        },
-        date: d_date,
-        store,
-        transfer: transf,
-        goods: goods["goods"].uuid(),
-        batch: if transf.is_some() {
-          Batch { id: goods["batch_id"].uuid(), date: goods["batch_date"].date()? }
-        } else {
-          Batch { id: goods["_tid"].uuid(), date: d_date }
-        },
-        op: if ctx == &vec!["warehouse".to_string(), "receive".to_string()] {
-          InternalOperation::Receive(goods["qty"].number(), goods["cost"].number())
-        } else if ctx == &vec!["warehouse".to_string(), "issue".to_string()] {
-          let (cost, mode) = if let Some(cost) = goods["cost"].number_or_none() {
-            (cost, Mode::Manual)
-          } else {
-            (0.into(), Mode::Auto)
-          };
-          InternalOperation::Issue(goods["qty"].number(), cost, mode)
-        } else {
-          break;
-        },
-        event: time.to_string(),
-      };
-      ops.insert(goods["_tid"].to_string(), op);
-    }
+  if !data.is_object() {
+    return Ok(ops);
   }
+
+  if ctx.get(0) != Some(&"warehouse".to_string()) {
+    return Ok(ops);
+  }
+
+  let type_of_operation = match ctx.get(1) {
+    Some(str) => str.clone(),
+    _ => return Ok(ops),
+  };
+
+  let date = data["date"].date()?;
+  let transfer = if type_of_operation == "transfer" {
+    match data["transfer"].uuid_or_none() {
+      Some(uuid) => Some(uuid),
+      None => return Ok(ops),
+    }
+  } else {
+    None
+  };
+
+  for line in data["goods"].members_mut() {
+    // TODO remove dependent_id, use op.id instead
+
+    let goods = match line["goods"].uuid_or_none() {
+      Some(uuid) => uuid,
+      None => continue,
+    };
+
+    println!("before op");
+
+    let op = match type_of_operation.as_str() {
+      "receive" => InternalOperation::Receive(line["qty"].number(), line["cost"].number()),
+      "transfer" | "issue" => {
+        let (cost, mode) = if let Some(cost) = line["cost"].number_or_none() {
+          (cost, Mode::Manual)
+        } else {
+          (0.into(), Mode::Auto)
+        };
+        InternalOperation::Issue(line["qty"].number(), cost, mode)
+      },
+      _ => continue,
+    };
+
+    println!("after op {op:?}");
+
+    let tid = if let Some(tid) = line["_tid"].uuid_or_none() {
+      tid
+    } else {
+      let uuid = Uuid::new_v4();
+      line["_tid"] = JsonValue::String(uuid.to_string());
+      uuid
+    };
+
+    let batch = if type_of_operation == "receive" {
+      Batch { id: tid, date }
+    } else {
+      match &line["batch"] {
+        JsonValue::Object(b) => {
+          let id = match b["id"].uuid_or_none() {
+            Some(uuid) => uuid,
+            None => continue,
+          };
+
+          let date = match b["date"].datetime() {
+            Ok(dt) => dt,
+            Err(_) => continue,
+          };
+          Batch { id, date }
+        },
+        _ => continue,
+      }
+    };
+
+    let op = Op { id: tid, date, store, transfer, goods, batch, op };
+    ops.insert(tid.to_string(), op);
+  }
+
   Ok(ops)
 }
 

@@ -24,7 +24,7 @@ impl WHStorage {
     let mut cfs = Vec::new();
 
     let mut cf_names: Vec<&str> = vec![
-      StoreDateTypeBatchId::cf_name(),
+      // StoreDateTypeBatchId::cf_name(),
       DateTypeStoreBatchId::cf_name(),
       CheckDateStoreBatch::cf_name(),
       // CheckBatchStoreDate::cf_name(),
@@ -48,7 +48,7 @@ impl WHStorage {
     ];
 
     let ordered_topologies: Vec<Box<dyn OrderedTopology + Sync + Send>> = vec![
-      Box::new(StoreDateTypeBatchId { db: inner_db.clone() }),
+      // Box::new(StoreDateTypeBatchId { db: inner_db.clone() }),
       Box::new(DateTypeStoreBatchId { db: inner_db.clone() }),
     ];
 

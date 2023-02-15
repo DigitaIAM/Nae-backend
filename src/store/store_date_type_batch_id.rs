@@ -1,6 +1,9 @@
-use std::{sync::Arc, str::FromStr};
+use std::{str::FromStr, sync::Arc};
 
-use super::{Db, InternalOperation, KeyValueStore, Op, OpMutation, OrderedTopology, Store, WHError, balance::BalanceForGoods};
+use super::{
+  balance::BalanceForGoods, Db, InternalOperation, KeyValueStore, Op, OpMutation, OrderedTopology,
+  Store, WHError,
+};
 use crate::store::{first_day_current_month, new_get_aggregations, Balance, Report};
 use chrono::{DateTime, Utc};
 use json::array;
@@ -28,52 +31,82 @@ impl StoreDateTypeBatchId {
 }
 
 impl OrderedTopology for StoreDateTypeBatchId {
-  fn mutate_op(&self, op_mut: &OpMutation) -> Result<(), WHError> {
-    if (op_mut.after.is_none()) {
-      self.db.delete_cf(&self.cf()?, self.key(&op_mut.to_op()))?;
+  fn put(&self, op: &Op, balance: &BalanceForGoods) -> Result<(), WHError> {
+    Ok(self.db.put_cf(&self.cf()?, self.key(op), self.to_bytes(op, balance))?)
+  }
 
-      if let Some(dep) = &op_mut.dependent() {
-        self.db.delete_cf(&self.cf()?, self.key(&dep.to_op()))?;
-      }
+  fn get(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+    if let Some(bytes) = self.db.get_cf(&self.cf()?, self.key(&op))? {
+      Ok(Some(self.from_bytes(&bytes)?))
     } else {
-      let mut ops: Vec<Op> = vec![];
-      ops.push(op_mut.to_op());
+      Ok(None)
+    }
+  }
 
-      while ops.len() > 0 {
-        let op = ops.remove(0);
+  fn del(&self, op: &Op) -> Result<(), WHError> {
+    Ok(self.db.delete_cf(&self.cf()?, self.key(op))?)
+  }
 
-        // calculate balance
-        let before_balance: BalanceForGoods = self.balance_before(&op)?;
-        let (new_balance, calculated_op) = self.evaluate(&before_balance, &op);
+  fn mutate_op(&self, op_mut: &OpMutation) -> Result<(), WHError> {
+    let mut ops: Vec<Op> = vec![];
+    ops.push(op_mut.to_op());
 
-        // store update op with balance
-        self
-          .db
-          .put_cf(&self.cf()?, self.key(&calculated_op), calculated_op.value(&new_balance))?;
+    while ops.len() > 0 {
+      let op = ops.remove(0);
 
-        // if next op have dependant add it to ops
-        if let Some(dep) = calculated_op.dependent() {
-          ops.push(dep);
-        }
+      // calculate balance
+      let before_balance: BalanceForGoods = self.balance_before(&op)?;
+      let (calculated_op, new_balance) = self.evaluate(&before_balance, &op);
 
-        // propagate delta
-        if let Some(_) = before_balance.delta(&new_balance) {
-          let mut before_balance = new_balance;
-          for (next_balance, next_operation) in self.operations_after(&calculated_op) {
-            let (new_balance, calculated_op) = self.evaluate(&before_balance, &next_operation);
+      let current_balance =
+        if let Some((o, b)) = self.get(&op)? { b } else { BalanceForGoods::default() };
 
+      println!("before_balance {before_balance:?}");
+      println!("calculated_op {calculated_op:?}");
+      println!("current_balance {current_balance:?}");
+      println!("new_balance {new_balance:?}");
+
+      // store update op with balance or delete
+      if calculated_op.is_zero() {
+        self.db.delete_cf(&self.cf()?, self.key(&calculated_op))?;
+      } else {
+        self.db.put_cf(
+          &self.cf()?,
+          self.key(&calculated_op),
+          self.to_bytes(&calculated_op, &new_balance),
+        )?;
+      }
+
+      // if next op have dependant add it to ops
+      if let Some(dep) = calculated_op.dependent() {
+        ops.push(dep);
+      }
+
+      // propagate delta
+      if !current_balance.delta(&new_balance).is_zero() {
+        let mut before_balance = new_balance;
+        for (next_operation, next_current_balance) in self.operations_after(&calculated_op)? {
+          let (calculated_op, new_balance) = self.evaluate(&before_balance, &next_operation);
+
+          if calculated_op.is_zero() {
+            self.db.delete_cf(&self.cf()?, self.key(&calculated_op))?;
+          } else {
             self.db.put_cf(
               &self.cf()?,
               self.key(&calculated_op),
-              calculated_op.value(&new_balance),
+              self.to_bytes(&calculated_op, &new_balance),
             )?;
+          }
 
-            before_balance = new_balance;
+          if !next_current_balance.delta(&new_balance).is_zero() {
+            break;
+          }
 
-            // if next op have dependant add it to ops
-            if let Some(dep) = calculated_op.dependent() {
-              ops.push(dep);
-            }
+          before_balance = new_balance;
+
+          // if next op have dependant add it to ops
+          if let Some(dep) = calculated_op.dependent() {
+            ops.push(dep);
           }
         }
       }
@@ -116,9 +149,9 @@ impl OrderedTopology for StoreDateTypeBatchId {
 
     let mut res = Vec::new();
     for item in iter {
-      let (_, value) = item?;
-      let op: OpMutation = serde_json::from_slice(&value)?;
-      res.push(op.to_op());
+      let (_, v) = item?;
+      let (op, _) = self.from_bytes(&v)?;
+      res.push(op);
     }
 
     Ok(res)
@@ -131,6 +164,8 @@ impl OrderedTopology for StoreDateTypeBatchId {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
+    println!("STORE_DATE_TYPE_BATCH.get_report");
+
     let balances = db.get_checkpoints_before_date(storage, from_date)?;
 
     let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
@@ -143,11 +178,15 @@ impl OrderedTopology for StoreDateTypeBatchId {
 
   fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
     if op.before.is_none() {
-      self.mutate_op(op)
+      if let Ok(None) = self.db.get_cf(&self.cf()?, self.key(&op.to_op())) {
+        self.mutate_op(op)
+      } else {
+        return Err(WHError::new("Wrong 'before' state, expected something"));
+      }
     } else {
       if let Ok(Some(bytes)) = self.db.get_cf(&self.cf()?, self.key(&op.to_op())) {
-        let o: OpMutation = serde_json::from_slice(&bytes)?;
-        if op.before == o.after {
+        let (o, balance) = self.from_bytes(&bytes)?;
+        if Some(o.op) == op.after {
           self.mutate_op(op)
         } else {
           return Err(WHError::new("Wrong 'before' state in operation"));
@@ -198,27 +237,25 @@ impl OrderedTopology for StoreDateTypeBatchId {
     }
   }
 
-  fn operations_after(&self, calculated_op: &Op) -> Vec<(BalanceForGoods, Op)> {
+  fn operations_after(&self, calculated_op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
     let mut res = Vec::new();
 
-    if let Ok(cf) = self.cf() {
-      // TODO change iterator with range from..till?
-      let mut iter = self
-        .db
-        .iterator_cf(&cf, IteratorMode::From(&self.key(calculated_op), rocksdb::Direction::Forward));
+    // TODO change iterator with range from..till?
+    let mut iter = self.db.iterator_cf(
+      &self.cf()?,
+      IteratorMode::From(&self.key(calculated_op), rocksdb::Direction::Forward),
+    );
 
-      while let Some(bytes) = iter.next() {
-        if let Ok((_, v)) = bytes {
-          let value: String = serde_json::from_slice(&v).unwrap();
+    while let Some(bytes) = iter.next() {
+      if let Ok((k, v)) = bytes {
+        let (op, balance) = self.from_bytes(&v)?;
 
-          let js = array![value];
-
-          if let Ok(balance_and_op) = self.get_balance_and_op(js) {
-            res.push(balance_and_op);
-          }
+        if op.batch == calculated_op.batch {
+          res.push((op, balance));
         }
       }
     }
-    res
+
+    Ok(res)
   }
 }
