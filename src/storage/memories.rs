@@ -3,6 +3,7 @@ use crate::commutator::Application;
 use crate::services::{Data, Error};
 use crate::storage::{json, load, save};
 use crate::store::{dt, receive_data, Batch, NumberForGoods, OpMutation};
+use crate::utils::json::JsonParams;
 use crate::utils::time::time_to_string;
 use chrono::{DateTime, Utc};
 use json::JsonValue;
@@ -47,10 +48,14 @@ fn save_data(
   // data = { _id: "", date: "2023-01-11", storage: "uuid", goods: [{goods: "", uom: "", qty: 0, price: 0, cost: 0, _tid: ""}, ...]}
   // cost = qty * price
 
+  println!("loading before {path_latest:?}");
+
   let before = match load(&path_latest) {
     Ok(x) => x,
     Err(_) => JsonValue::Null,
   };
+
+  println!("loaded before {before:?}");
 
   let data = receive_data(app, time, data, ctx, before)?;
 

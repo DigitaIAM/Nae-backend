@@ -37,8 +37,8 @@ impl DateTypeStoreBatchId {
 impl OrderedTopology for DateTypeStoreBatchId {
   fn put(&self, op: &Op, balance: &BalanceForGoods) -> Result<(), WHError> {
     let key = self.key(op);
-    println!("put {key:?}");
-    println!("{op:?}");
+    // log::debug!("put {key:?}");
+    // log::debug!("{op:?}");
     Ok(self.db.put_cf(&self.cf()?, key, self.to_bytes(op, balance))?)
   }
 
@@ -52,9 +52,71 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
   fn del(&self, op: &Op) -> Result<(), WHError> {
     let key = self.key(op);
-    println!("del {key:?}");
-    println!("{op:?}");
+    // log::debug!("del {key:?}");
+    // log::debug!("{op:?}");
     Ok(self.db.delete_cf(&self.cf()?, key)?)
+  }
+
+  fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
+    // log::debug!("DATE_TYPE_STORE_BATCH.balance_before");
+
+    // store + batch
+    let expected: Vec<u8> =
+      op.store.as_bytes().iter().chain(op.batch().iter()).map(|b| *b).collect();
+
+    let key = self.key(op);
+
+    // log::debug!("key {key:?}");
+    // log::debug!("exp {expected:?}");
+
+    let mut iter = self
+      .db
+      .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Reverse));
+
+    while let Some(bytes) = iter.next() {
+      let (k, v) = bytes?;
+
+      // log::debug!("k__ {k:?}");
+
+      //date + optype + store + batch
+      if k[9..65] != expected || k[0..] == key {
+        continue;
+      }
+
+      let (op, balance) = self.from_bytes(&v)?;
+      return Ok(balance);
+    }
+
+    return Ok(BalanceForGoods::default());
+  }
+
+  fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
+    let mut res = Vec::new();
+
+    // store + batch
+    let expected: Vec<u8> =
+      op.store.as_bytes().iter().chain(op.batch().iter()).map(|b| *b).collect();
+
+    let key = self.key(op);
+
+    // TODO change iterator with range from..till?
+    let mut iter = self
+      .db
+      .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Forward));
+    while let Some(bytes) = iter.next() {
+      if let Ok((k, v)) = bytes {
+        //date + optype + store + batch
+        if k[9..=65] != expected || k[0..] == key {
+          continue;
+        }
+
+        let (op, balance) = self.from_bytes(&v)?;
+
+        res.push((op, balance));
+      }
+    }
+
+    Ok(res)
   }
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
@@ -99,15 +161,15 @@ impl OrderedTopology for DateTypeStoreBatchId {
     // store
     let expected: Vec<u8> = storage.as_bytes().iter().map(|b| *b).collect();
 
-    println!("exp {expected:?}");
+    // log::debug!("exp {expected:?}");
 
     let mut res = Vec::new();
 
     for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
       let (k, value) = item?;
 
-      println!("k__ {k:?}");
-      println!("k[9..25] {:?}", &k[9..25]);
+      // log::debug!("k__ {k:?}");
+      // log::debug!("k[9..25] {:?}", &k[9..25]);
 
       // || k[0..] == key
       if k[9..25] != expected {
@@ -116,9 +178,9 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
       let (op, b) = self.from_bytes(&value)?;
 
-      println!("k {k:?}");
-      println!("o {op:?}");
-      println!("b {b:?}");
+      // log::debug!("k {k:?}");
+      // log::debug!("o {op:?}");
+      // log::debug!("b {b:?}");
 
       res.push(op);
     }
@@ -133,7 +195,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
-    println!("DATE_TYPE_STORE_BATCH.get_report");
+    // log::debug!("DATE_TYPE_STORE_BATCH.get_report");
     let balances = db.get_checkpoints_before_date(storage, from_date)?;
 
     let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
@@ -143,22 +205,22 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(Report { from_date, till_date, items })
   }
 
-  fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
-    if op.before.is_none() {
-      self.mutate_op(op)
-    } else {
-      if let Ok(Some(bytes)) = self.db.get_cf(&self.cf()?, self.key(&op.to_op())) {
-        let o: Op = serde_json::from_slice(&bytes)?;
-        if op.before == Some(o.op) {
-          self.mutate_op(op)
-        } else {
-          return Err(WHError::new("Wrong 'before' state in operation"));
-        }
-      } else {
-        return Err(WHError::new("There is no such operation in db"));
-      }
-    }
-  }
+  // fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
+  //   if op.before.is_none() {
+  //     self.mutate_op(op)
+  //   } else {
+  //     if let Ok(Some(bytes)) = self.db.get_cf(&self.cf()?, self.key(&op.to_op())) {
+  //       let o: Op = serde_json::from_slice(&bytes)?;
+  //       if op.before == Some(o.op) {
+  //         self.mutate_op(op)
+  //       } else {
+  //         return Err(WHError::new("Wrong 'before' state in operation"));
+  //       }
+  //     } else {
+  //       return Err(WHError::new("There is no such operation in db"));
+  //     }
+  //   }
+  // }
 
   fn key(&self, op: &Op) -> Vec<u8> {
     let ts = op.date.timestamp() as u64;
@@ -176,67 +238,5 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(op.id.as_bytes().iter())
       .map(|b| *b)
       .collect()
-  }
-
-  fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
-    println!("DATE_TYPE_STORE_BATCH.balance_before");
-
-    // store + batch
-    let expected: Vec<u8> =
-      op.store.as_bytes().iter().chain(op.batch().iter()).map(|b| *b).collect();
-
-    let key = self.key(op);
-
-    // println!("key {key:?}");
-    // println!("exp {expected:?}");
-
-    let mut iter = self
-      .db
-      .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Reverse));
-
-    while let Some(bytes) = iter.next() {
-      let (k, v) = bytes?;
-
-      // println!("k__ {k:?}");
-
-      //date + optype + store + batch
-      if k[9..65] != expected || k[0..] == key {
-        continue;
-      }
-
-      let (op, balance) = self.from_bytes(&v)?;
-      return Ok(balance);
-    }
-
-    return Ok(BalanceForGoods::default());
-  }
-
-  fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
-    let mut res = Vec::new();
-
-    // store + batch
-    let expected: Vec<u8> =
-      op.store.as_bytes().iter().chain(op.batch().iter()).map(|b| *b).collect();
-
-    let key = self.key(op);
-
-    // TODO change iterator with range from..till?
-    let mut iter = self
-      .db
-      .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Forward));
-    while let Some(bytes) = iter.next() {
-      if let Ok((k, v)) = bytes {
-        //date + optype + store + batch
-        if k[9..=56] != expected || k[0..] == key {
-          continue;
-        }
-
-        let (op, balance) = self.from_bytes(&v)?;
-
-        res.push((op, balance));
-      }
-    }
-
-    Ok(res)
   }
 }

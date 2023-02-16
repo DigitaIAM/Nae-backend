@@ -55,6 +55,7 @@ impl Db {
 
   pub fn record_ops(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
     for op in ops {
+      println!("record_ops: {op:?}");
       for checkpoint_topology in self.checkpoint_topologies.iter() {
         checkpoint_topology.checkpoint_update(op)?;
       }

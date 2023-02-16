@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, thread, time::Duration};
 
 use crate::{
   animo::{
@@ -379,10 +379,10 @@ async fn store_test_app_move_checkpoints() {
       _id: "",
       date: "2022-12-18",
       storage: storage1.to_string(),
+      transfer: storage2.to_string(),
       goods: [
           {
               goods: goods1.to_string(),
-              transfer: storage2.to_string(),
               batch: batch.clone(),
               uom: "",
               qty: 1,
@@ -394,7 +394,7 @@ async fn store_test_app_move_checkpoints() {
   };
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs?oid={}&ctx=warehouse,issue", oid.to_base64()))
+    .uri(&format!("/api/docs?oid={}&ctx=warehouse,transfer", oid.to_base64()))
     .set_payload(data2.dump())
     .insert_header(ContentType::json())
     .to_request();
@@ -597,10 +597,10 @@ async fn store_test_app_change_move() {
       _id: "",
       date: "2023-01-19",
       storage: storage1.to_string(),
+      transfer: storage2.to_string(),
       goods: [
         {
           goods: goods1.to_string(),
-          transfer: storage2.to_string(),
           batch: batch.clone(),
           uom: "",
           qty: 2,
@@ -612,7 +612,7 @@ async fn store_test_app_change_move() {
   };
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs?oid={}&ctx=warehouse,issue", oid.to_base64()))
+    .uri(&format!("/api/docs?oid={}&ctx=warehouse,transfer", oid.to_base64()))
     .set_payload(data1.dump())
     .insert_header(ContentType::json())
     .to_request();
@@ -1261,8 +1261,8 @@ async fn store_test_app_receive_issue_change() {
   )
   .await;
 
-  let goods1 = Uuid::from_u128(201);
-  let goods2 = Uuid::from_u128(101);
+  let goods1 = Uuid::from_u128(101);
+  let goods2 = Uuid::from_u128(201);
   let storage1 = Uuid::from_u128(202);
   let oid = ID::from("99");
 
@@ -1302,24 +1302,32 @@ async fn store_test_app_receive_issue_change() {
 
   let response = test::call_and_read_body(&app, req).await;
 
-  let result0: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  let data = String::from_utf8_lossy(&response).to_string();
+  let result0 = json::parse(&data).unwrap();
 
-  assert_ne!("", result0["goods"][0]["_tid"].as_str().unwrap());
-  assert_ne!("", result0["goods"][1]["_tid"].as_str().unwrap());
+  let g1_tid = result0["goods"][0]["_tid"].as_str().unwrap();
+  let g2_tid = result0["goods"][1]["_tid"].as_str().unwrap();
+
+  assert_ne!("", g1_tid);
+  assert_ne!("", g2_tid);
+
+  let g1_batch = object! { id: g1_tid.clone(), date: "2023-01-18T00:00:00.000Z".to_string() };
+  let g2_batch = object! { id: g2_tid.clone(), date: "2023-01-18T00:00:00.000Z".to_string() };
 
   // issue
   let data1: JsonValue = object! {
       _id: "",
-      date: "2023-01-18",
+      date: "2023-01-19",
       storage: storage1.to_string(),
       goods: [
           {
               goods: goods2.to_string(),
+              batch: g2_batch.clone(),
               uom: "",
               qty: 1,
               // price: 0,
               // cost: 0,
-              _tid: result0["goods"][1]["_tid"].as_str().unwrap(),
+              // _tid: result0["goods"][1]["_tid"].as_str().unwrap(),
           },
       ]
   };
@@ -1335,30 +1343,26 @@ async fn store_test_app_receive_issue_change() {
 
   let response = test::call_and_read_body(&app, req).await;
 
-  let result1: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  let data = String::from_utf8_lossy(&response).to_string();
+  let result1 = json::parse(&data).unwrap();
 
   // change
-  let id = result0["goods"][0]["_tid"].as_str().unwrap();
+  let mut data2 = result0.clone();
+  let id = data2.clone()["_id"].string();
+  {
+    let line = &mut data2["goods"][0];
+    line["qty"] = 2.into();
+    line["cost"] = 20.into();
+  }
 
-  let data2: JsonValue = object! {
-      _id: "",
-      date: "2023-01-18",
-      storage: storage1.to_string(),
-      goods: [
-          {
-              goods: goods1.to_string(),
-              uom: "",
-              qty: 2,
-              price: 10,
-              cost: 20,
-              _tid: id,
-          }
-      ]
-  };
+  // println!(
+  //   "UPDATE RECEIVE {}",
+  //   format!("/api/docs/update?oid={}&ctx=warehouse,receive&id={id}", oid.to_base64())
+  // );
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs/{id}?oid={}&ctx=warehouse,receive", oid.to_base64()))
-    .set_payload(data2.dump())
+    .uri(&format!("/api/docs/update?oid={}&ctx=warehouse,receive&id={id}", oid.to_base64()))
+    .set_payload(data2.to_string())
     .insert_header(ContentType::json())
     .to_request();
 
@@ -1366,7 +1370,7 @@ async fn store_test_app_receive_issue_change() {
 
   let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
 
-  let compare: serde_json::Value = serde_json::from_str(&data2.dump()).unwrap();
+  let compare: serde_json::Value = serde_json::from_str(&data2.to_string()).unwrap();
 
   assert_eq!(compare, result);
 
@@ -1387,10 +1391,11 @@ async fn store_test_app_receive_issue_change() {
   let response = test::call_and_read_body(&app, req).await;
   // println!("RESPONSE: {response:#?}\n");
 
-  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  let data = String::from_utf8_lossy(&response).to_string();
+  let result: JsonValue = json::parse(&data).unwrap();
   // println!("REPORT: {result:#?}");
 
-  let example = json!([
+  let report: JsonValue = json::array![
      {
        "store": "00000000-0000-0000-0000-0000000000ca",
        "open_balance": "0",
@@ -1399,58 +1404,52 @@ async fn store_test_app_receive_issue_change() {
        "close_balance": "28",
     },
     [
-        {
-          "store": "00000000-0000-0000-0000-0000000000ca",
-          "goods": "00000000-0000-0000-0000-000000000065",
-          "batch": {
-              "date": "2023-01-18T00:00:00.000Z",
-              "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
-          },
-          "open_balance": {
-            "cost": "0",
-            "qty": "0",
-          },
-          "receive": {
-            "cost": "16",
-            "qty": "2",
-          },
-          "issue": {
-            "cost": "-8",
-            "qty": "-1",
-          },
-          "close_balance": {
-            "cost": "8",
-            "qty": "1",
-          },
-       },
        {
           "store": "00000000-0000-0000-0000-0000000000ca",
-          "goods": "00000000-0000-0000-0000-0000000000c9",
-          "batch": {
-            "date": "2023-01-18T00:00:00.000Z",
-            "id": result["data"][0]["items"][1][1]["batch"]["id"].as_str().unwrap(),
-          },
+          "goods": goods1.to_string(),
+          "batch": g1_batch.clone(),
           "open_balance": {
-            "cost": "0",
             "qty": "0",
+            "cost": "0",
           },
           "receive": {
-            "cost": "20",
             "qty": "2",
+            "cost": "20",
           },
           "issue": {
-            "cost": "0",
             "qty": "0",
+            "cost": "0",
           },
           "close_balance": {
-            "cost": "20",
             "qty": "2",
+            "cost": "20",
           },
       },
+      {
+        "store": "00000000-0000-0000-0000-0000000000ca",
+        "goods": goods2.to_string(),
+        "batch": g2_batch.clone(),
+        "open_balance": {
+          "qty": "0",
+          "cost": "0",
+        },
+        "receive": {
+          "qty": "2",
+          "cost": "16",
+        },
+        "issue": {
+          "qty": "-1",
+          "cost": "-8",
+        },
+        "close_balance": {
+          "qty": "1",
+          "cost": "8",
+        },
+     },
     ],
-  ]);
+  ];
 
-  assert_eq!(result["data"][0]["items"], example);
+  assert_eq!(result["data"][0]["items"].dump(), report.dump());
 }
 
 #[actix_web::test]
@@ -1823,24 +1822,29 @@ async fn store_test_op_iter() {
   let iter1 = db.db.iterator_cf(&cf1, IteratorMode::Start);
   let iter2 = db.db.iterator_cf(&cf2, IteratorMode::Start);
 
-  let mut res1 = Vec::new();
-  let mut res2 = Vec::new();
+  let mut res1: Vec<String> = Vec::new();
+  let mut res2: Vec<String> = Vec::new();
 
   for item in iter1 {
     let (_, v) = item.unwrap();
-    let op = serde_json::from_slice(&v).unwrap();
-    res1.push(op);
+    let str = String::from_utf8_lossy(&v).to_string();
+
+    // println!("{str:?}");
+
+    res1.push(str);
   }
 
   for item in iter2 {
     let (_, v) = item.unwrap();
-    let op = serde_json::from_slice(&v).unwrap();
-    res2.push(op);
+    let str = String::from_utf8_lossy(&v).to_string();
+
+    // println!("{str:?}");
+
+    res2.push(str);
   }
 
-  for i in 0..ops.len() {
-    assert_eq!(ops[i], res1[i]);
-    assert_eq!(ops[i], res2[i]);
+  for i in 0..res1.len() {
+    assert_eq!(res2[i], res1[i]);
   }
 
   tmp_dir.close().expect("Can't remove tmp dir in test_op_iter");

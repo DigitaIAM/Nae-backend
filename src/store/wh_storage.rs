@@ -13,7 +13,7 @@ pub struct WHStorage {
 }
 
 impl WHStorage {
-  pub fn receive_operations(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
+  pub fn mutate(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
     Ok(self.database.record_ops(ops)?)
   }
 

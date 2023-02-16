@@ -108,12 +108,57 @@ pub trait OrderedTopology {
   fn get(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError>;
   fn del(&self, op: &Op) -> Result<(), WHError>;
 
-  // TODO:
-  // 1. keep Balances together with OpMutations in db
-  // 2. fn to get previous operation from db
-  // 3. calculate new balance from old balance and new op
-  // 3. calculate delta between old balance and new balance
-  // 4. fn to propagate delta to next operations and balances in db
+  fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError>;
+
+  fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError>;
+
+  fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor;
+
+  fn get_ops(
+    &self,
+    storage: Store,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError>;
+
+  fn get_report(
+    &self,
+    db: &Db,
+    storage: Store,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Report, WHError>;
+
+  // fn data_update(&self, op: &OpMutation) -> Result<(), WHError>;
+
+  fn key(&self, op: &Op) -> Vec<u8>;
+
+  fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
+    if op.before.is_none() {
+      if let Ok(None) = self.get(&op.to_op()) {
+        self.mutate_op(op)
+      } else {
+        let err = WHError::new("Wrong 'before' state, expected something");
+        log::debug!("ERROR: {err:?}");
+        return Err(err);
+      }
+    } else {
+      if let Ok(Some((o, balance))) = self.get(&op.to_op()) {
+        // let (o, balance) = self.from_bytes(&bytes)?;
+        if Some(o.op) == op.before {
+          self.mutate_op(op)
+        } else {
+          let err = WHError::new("Wrong 'before' state in operation: {o.op:?}");
+          log::debug!("ERROR: {err:?}");
+          return Err(err);
+        }
+      } else {
+        let err = WHError::new("There is no such operation in db");
+        log::debug!("ERROR: {err:?}");
+        return Err(err);
+      }
+    }
+  }
 
   fn mutate_op(&self, op_mut: &OpMutation) -> Result<(), WHError> {
     let mut ops: Vec<Op> = vec![];
@@ -122,7 +167,7 @@ pub trait OrderedTopology {
     while ops.len() > 0 {
       let op = ops.remove(0);
 
-      println!("processing {op:?}");
+      log::debug!("processing {:?}", op);
 
       // calculate balance
       let before_balance: BalanceForGoods = self.balance_before(&op)?;
@@ -131,10 +176,10 @@ pub trait OrderedTopology {
       let current_balance =
         if let Some((o, b)) = self.get(&op)? { b } else { BalanceForGoods::default() };
 
-      println!("before_balance: {before_balance:?}");
-      println!("calculated_op: {calculated_op:?}");
-      println!("current_balance: {current_balance:?}");
-      println!("new_balance: {new_balance:?}");
+      log::debug!("before_balance: {before_balance:?}");
+      log::debug!("calculated_op: {calculated_op:?}");
+      log::debug!("current_balance: {current_balance:?}");
+      log::debug!("new_balance: {new_balance:?}");
 
       // store update op with balance or delete
       if calculated_op.is_zero() {
@@ -176,12 +221,6 @@ pub trait OrderedTopology {
 
     Ok(())
   }
-
-  fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError>;
-
-  fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError>;
-
-  fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor;
 
   fn evaluate(&self, balance: &BalanceForGoods, op: &Op) -> (Op, BalanceForGoods) {
     match &op.op {
@@ -227,25 +266,6 @@ pub trait OrderedTopology {
       Err(WHError::new("unexpected structure"))
     }
   }
-
-  fn get_ops(
-    &self,
-    storage: Store,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError>;
-
-  fn get_report(
-    &self,
-    db: &Db,
-    storage: Store,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
-  ) -> Result<Report, WHError>;
-
-  fn data_update(&self, op: &OpMutation) -> Result<(), WHError>;
-
-  fn key(&self, op: &Op) -> Vec<u8>;
 }
 
 pub trait CheckpointTopology {
@@ -1223,11 +1243,14 @@ pub fn receive_data(
   // TODO if structure of input Json is invalid, should return it without changes and save it to memories anyway
   // If my data was corrupted, should rewrite it and do the operations
   // TODO tests with invalid structure of incoming JsonValue
+  log::debug!("BEFOR: {:?}", before.dump());
+  log::debug!("AFTER: {:?}", data.dump());
+
   let old_data = data.clone();
 
   if let Some(store) = data["storage"].uuid_or_none() {
     let mut before = match json_to_ops(&mut before, store.clone(), time.clone(), ctx) {
-      Ok(res) => res.into_iter(),
+      Ok(res) => res,
       Err(_) => return Ok(old_data),
     };
 
@@ -1235,6 +1258,11 @@ pub fn receive_data(
       Ok(res) => res,
       Err(_) => return Ok(old_data),
     };
+
+    log::debug!("OPS BEFOR: {before:?}");
+    log::debug!("OPS AFTER: {after:?}");
+
+    let mut before = before.into_iter();
 
     let mut ops: Vec<OpMutation> = Vec::new();
 
@@ -1252,9 +1280,9 @@ pub fn receive_data(
       ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
     }
 
-    //  println!("OPS: {ops:?}");
+    log::debug!("OPS: {:?}", ops);
 
-    app.warehouse.receive_operations(&ops)?;
+    app.warehouse.mutate(&ops)?;
 
     if ops.is_empty() {
       Ok(old_data)
@@ -1272,7 +1300,7 @@ fn json_to_ops(
   time: DateTime<Utc>,
   ctx: &Vec<String>,
 ) -> Result<HashMap<String, Op>, WHError> {
-  println!("json_to_ops {data:?}");
+  // log::debug!("json_to_ops {data:?}");
 
   let mut ops = HashMap::new();
 
@@ -1300,6 +1328,8 @@ fn json_to_ops(
   };
 
   for line in data["goods"].members_mut() {
+    log::debug!("line {:?}", line);
+
     // TODO remove dependent_id, use op.id instead
 
     let goods = match line["goods"].uuid_or_none() {
@@ -1307,7 +1337,7 @@ fn json_to_ops(
       None => continue,
     };
 
-    println!("before op");
+    // log::debug!("before op");
 
     let op = match type_of_operation.as_str() {
       "receive" => InternalOperation::Receive(line["qty"].number(), line["cost"].number()),
@@ -1322,14 +1352,14 @@ fn json_to_ops(
       _ => continue,
     };
 
-    println!("after op {op:?}");
+    log::debug!("after op {op:?}");
 
     let tid = if let Some(tid) = line["_tid"].uuid_or_none() {
       tid
     } else {
-      let uuid = Uuid::new_v4();
-      line["_tid"] = JsonValue::String(uuid.to_string());
-      uuid
+      let tid = Uuid::new_v4();
+      line["_tid"] = JsonValue::String(tid.to_string());
+      tid
     };
 
     let batch = if type_of_operation == "receive" {
@@ -1337,9 +1367,14 @@ fn json_to_ops(
     } else {
       match &line["batch"] {
         JsonValue::Object(b) => {
+          // log::debug!("b[id] = {}", b["id"]);
+          // log::debug!("b[date] = {}", b["date"]);
           let id = match b["id"].uuid_or_none() {
             Some(uuid) => uuid,
-            None => continue,
+            None => {
+              // log::debug!("uuid_or_none RETURNED NONE");
+              continue;
+            },
           };
 
           let date = match b["date"].datetime() {

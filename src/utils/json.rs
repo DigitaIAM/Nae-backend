@@ -46,15 +46,18 @@ impl JsonParams for JsonValue {
   fn uuid_or_none(&self) -> Option<Uuid> {
     if let Some(s) = self.string_or_none() {
       if &s == "null" || &s == "" {
+        // log::debug!("FN_UUID_OR_NONE EMPTY");
         None
       } else {
         if let Ok(res) = Uuid::try_parse(&s) {
+          // log::debug!("FN_UUID_OR_NONE: {res:?}");
           Some(res)
         } else {
           None
         }
       }
     } else {
+      // log::debug!("FN_UUID_OR_NONE FAILED TO PARSE STRING");
       None
     }
   }

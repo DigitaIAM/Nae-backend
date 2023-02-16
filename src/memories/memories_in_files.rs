@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::animo::error::DBError;
 use crate::services::{Data, Error, Params, Service};
 use crate::storage::SOrganizations;
-use crate::utils::json::JsonMerge;
+use crate::utils::json::{JsonMerge, JsonParams};
 use crate::ws::error_general;
 use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
 

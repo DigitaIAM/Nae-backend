@@ -64,16 +64,21 @@ pub(crate) async fn docs_create(
   Ok(HttpResponse::Ok().json(result))
 }
 
-#[post("/api/docs/{id}")]
+#[post("/api/docs/update")]
 pub(crate) async fn docs_update(
-  path: web::Path<(String)>,
+  req: HttpRequest,
+  // path: web::Path<(String)>,
   app: web::Data<Application>,
   data: web::Json<serde_json::Value>,
   params: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
-  let (id) = path.into_inner();
+  println!("docs_update {req:?}");
+
+  // let (id) = path.into_inner();
 
   let data = json::parse(&data.0.to_string()).unwrap();
+
+  let id = params["id"].clone();
 
   let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
   let oid = params["oid"].clone();
