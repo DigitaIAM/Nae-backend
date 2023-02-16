@@ -2,6 +2,7 @@ use actix_web::error::ParseError::Status;
 use dbase::FieldConversionError;
 use json::object::Object;
 use json::JsonValue;
+use rust_decimal::Decimal;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::io::Write;
@@ -14,7 +15,8 @@ use uuid::Uuid;
 use crate::animo::error::DBError;
 use crate::services::{Data, Error, Params, Service};
 use crate::storage::SOrganizations;
-use crate::utils::json::JsonMerge;
+use crate::store::ToJson;
+use crate::utils::json::{JsonMerge, JsonParams};
 use crate::ws::error_general;
 use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
 
@@ -46,11 +48,11 @@ impl Service for MemoriesInFiles {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let memories = self.orgs.get(&oid).memories(ctx);
+    let memories = self.orgs.get(&oid).memories(ctx.clone());
     let list = memories.list()?;
 
     let filters = &self.params(&params)["filter"];
-    let (total, list): (isize, Vec<JsonValue>) = if filters.is_object() {
+    let (total, mut list): (isize, Vec<JsonValue>) = if filters.is_object() {
       let mut total = 0;
       let list: Vec<JsonValue> = list
         .into_iter()
@@ -81,6 +83,33 @@ impl Service for MemoriesInFiles {
           .collect::<Result<_, _>>()?,
       )
     };
+
+    // workaround: count produced
+    if &ctx == &vec!["production", "order"] {
+      let produced = self
+        .orgs
+        .get(&oid)
+        .memories(vec!["production".into(), "produce".into()])
+        .list()?;
+      for mut order in &mut list {
+        let filters = vec![("order", &order["_id"])];
+
+        let mut boxes = 0_u32;
+        let sum: Decimal = produced
+          .iter()
+          .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+          .filter(|o| o.is_object())
+          .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
+          .map(|o| o["qty"].number())
+          .map(|o| {
+            boxes += 1;
+            o
+          })
+          .sum();
+
+        order["produced"] = json::object! { "piece": sum.to_json(), "box": boxes.to_string() };
+      }
+    }
 
     Ok(json::object! {
       data: JsonValue::Array(list),
