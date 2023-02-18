@@ -1395,4 +1395,4 @@ fn json_to_ops(
 }
 
 #[cfg(test)]
-mod test;
+mod tests;

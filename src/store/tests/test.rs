@@ -567,7 +567,9 @@ async fn store_test_app_change_move() {
 
   let response = test::call_and_read_body(&app, req).await;
 
-  let result0: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  let str = String::from_utf8_lossy(&response).to_string();
+
+  let result0: JsonValue = json::parse(&str).unwrap();
 
   assert_ne!("", result0["goods"][0]["_tid"].as_str().unwrap());
 
@@ -620,31 +622,41 @@ async fn store_test_app_change_move() {
   let response = test::call_and_read_body(&app, req).await;
 
   // change
-  let id = result0["goods"][0]["_tid"].as_str().unwrap();
+  let mut data2 = result0.clone();
+  let id = data2.clone()["_id"].string();
+  {
+    let line = &mut data2["goods"][0];
+    line["qty"] = 2.into();
+    line["cost"] = 20.into();
+  }
 
-  let data2: JsonValue = object! {
-      _id: "",
-      date: "2023-01-18",
-      storage: storage1.to_string(),
-      goods: [
-          {
-              goods: goods1.to_string(),
-              uom: "",
-              qty: 1,
-              price: 10,
-              cost: 10,
-              _tid: id,
-          }
-      ]
-  };
+  // let id = result0["goods"][0]["_tid"].as_str().unwrap();
+
+  // let data2: JsonValue = object! {
+  //     _id: "",
+  //     date: "2023-01-18",
+  //     storage: storage1.to_string(),
+  //     goods: [
+  //         {
+  //             goods: goods1.to_string(),
+  //             uom: "",
+  //             qty: 1,
+  //             price: 10,
+  //             cost: 10,
+  //             _tid: id,
+  //         }
+  //     ]
+  // };
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs/{id}?oid={}&ctx=warehouse,receive", oid.to_base64()))
+    .uri(&format!("/api/docs/update?oid={}&ctx=warehouse,receive&id={id}", oid.to_base64()))
     .set_payload(data2.dump())
     .insert_header(ContentType::json())
     .to_request();
 
   let response = test::call_and_read_body(&app, req).await;
+
+  println!("TEST_RESPONSE: {response:?}");
 
   let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
 
