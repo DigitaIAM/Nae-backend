@@ -8,7 +8,7 @@ use crate::animo::db::AnimoDB;
 use crate::animo::memory::{ChangeTransformation, TransformationKey};
 use crate::commutator::Application;
 use crate::services::Services;
-use crate::Memory;
+use crate::animo::memory::Memory;
 use qstring::QString;
 
 pub(crate) async fn not_implemented() -> impl Responder {

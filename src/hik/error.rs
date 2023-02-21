@@ -7,7 +7,7 @@ quick_error! {
     #[derive(Debug)]
     pub enum Error {
         IOError(error: String) {
-            display("IO error: {}", error)
+            display("IO errors: {}", error)
         }
         RequestBuilderNotCloneable {
             display("Request body must not be a stream.")

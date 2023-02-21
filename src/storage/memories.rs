@@ -1,10 +1,11 @@
 use crate::animo::memory::ID;
 use crate::commutator::Application;
-use crate::services::{Data, Error};
+use crate::services::Data;
+use errors::Error;
 use crate::storage::{json, load, save};
-use crate::store::{dt, receive_data, Batch, NumberForGoods, OpMutation};
-use crate::utils::json::JsonParams;
-use crate::utils::time::time_to_string;
+use store::elements::{dt, receive_data, Batch, NumberForGoods, OpMutation};
+use utils::json::JsonParams;
+use utils::time::time_to_string;
 use chrono::{DateTime, Utc};
 use json::JsonValue;
 use rust_decimal::Decimal;
@@ -57,7 +58,7 @@ fn save_data(
 
   println!("loaded before {before:?}");
 
-  let data = receive_data(app, time, data, ctx, before)?;
+  let data = receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?;
 
   println!("saving");
   save(&path_current, data.dump())?;

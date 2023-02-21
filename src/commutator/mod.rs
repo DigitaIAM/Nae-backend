@@ -1,10 +1,9 @@
 use crate::animo::memory::ChangeTransformation;
-use crate::services::{Error, Event, Mutation, Service, Services};
-use crate::store::wh_storage::WHStorage;
-// use crate::store::WHStorage;
+use crate::services::{Event, Mutation, Service, Services};
+use errors::Error;
 use crate::ws::{engine_io, error_general, socket_io, Connect, Disconnect, WsMessage};
-use crate::{ws, SOrganizations};
-use crate::{AnimoDB, Settings, ID};
+use crate::{ws, storage::SOrganizations};
+use crate::{animo::db::AnimoDB, settings::Settings, animo::memory::ID};
 use actix::prelude::*;
 use crossbeam::channel::{Receiver, RecvError, Sender};
 use futures::SinkExt;
@@ -16,6 +15,8 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use tokio_cron_scheduler::JobScheduler;
 use uuid::Uuid;
+use store::wh_storage::WHStorage;
+use store::GetWarehouse;
 
 type Socket = Recipient<WsMessage>;
 
@@ -33,6 +34,12 @@ pub struct Application {
   stop: Arc<AtomicBool>,
   pub(crate) events: Sender<Event>,
   pub(crate) sender: Sender<Mutation>,
+}
+
+impl GetWarehouse for Application {
+  fn warehouse(&self) -> WHStorage {
+    self.warehouse.clone()
+  }
 }
 
 impl Application {
@@ -57,7 +64,7 @@ impl Application {
       job_scheduler,
       services,
       storage: None,
-      warehouse: WHStorage::open(&settings.database.inventory)?,
+      warehouse: WHStorage::open(&settings.database.inventory).map_err(|e| Error::GeneralError(e.message()))?,
       // channels: Arc::new(HashMap::new()),
       stop: stop.clone(),
       events: events_sender,

@@ -1,5 +1,5 @@
 use crate::animo::memory::ID;
-use crate::services::Error;
+use errors::Error;
 use crate::storage::memories::SMemories;
 use crate::storage::old_references::{SDepartment, SLocation, SPerson, SShift};
 use crate::storage::{json, load, save, SCamera};

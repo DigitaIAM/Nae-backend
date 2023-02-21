@@ -5,7 +5,7 @@ use json::JsonValue;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
-use crate::services::Error;
+use errors::Error;
 
 pub trait JsonParams {
   fn string(&self) -> String;

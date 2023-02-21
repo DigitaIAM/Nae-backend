@@ -5,7 +5,8 @@ use rkyv::AlignedVec;
 use serde::{Deserialize, Serialize};
 use crate::animo::error::DBError;
 use crate::animo::memory::{Context, ID, ID_BYTES, ID_MAX, ID_MIN};
-use crate::{AnimoDB, Zone};
+use crate::animo::memory::Zone;
+use crate::animo::db::AnimoDB;
 use crate::animo::db::{FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 use crate::animo::*;
 use crate::animo::ops_manager::*;
@@ -143,7 +144,7 @@ impl WHStoreTopology {
 
         let memo = WHStoreTopology::balance_tx(&mut tx, store, date)?;
 
-        // TODO: unregister memo if case of error
+        // TODO: unregister memo if case of errors
         tx.commit()?;
 
         Ok(memo)
@@ -577,7 +578,7 @@ impl ObjectInTopology<WHBalance,BalanceOperation,StoreMovement> for StoreBalance
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Memory;
+    use crate::animo::memory::Memory;
     use crate::warehouse::test_util::{init, incoming, outgoing, delete};
 
     #[test]

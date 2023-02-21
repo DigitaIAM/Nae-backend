@@ -1,7 +1,9 @@
 use super::{
   check_batch_store_date::CheckBatchStoreDate, check_date_store_batch::CheckDateStoreBatch,
   date_type_store_batch_id::DateTypeStoreBatchId, store_date_type_batch_id::StoreDateTypeBatchId,
-  CheckpointTopology, Db, OpMutation, OrderedTopology, WHError,
+  elements::{CheckpointTopology, OpMutation, OrderedTopology},
+  db::Db,
+  error::WHError,
 };
 use chrono::DateTime;
 use rocksdb::{ColumnFamilyDescriptor, Options, DB};

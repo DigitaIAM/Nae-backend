@@ -1,6 +1,6 @@
 use crate::animo::error::DBError;
 use crate::ws::{engine_io, error_general, socket_io, Connect, Disconnect, Event, WsMessage};
-use crate::{Commutator, ID};
+use crate::{commutator::Commutator, animo::memory::ID};
 use actix::{
   fut, Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
   Running, StreamHandler, WrapFuture,
@@ -145,7 +145,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
               },
               engine_io::UPGRADE => todo!(),
               engine_io::NOON => todo!(),
-              _ => todo!("handle error"),
+              _ => todo!("handle errors"),
             }
           },
           _ => todo!("handle unknown message"),

@@ -1,4 +1,3 @@
-use crate::services;
 use chrono::ParseError;
 use json::JsonError;
 use std::string::FromUtf8Error;
@@ -15,6 +14,12 @@ impl WHError {
 
   pub fn message(&self) -> String {
     self.message.clone()
+  }
+}
+
+impl std::convert::From<errors::Error> for WHError {
+  fn from(e: errors::Error) -> Self {
+    WHError { message: e.to_string() }
   }
 }
 
@@ -54,11 +59,11 @@ impl From<uuid::Error> for WHError {
   }
 }
 
-impl From<services::Error> for WHError {
-  fn from(e: services::Error) -> Self {
-    WHError { message: e.to_string() }
-  }
-}
+// impl From<errors::Error> for WHError {
+//   fn from(e: errors::Error) -> Self {
+//     WHError { message: e.to_string() }
+//   }
+// }
 
 impl From<JsonError> for WHError {
   fn from(e: JsonError) -> Self {

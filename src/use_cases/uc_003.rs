@@ -4,6 +4,7 @@ use csv::{ReaderBuilder, Trim};
 use json::JsonValue;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use crate::commutator::Application;
 
 pub(crate) fn import(app: &Application) {
   let mut reader = ReaderBuilder::new()

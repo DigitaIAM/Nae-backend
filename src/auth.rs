@@ -1,7 +1,7 @@
 use crate::animo::error::DBError;
 use crate::animo::memory::{ChangeTransformation, Context, TransformationKey, Value, ID};
-use crate::utils::time::{now_in_millis, now_in_seconds};
-use crate::{AnimoDB, Application, Memory, Settings, DESC};
+use utils::time::{now_in_millis, now_in_seconds};
+use crate::{animo::db::AnimoDB, commutator::Application, animo::memory::Memory, settings::Settings, animo::shared::DESC};
 use actix_web::dev::{Payload, ServiceRequest};
 use actix_web::{post, web, Error, FromRequest, HttpRequest, HttpResponse, Responder};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
@@ -87,10 +87,10 @@ pub(crate) fn decode_token(app: &Application, token: &str) -> Result<String, DBE
 //             if res == true {
 //                 Ok(req)
 //             } else {
-//                 Err(actix_web::error::ErrorUnauthorized(""))
+//                 Err(actix_web::errors::ErrorUnauthorized(""))
 //             }
 //         }
-//         Err(_) => Err(actix_web::error::ErrorUnauthorized("")),
+//         Err(_) => Err(actix_web::errors::ErrorUnauthorized("")),
 //     }
 // }
 

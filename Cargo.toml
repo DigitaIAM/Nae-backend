@@ -10,6 +10,9 @@ strip = true
 #panic = "abort"
 
 [dependencies]
+errors = { path = "./errors" }
+utils = { path = "./utils" }
+store = { path = "./store" }
 derives = { path = "./derives" }
 lazy_static = "1.4.0"
 walkdir = "2.3.2"

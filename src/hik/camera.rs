@@ -1,4 +1,4 @@
-use crate::{Application, Services, ID};
+use crate::{commutator::Application, services::Services, animo::memory::ID};
 use actix::ContextFutureSpawner;
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, SecondsFormat, Utc};
@@ -27,7 +27,7 @@ use crate::hik::data::triggers_parser::TriggerItem;
 use crate::hik::error::{Error, Result};
 use crate::services::Mutation;
 use crate::storage::SCamera;
-use crate::utils::time::now_in_seconds;
+use utils::time::now_in_seconds;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 // #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -93,7 +93,7 @@ impl StatusCamera {
           "connected" => StatusCamera::Connected(ts),
           "last-event" => StatusCamera::LastEvent(ts),
           "disconnect" => StatusCamera::Disconnect(ts),
-          "error" => {
+          "errors" => {
             let msg = data["msg"].as_str().unwrap_or("");
             StatusCamera::Error(ts, msg.to_string())
           },
@@ -112,7 +112,7 @@ impl StatusCamera {
         StatusCamera::Connected(ts) => ("connected", ts, None),
         StatusCamera::LastEvent(ts) => ("last-event", ts, None),
         StatusCamera::Disconnect(ts) => ("disconnect", ts, None),
-        StatusCamera::Error(ts, msg) => ("error", ts, Some(msg.clone())),
+        StatusCamera::Error(ts, msg) => ("errors", ts, Some(msg.clone())),
       }
     };
 
@@ -206,8 +206,8 @@ impl State {
 // #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct ConfigCamera {
   // #[serde(skip_deserializing)]
-  pub id: crate::ID,
-  pub oid: crate::ID,
+  pub id: crate::animo::memory::ID,
+  pub oid: crate::animo::memory::ID,
 
   pub name: String,
 
@@ -292,7 +292,7 @@ fn send_update(app: &Application, oid: ID, cid: ID, status: StatusCamera) {
   match app.handle(mutation) {
     Ok(_) => {},
     Err(e) => {
-      println!("error {e}");
+      println!("errors {e}");
     },
   }
 }
@@ -375,7 +375,7 @@ async fn processing(
   let mut wait_on_error = 0;
 
   'outer: loop {
-    // wait on error
+    // wait on errors
     if wait(wait_on_error, &config).await {
       break;
     }

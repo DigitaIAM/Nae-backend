@@ -1,5 +1,5 @@
 use crate::animo::memory::ID;
-use crate::services::Error;
+use errors::Error;
 use crate::storage::{json, load, save};
 use json::JsonValue;
 use std::path::PathBuf;

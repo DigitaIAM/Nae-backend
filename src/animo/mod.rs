@@ -18,7 +18,7 @@ use crate::animo::db::*;
 pub(crate) use crate::animo::time::{Time, TimeInterval};
 use crate::animo::memory::*;
 use crate::animo::ops_manager::*;
-use crate::DESC;
+use crate::animo::shared::DESC;
 use crate::text_search::TextSearch;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
@@ -113,7 +113,7 @@ where
         } else if let Some(after) = self.after.as_ref() {
             after.operation().to_value()
         } else {
-            unreachable!("internal error")
+            unreachable!("internal errors")
         }
    }
 }
@@ -132,7 +132,7 @@ where
         } else if let Some(before) = self.before.as_ref() {
             before.prefix()
         } else {
-            unreachable!("internal error")
+            unreachable!("internal errors")
         }
     }
 
@@ -142,7 +142,7 @@ where
         } else if let Some(before) = self.before.as_ref() {
             before.position()
         } else {
-            unreachable!("internal error")
+            unreachable!("internal errors")
         }
     }
 

@@ -38,7 +38,7 @@ impl IntervalPosition {
       [2] => Ok(IntervalPosition::End),
       [b] => Err(format!("wrong byte {}", b).into()),
       [] => Err(format!("no byte").into()),
-      [_, _, ..] => unreachable!("internal error"),
+      [_, _, ..] => unreachable!("internal errors"),
     }
   }
 }
@@ -82,7 +82,7 @@ impl TimeAccuracy {
       [6] => Ok(TimeAccuracy::Second),
       [b] => Err(format!("wrong byte {}", b).into()),
       [] => Err(format!("no byte").into()),
-      [_, _, ..] => unreachable!("internal error"),
+      [_, _, ..] => unreachable!("internal errors"),
     }
   }
 }
@@ -274,7 +274,7 @@ impl TimeInterval {
   pub fn new(from: &str, till: &str) -> Result<Self, DBError> {
     let from = Time::new(from)?.start();
     let till = Time::new(till)?.end();
-    // TODO raise error in case from.1 != till.1
+    // TODO raise errors in case from.1 != till.1
     Ok(TimeInterval { from, till })
   }
 }

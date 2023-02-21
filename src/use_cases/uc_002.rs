@@ -3,7 +3,8 @@ use std::io::{BufRead, BufReader};
 use csv::{ReaderBuilder, Trim};
 use crate::*;
 use crate::use_cases::write;
-
+use crate::animo::{db::AnimoDB, Time, memory::{ID, create}, shared::{DESC, UOM_PIECE, UOM_METER, REFERENCE, LABEL, CAN_BUY_FROM, PRICE, NUMBER, UOM, MINIMUM_ORDER_QTY, DATE}};
+use rust_decimal::Decimal;
 pub(crate) fn import(db: &AnimoDB) {
     let mut changes = Vec::with_capacity(1_000_000);
 
@@ -33,7 +34,7 @@ pub(crate) fn import(db: &AnimoDB) {
         let uom = match &record[3] {
             "За штуку" => *UOM_PIECE,
             "За метр" => *UOM_METER,
-            _ => unreachable!("internal error")
+            _ => unreachable!("internal errors")
         };
 
         let activity = &record[8];

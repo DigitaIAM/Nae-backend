@@ -3,8 +3,9 @@ mod people;
 pub(crate) mod persistent;
 mod users;
 
-use crate::store::dt;
-use crate::{store, ID};
+use store::elements::dt;
+use crate::animo::memory::ID;
+use store;
 use actix_web::web::Json;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, ParseResult, Utc};
 use json::JsonValue;
@@ -13,8 +14,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::animo::error::DBError;
-use crate::utils::json::JsonParams;
-use crate::utils::time::DateRange;
+use errors::Error;
+use utils::json::JsonParams;
+use utils::time::DateRange;
 pub(crate) use authentication::Authentication;
 pub(crate) use people::People;
 pub(crate) use users::Users;
@@ -261,94 +263,94 @@ impl Service for NoService {
 //     502: BadGateway
 //     503: Unavailable
 
-quick_error! {
-  #[derive(Debug)]
-  pub enum Error {
-    NotAuthenticated(error: String) {
-      display("{}", error)
-    }
-    NotFound(error: String) {
-      display("{}", error)
-    }
-    IOError(error: String) {
-      display("{}", error)
-    }
-    GeneralError(error: String) {
-      display("{}", error)
-      // from(e: crate::hik::error::Error) -> (e.to_string())
-    }
-    CameraError(error: crate::hik::error::Error) {
-      display("{}", error.to_string())
-    }
-    NotImplemented
-  }
-}
+// quick_error! {
+//   #[derive(Debug)]
+//   pub enum Error {
+//     NotAuthenticated(errors: String) {
+//       display("{}", errors)
+//     }
+//     NotFound(errors: String) {
+//       display("{}", errors)
+//     }
+//     IOError(errors: String) {
+//       display("{}", errors)
+//     }
+//     GeneralError(errors: String) {
+//       display("{}", errors)
+//       // from(e: crate::hik::errors::Error) -> (e.to_string())
+//     }
+//     CameraError(errors: crate::hik::errors::Error) {
+//       display("{}", errors.to_string())
+//     }
+//     NotImplemented
+//   }
+// }
 
-impl std::convert::From<std::io::Error> for Error {
-  fn from(e: std::io::Error) -> Self {
-    Error::IOError(e.to_string())
-  }
-}
-
-impl std::convert::From<chrono::ParseError> for Error {
-  fn from(e: chrono::ParseError) -> Self {
-    Error::IOError(e.to_string())
-  }
-}
-
-impl std::convert::From<uuid::Error> for Error {
-  fn from(e: uuid::Error) -> Self {
-    Error::IOError(e.to_string())
-  }
-}
-
-impl std::convert::From<store::WHError> for Error {
-  fn from(e: store::WHError) -> Self {
-    Error::IOError(e.message())
-  }
-}
-
-impl Error {
-  fn to_code(&self) -> usize {
-    match self {
-      Error::NotAuthenticated(_) => 401,
-      Error::NotFound(_) => 404,
-      Error::NotImplemented => 501,
-      _ => 500,
-    }
-  }
-
-  fn to_class_name(&self) -> &str {
-    match self {
-      Error::NotAuthenticated(_) => "not-authenticated",
-      Error::NotFound(_) => "not-found",
-      Error::IOError(_) => "io-error",
-      Error::GeneralError(_) => "general-error",
-      Error::CameraError(_) => "general-error",
-      Error::NotImplemented => "not-implemented",
-    }
-  }
-
-  fn to_name(&self) -> &str {
-    match self {
-      Error::NotAuthenticated(_) => "NotAuthenticated",
-      Error::NotFound(_) => "NotFound",
-      Error::IOError(_) => "IOError",
-      Error::GeneralError(_) => "GeneralError",
-      Error::CameraError(_) => "GeneralError",
-      Error::NotImplemented => "NotImplemented",
-    }
-  }
-
-  pub fn to_json(&self) -> JsonValue {
-    json::object! {
-      className: self.to_class_name(),
-      code: self.to_code(),
-      message: self.to_string(),
-      name: self.to_name(),
-    }
-  }
-}
+// impl std::convert::From<std::io::Error> for Error {
+//   fn from(e: std::io::Error) -> Self {
+//     Error::IOError(e.to_string())
+//   }
+// }
+//
+// impl std::convert::From<chrono::ParseError> for Error {
+//   fn from(e: chrono::ParseError) -> Self {
+//     Error::IOError(e.to_string())
+//   }
+// }
+//
+// impl std::convert::From<uuid::Error> for Error {
+//   fn from(e: uuid::Error) -> Self {
+//     Error::IOError(e.to_string())
+//   }
+// }
+//
+// impl std::convert::From<store::WHError> for Error {
+//   fn from(e: store::WHError) -> Self {
+//     Error::IOError(e.message())
+//   }
+// }
+//
+// impl Error {
+//   fn to_code(&self) -> usize {
+//     match self {
+//       Error::NotAuthenticated(_) => 401,
+//       Error::NotFound(_) => 404,
+//       Error::NotImplemented => 501,
+//       _ => 500,
+//     }
+//   }
+//
+//   fn to_class_name(&self) -> &str {
+//     match self {
+//       Error::NotAuthenticated(_) => "not-authenticated",
+//       Error::NotFound(_) => "not-found",
+//       Error::IOError(_) => "io-errors",
+//       Error::GeneralError(_) => "general-errors",
+//       Error::CameraError(_) => "general-errors",
+//       Error::NotImplemented => "not-implemented",
+//     }
+//   }
+//
+//   fn to_name(&self) -> &str {
+//     match self {
+//       Error::NotAuthenticated(_) => "NotAuthenticated",
+//       Error::NotFound(_) => "NotFound",
+//       Error::IOError(_) => "IOError",
+//       Error::GeneralError(_) => "GeneralError",
+//       Error::CameraError(_) => "GeneralError",
+//       Error::NotImplemented => "NotImplemented",
+//     }
+//   }
+//
+//   pub fn to_json(&self) -> JsonValue {
+//     json::object! {
+//       className: self.to_class_name(),
+//       code: self.to_code(),
+//       message: self.to_string(),
+//       name: self.to_name(),
+//     }
+//   }
+// }
 
 pub trait JsonData {
   fn json(&self) -> Result;

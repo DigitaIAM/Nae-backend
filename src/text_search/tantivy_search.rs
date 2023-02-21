@@ -9,7 +9,7 @@ use tantivy::schema::{Field, STRING};
 use crate::animo::memory::ChangeTransformation;
 use crate::animo::shared::*;
 use crate::animo::{DeltaOp, OperationsTopology, Txn};
-use crate::{Context, ID, Value};
+use crate::animo::memory::{Context, ID, Value};
 use crate::animo::db::Snapshot;
 use crate::animo::error::{convert, DBError};
 
@@ -178,7 +178,7 @@ impl TextSearch {
 mod tests {
   use std::thread::Thread;
   use crate::animo::{memory::create, shared::*};
-  use crate::{Memory, Value};
+  use crate::animo::memory::{Memory, Value};
   use crate::warehouse::test_util::init;
 
   use super::*;

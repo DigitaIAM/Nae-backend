@@ -20,10 +20,11 @@ use crate::services::{string_to_id, Data, Params, Service};
 use crate::storage::{SCamera, SOrganizations};
 use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
-use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
-
-type ORG = ID;
-type CAM = ID;
+use crate::{
+  auth, commutator::Application, services::Services, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+};
+type ORG = crate::animo::memory::ID;
+type CAM = crate::animo::memory::ID;
 
 pub struct Cameras {
   app: Application,
@@ -96,7 +97,7 @@ impl Cameras {
     // cam.save(data)?;
 
     let cam = self.orgs.get(&config.oid).camera(&config.id).create()?;
-    let data = config.data().map_err(|e| crate::services::Error::IOError(e.to_string()))?;
+    let data = config.data().map_err(|e| errors::Error::IOError(e.to_string()))?;
     cam.save(data)?;
     Ok(JsonValue::Null)
   }
@@ -147,7 +148,7 @@ impl Service for Cameras {
 
     let objs = self.objs.read().unwrap();
     match objs.get(&id) {
-      None => Err(crate::services::Error::NotFound(id.to_base64())),
+      None => Err(errors::Error::NotFound(id.to_base64())),
       Some((_, config)) => Ok(config.lock().unwrap().to_json()),
     }
   }
@@ -285,11 +286,11 @@ impl Service for Cameras {
 
       Ok(data)
     } else {
-      Err(crate::services::Error::NotFound(id.to_base64()))
+      Err(errors::Error::NotFound(id.to_base64()))
     }
   }
 
   fn remove(&self, id: String, params: Params) -> crate::services::Result {
-    Err(crate::services::Error::NotImplemented)
+    Err(errors::Error::NotImplemented)
   }
 }

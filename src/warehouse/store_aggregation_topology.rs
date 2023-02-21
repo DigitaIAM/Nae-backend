@@ -10,8 +10,7 @@ use log::debug;
 use crate::animo::*;
 use crate::animo::error::DBError;
 use crate::animo::memory::*;
-use crate::AnimoDB;
-use crate::animo::db::{FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
+use crate::animo::db::{AnimoDB, FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 use crate::animo::ops_manager::*;
 use crate::animo::shared::*;
 use crate::warehouse::balance::WHBalance;
@@ -615,7 +614,7 @@ impl From<&DeltaOp<WHBalance,BalanceOperation,StoreBalance,StoreMovement>> for S
                 BalanceOps::from(&after.op)
             )
         } else {
-            unreachable!("internal error")
+            unreachable!("internal errors")
         }
     }
 }
@@ -754,7 +753,7 @@ mod tests {
     use criterion::Bencher;
     use dbase::{FieldValue, Record};
     use super::*;
-    use crate::{Memory, Settings};
+    use crate::{animo::memory::Memory, settings::Settings};
     use crate::warehouse::test_util::*;
 
     #[test]

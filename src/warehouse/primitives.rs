@@ -1,6 +1,7 @@
 use rkyv::{Archive, Deserialize, Serialize};
 use bytecheck::CheckBytes;
-use crate::Decimal;
+use Decimal;
+
 
 // #[derive(Debug, Clone, Hash, Eq, PartialEq, Default, Serialize, Deserialize)]
 #[derive(Clone, Default)]
