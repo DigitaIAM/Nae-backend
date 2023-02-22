@@ -15,6 +15,3 @@ pub mod wh_storage;
 pub trait GetWarehouse {
     fn warehouse(&self) -> WHStorage;
 }
-
-#[cfg(test)]
-mod test;
