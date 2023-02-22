@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use dbase::{FieldValue, Record};

@@ -1,7 +1,7 @@
 use rkyv::{Archive, Deserialize, Serialize};
 use bytecheck::CheckBytes;
-use Decimal;
 
+pub type Decimal = f64; // rust_decimal::Decimal;
 
 // #[derive(Debug, Clone, Hash, Eq, PartialEq, Default, Serialize, Deserialize)]
 #[derive(Clone, Default)]

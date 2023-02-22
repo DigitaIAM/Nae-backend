@@ -15,8 +15,8 @@ use crate::settings::Settings;
 use blake2::{Blake2s256, Digest};
 use json::JsonValue;
 use json::JsonValue::Number;
-use rust_decimal::Decimal;
 use std::convert::TryFrom;
+use crate::warehouse::primitives::Decimal;
 
 type Hasher = Blake2s256;
 pub(crate) const ID_BYTES: usize = 32;

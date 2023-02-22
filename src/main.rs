@@ -8,11 +8,12 @@ extern crate store;
 extern crate utils;
 extern crate actix;
 extern crate jsonwebtoken;
-extern crate tempfile;
+// extern crate tempfile;
 extern crate rust_decimal;
 extern crate tracing;
 extern crate rkyv;
 extern crate dbase;
+extern crate reqwest;
 
 use crate::commutator::{Application, Commutator};
 use actix::{Actor, Addr};
@@ -75,8 +76,6 @@ use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
 use animo::db::AnimoDB;
 use animo::memory::Memory;
-
-pub type Decimal = f64; // rust_decimal::Decimal;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "basic")]

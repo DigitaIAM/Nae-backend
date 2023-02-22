@@ -35,10 +35,6 @@ pub(crate) type Store = Uuid;
 pub(crate) type Qty = Decimal;
 pub(crate) type Cost = Decimal;
 
-const G1: Uuid = Uuid::from_u128(1);
-const G2: Uuid = Uuid::from_u128(2);
-const G3: Uuid = Uuid::from_u128(3);
-
 pub(crate) const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
 pub(crate) const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
@@ -85,9 +81,9 @@ impl Batch {
 impl ToJson for Batch {
     fn to_json(&self) -> JsonValue {
         object! {
-      id: self.id.to_json(),
-      date: self.date.to_json()
-    }
+          id: self.id.to_json(),
+          date: self.date.to_json()
+        }
     }
 }
 
@@ -185,12 +181,16 @@ pub trait OrderedTopology {
             if !current_balance.delta(&new_balance).is_zero() {
                 let mut before_balance = new_balance;
                 for (next_operation, next_current_balance) in self.operations_after(&calculated_op)? {
-                    let (calculated_op, new_balance) = self.evaluate(&before_balance, &next_operation);
-
-                    if calculated_op.is_zero() {
-                        self.del(&calculated_op)?;
+                    let (calc_op, new_balance) = self.evaluate(&before_balance, &next_operation);
+                    if calc_op.is_zero() {
+                        self.del(&calc_op)?;
                     } else {
-                        self.put(&calculated_op, &new_balance)?;
+                        self.put(&calc_op, &new_balance)?;
+                    }
+
+                    // if next op have dependant add it to ops
+                    if let Some(dep) = calc_op.dependent() {
+                        ops.push(dep);
                     }
 
                     if !next_current_balance.delta(&new_balance).is_zero() {
@@ -198,11 +198,6 @@ pub trait OrderedTopology {
                     }
 
                     before_balance = new_balance;
-
-                    // if next op have dependant add it to ops
-                    if let Some(dep) = calculated_op.dependent() {
-                        ops.push(dep);
-                    }
                 }
             }
         }
@@ -216,8 +211,9 @@ pub trait OrderedTopology {
                 (op.clone(), BalanceForGoods { qty: balance.qty + q, cost: balance.cost + c })
             },
             InternalOperation::Issue(q, c, m) => {
+                let mut cost = c.clone();
                 let op = if m == &Mode::Auto {
-                    let cost = match balance.cost.checked_div(balance.qty) {
+                    cost = match balance.cost.checked_div(balance.qty) {
                         Some(price) => price * q,
                         None => 0.into(), // TODO raise exeption?
                     };
@@ -233,7 +229,8 @@ pub trait OrderedTopology {
                 } else {
                     op.clone()
                 };
-                (op, BalanceForGoods { qty: balance.qty - q, cost: balance.cost - c })
+
+                (op, BalanceForGoods { qty: balance.qty - q, cost: balance.cost - cost })
             },
         }
     }
@@ -1381,6 +1378,3 @@ fn json_to_ops(
 
     Ok(ops)
 }
-//
-// #[cfg(test)]
-// mod tests;

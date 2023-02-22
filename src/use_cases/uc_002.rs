@@ -4,7 +4,7 @@ use csv::{ReaderBuilder, Trim};
 use crate::*;
 use crate::use_cases::write;
 use crate::animo::{db::AnimoDB, Time, memory::{ID, create}, shared::{DESC, UOM_PIECE, UOM_METER, REFERENCE, LABEL, CAN_BUY_FROM, PRICE, NUMBER, UOM, MINIMUM_ORDER_QTY, DATE}};
-use rust_decimal::Decimal;
+use crate::warehouse::primitives::Decimal;
 pub(crate) fn import(db: &AnimoDB) {
     let mut changes = Vec::with_capacity(1_000_000);
 

@@ -3,6 +3,9 @@ name = "nae-backend"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["./store"]
+
 [profile.release]
 strip = true
 #opt-level = "z" #optimize for size

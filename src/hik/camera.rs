@@ -20,7 +20,6 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, event, info, info_span, trace, warn, Instrument};
 use uuid::Uuid;
 
-use crate::header::CONTENT_TYPE;
 use crate::hik::auth::WithDigestAuth;
 use crate::hik::data::alert_item::AlertItem;
 use crate::hik::data::triggers_parser::TriggerItem;
@@ -28,6 +27,7 @@ use crate::hik::error::{Error, Result};
 use crate::services::Mutation;
 use crate::storage::SCamera;
 use utils::time::now_in_seconds;
+use reqwest::header::CONTENT_TYPE;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 // #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
