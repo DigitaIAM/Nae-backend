@@ -31,7 +31,7 @@ pub struct MemoriesInFiles {
 }
 
 impl MemoriesInFiles {
-  pub(crate) fn new(app: Application, name: &str, orgs: SOrganizations) -> Arc<dyn Service> {
+  pub fn new(app: Application, name: &str, orgs: SOrganizations) -> Arc<dyn Service> {
     Arc::new(MemoriesInFiles { app, name: Arc::new(name.to_string()), orgs })
   }
 }

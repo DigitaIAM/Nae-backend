@@ -11,7 +11,7 @@ use crate::services::Services;
 use crate::animo::memory::Memory;
 use qstring::QString;
 
-pub(crate) async fn not_implemented() -> impl Responder {
+pub async fn not_implemented() -> impl Responder {
   HttpResponse::NotImplemented().json("")
 }
 

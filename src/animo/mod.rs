@@ -462,13 +462,13 @@ impl<'a> Txn<'a> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub(crate) enum Topology {
+pub enum Topology {
     WarehouseStore(Arc<WHStoreTopology>),
     WarehouseStoreAggregation(Arc<WHStoreAggregationTopology>),
 }
 
 #[derive(Default)]
-pub(crate) struct Animo {
+pub struct Animo {
     topologies: Vec<Topology>,
 
     // HashMap<ID, ...>

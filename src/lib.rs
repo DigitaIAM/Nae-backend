@@ -1,25 +1,25 @@
 #[macro_use] extern crate quick_error;
 
 mod auth;
-mod commutator;
+pub mod commutator;
 mod file;
-mod inventory;
-mod services;
-mod settings;
-mod storage;
+pub mod inventory;
+pub mod services;
+pub mod settings;
+pub mod storage;
 mod websocket;
 mod ws;
 
 mod accounts;
-mod animo;
-mod api;
+pub mod animo;
+pub mod api;
 mod hr;
-mod memories;
+pub mod memories;
 mod text_search;
 mod use_cases;
 pub mod warehouse;
 
 mod hik;
 
-#[cfg(test)]
-mod test;
+// #[cfg(test)]
+// mod test;

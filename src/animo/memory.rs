@@ -410,7 +410,7 @@ impl ID {
     }
   }
 
-  pub(crate) fn to_base64(&self) -> String {
+  pub fn to_base64(&self) -> String {
     base64::encode_config(self.0, base64::URL_SAFE_NO_PAD)
   }
 
@@ -471,7 +471,7 @@ impl Context {
   // }
 }
 
-pub(crate) trait Memory {
+pub trait Memory {
   fn init(folder: PathBuf) -> Result<Self, DBError>
   where
     Self: Sized;

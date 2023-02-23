@@ -24,7 +24,7 @@ pub struct Settings {
 }
 
 impl Settings {
-  pub(crate) fn test(folder: PathBuf) -> Settings {
+  pub fn test(folder: PathBuf) -> Settings {
     Settings {
       debug: false,
       jwt_config: JWTConfig {

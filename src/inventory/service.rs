@@ -11,13 +11,13 @@ use json::object::Object;
 use json::JsonValue;
 use std::sync::{Arc, RwLock};
 
-pub(crate) struct Inventory {
+pub struct Inventory {
   app: Application,
   path: Arc<String>,
 }
 
 impl Inventory {
-  pub(crate) fn new(app: Application) -> Arc<dyn Service> {
+  pub fn new(app: Application) -> Arc<dyn Service> {
     Arc::new(Inventory { app, path: Arc::new("inventory".to_string()) })
   }
 }

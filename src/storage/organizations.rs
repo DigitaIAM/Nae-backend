@@ -7,12 +7,12 @@ use json::JsonValue;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
-pub(crate) struct SOrganizations {
+pub struct SOrganizations {
   folder: PathBuf,
 }
 
 impl SOrganizations {
-  pub(crate) fn new<S: AsRef<Path>>(folder: S) -> Self
+  pub fn new<S: AsRef<Path>>(folder: S) -> Self
   where
     PathBuf: std::convert::From<S>,
   {

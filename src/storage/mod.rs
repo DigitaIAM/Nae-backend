@@ -7,7 +7,7 @@ use crate::services::JsonData;
 use errors::Error;
 pub(crate) use cameras::{SCamera, SEvent};
 use json::JsonValue;
-pub(crate) use organizations::SOrganizations;
+pub use organizations::SOrganizations;
 use std::io::Write;
 use std::path::PathBuf;
 

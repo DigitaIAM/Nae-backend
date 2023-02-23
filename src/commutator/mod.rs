@@ -27,7 +27,7 @@ pub struct Application {
   pub(crate) job_scheduler: JobScheduler,
   services: Arc<RwLock<HashMap<String, Arc<dyn Service>>>>,
 
-  pub(crate) storage: Option<SOrganizations>,
+  pub storage: Option<SOrganizations>,
   pub(crate) warehouse: WHStorage,
 
   // background dispatcher
@@ -43,7 +43,7 @@ impl GetWarehouse for Application {
 }
 
 impl Application {
-  pub(crate) async fn new(
+  pub async fn new(
     settings: Arc<Settings>,
     db: Arc<AnimoDB>,
   ) -> Result<(Self, Receiver<Event>), Error> {
