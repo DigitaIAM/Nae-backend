@@ -36,7 +36,6 @@ fn store_test_issue_op_none() {
             None,
             Some(InternalOperation::Receive(3.into(), 10.into())),
         ),
-        // КОРРЕКТНАЯ ОПЕРАЦИЯ С ДВУМЯ NONE?
         OpMutation::new(id3, start_d, w1, None, G1, doc.clone(), None, None),
     ];
 

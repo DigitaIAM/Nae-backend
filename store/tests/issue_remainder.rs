@@ -60,9 +60,6 @@ fn store_test_issue_remainder() {
 
     db.record_ops(&ops).expect("test_issue_remainder");
 
-    // let st = DateTypeStoreGoodsId();
-    // let res = st.get_report(start_d, end_d, w1, &mut db).expect("test_issue_remainder");
-
     // println!("HELLO: {:#?}", res.items.1);
 
     let res = db.get_report(w1, start_d, end_d).unwrap();

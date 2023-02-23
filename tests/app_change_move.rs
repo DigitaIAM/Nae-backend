@@ -150,24 +150,6 @@ async fn app_store_test_change_move() {
         line["cost"] = 10.into();
     }
 
-    // let id = result0["goods"][0]["_tid"].as_str().unwrap();
-
-    // let data2: JsonValue = object! {
-    //     _id: "",
-    //     date: "2023-01-18",
-    //     storage: storage1.to_string(),
-    //     goods: [
-    //         {
-    //             goods: goods1.to_string(),
-    //             uom: "",
-    //             qty: 1,
-    //             price: 10,
-    //             cost: 10,
-    //             _tid: id,
-    //         }
-    //     ]
-    // };
-
     let req = TestRequest::post()
         .uri(&format!("/api/docs/update?oid={}&ctx=warehouse,receive&id={id}", oid.to_base64()))
         .set_payload(data2.dump())

@@ -154,11 +154,6 @@ async fn app_store_test_receive_issue_change() {
         line["cost"] = 20.into();
     }
 
-    // println!(
-    //   "UPDATE RECEIVE {}",
-    //   format!("/api/docs/update?oid={}&ctx=warehouse,receive&id={id}", oid.to_base64())
-    // );
-
     let req = TestRequest::post()
         .uri(&format!("/api/docs/update?oid={}&ctx=warehouse,receive&id={id}", oid.to_base64()))
         .set_payload(data2.to_string())
