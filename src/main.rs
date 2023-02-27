@@ -13,6 +13,10 @@ extern crate tracing;
 extern crate rkyv;
 extern crate dbase;
 extern crate reqwest;
+extern crate csv;
+extern crate uuid;
+extern crate actix_web;
+extern crate errors;
 // extern crate tempfile;
 
 use crate::commutator::{Application, Commutator};
@@ -195,6 +199,7 @@ async fn startup() -> std::io::Result<()> {
         "001" => use_cases::uc_001::import(&app.db),
         "002" => use_cases::uc_002::import(&app.db),
         "003" => use_cases::uc_003::import(&app),
+        "005" => use_cases::uc_005::import(&app),
         _ => unreachable!(),
       }
       Ok(())
@@ -204,6 +209,7 @@ async fn startup() -> std::io::Result<()> {
         "001" => use_cases::uc_001::report(&app.db),
         "002" => use_cases::uc_002::report(&app.db),
         "003" => use_cases::uc_003::report(&app),
+        "005" => use_cases::uc_005::report(&app),
         _ => unreachable!(),
       }
       Ok(())

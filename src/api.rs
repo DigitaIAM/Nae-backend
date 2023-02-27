@@ -42,7 +42,7 @@ pub(crate) async fn memory_modify(
 }
 
 #[post("/api/docs")]
-pub(crate) async fn docs_create(
+pub async fn docs_create(
   req: HttpRequest,
   app: web::Data<Application>,
   data: web::Json<serde_json::Value>,
@@ -65,7 +65,7 @@ pub(crate) async fn docs_create(
 }
 
 #[post("/api/docs/update")]
-pub(crate) async fn docs_update(
+pub async fn docs_update(
   req: HttpRequest,
   // path: web::Path<(String)>,
   app: web::Data<Application>,
@@ -94,8 +94,32 @@ pub(crate) async fn docs_update(
   Ok(HttpResponse::Ok().json(result))
 }
 
+#[get("/api/docs/find")]
+pub async fn docs_find(
+  req: HttpRequest,
+  app: web::Data<Application>,
+  params: web::Query<HashMap<String, String>>,
+) -> Result<HttpResponse, Error> {
+
+  let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
+
+  let oid = params["oid"].clone();
+
+  let filter = params["filter"].clone();
+
+  let params: JsonValue = object! {"oid": oid, "ctx": ctx, "limit": 2, "skip": 0, "filter": filter};
+
+  let result = web::block(move || app.service("docs").find(params))
+      .await?
+      .map_err(actix_web::error::ErrorInternalServerError)?;
+
+  let result: serde_json::Value = serde_json::from_str(&result.dump()).unwrap();
+
+  Ok(HttpResponse::Ok().json(result))
+}
+
 #[get("/api/inventory")]
-pub(crate) async fn inventory_find(
+pub async fn inventory_find(
   req: HttpRequest,
   app: web::Data<Application>,
   params: web::Query<HashMap<String, String>>,

@@ -16,7 +16,7 @@ pub mod api;
 mod hr;
 pub mod memories;
 mod text_search;
-mod use_cases;
+pub mod use_cases;
 pub mod warehouse;
 
 mod hik;
