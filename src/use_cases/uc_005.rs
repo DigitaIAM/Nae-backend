@@ -10,15 +10,19 @@ use std::io;
 
 use store::elements::ToJson;
 
+use crate::storage::memories::{memories_create, memories_find};
 use crate::commutator::Application;
 use crate::animo::memory::ID;
-use crate::services::Services;
+use service::Services;
 use errors::Error;
 
-const COUNTERPARTY: Vec<&str> = vec!["counterparty".into()];
-const MATERIAL: Vec<&str> = vec!["material".into()];
-const MATERIAL: Vec<&str> = vec!["material".into()];
-const MATERIAL: Vec<&str> = vec!["material".into()];
+const COUNTERPARTY: [&str; 1] = ["counterparty"];
+const STORAGE: [&str; 1] = ["storage"];
+const DOCUMENT: [&str; 1] = ["warehouse/receive/document"];
+const UOM: [&str; 1] = ["uom"];
+const MATERIAL: [&str; 1] = ["material"];
+const CURRENCY: [&str; 1] = ["currency"];
+const WAREHOUSE_RECEIVE: [&str; 2] = ["warehouse","receive"];
 
 struct Quantity {
     number: Decimal,
@@ -34,7 +38,30 @@ pub(crate) fn import(app: &Application) {
     receive_csv_to_json(app, "./tests/data/test_dista.csv").unwrap();
 }
 
-pub(crate) fn report(app: &Application) {}
+pub(crate) fn report(app: &Application) {
+    let oid = ID::from("Midas-Plastics");
+    let ctx = vec!["report"];
+    let from_date = "2022-12-20";
+    let till_date = "2022-12-22";
+
+    let storage = json(app,object! { name: "Склад Midas Plastics" }, STORAGE.to_vec(), &|| object! { name: "Склад Midas Plastics" }).unwrap();
+
+    let result = app.service("inventory").find(object!{ctx: ctx, oid: oid.to_base64(), storage: storage["_uuid"].clone(), dates: {"from": from_date, "till": till_date}}).unwrap();
+
+    println!("report: {result:?}");
+}
+
+fn json(app: &Application, filter: JsonValue, ctx: Vec<&str>, item: &dyn Fn() -> JsonValue) -> Result<JsonValue, Error> {
+    if let Ok(items) = memories_find(app, filter, ctx.clone()) {
+        match items.len() {
+            0 => memories_create(app, item(), ctx),
+            1 => Ok(items[0].clone()),
+            _ => unreachable!("two or more same items in db"),
+        }
+    } else {
+        memories_create(app, item(), ctx)
+    }
+}
 
 pub fn receive_csv_to_json(app: &Application, path: &str) -> Result<(), Error> {
     let mut reader = ReaderBuilder::new().delimiter(b',').trim(Trim::All).from_path(path).unwrap();
@@ -51,137 +78,54 @@ pub fn receive_csv_to_json(app: &Application, path: &str) -> Result<(), Error> {
         }
 
         let counterparty_name = &record[6];
-        let counterparty = if let Ok(counterparties) = service_find(app, object! { name: counterparty_name }, COUNTERPARTY) {
-            match counterparties.len() {
-                0 => {
-                    let counterparty = object! { name: counterparty_name };
-                    service_create(app, counterparty, COUNTERPARTY)?
-                },
-                1 => {
-                    counterparties[0].clone()
-                },
-                _ => {
-                    unreachable!("two or more same counterparties in db")
-                },
-            }
-        } else {
-            let counterparty = object! { name: counterparty_name };
-            service_create(app, counterparty, COUNTERPARTY)?
-        };
+        let counterparty = json(app, object! { name: counterparty_name }, COUNTERPARTY.to_vec(), &|| object! { name: counterparty_name })?;
 
         let storage_name = &record[7];
-        let storage = if let Ok(storages) = service_find(app, object! { name: storage_name }, "warehouse/receive/storage") {
-            match storages.len() {
-                0 => {
-                    let storage = object! { name: storage_name };
-                    service_create(app, storage, "warehouse/receive/storage")?
-                },
-                1 => storages[0].clone(),
-                _ => {
-                    unreachable!("two or more same storages in db")
-                },
-            }
-        } else {
-            let storage = object! { name: storage_name };
-            service_create(app, storage, "warehouse/receive/storage")?
-        };
+        let storage = json(app, object! { name: storage_name }, STORAGE.to_vec(), &|| object! { name: storage_name })?;
 
-        let document = if let Ok(documents) = service_find(app,object! {number: number}, "warehouse/receive/document") {
-            match documents.len() {
-                0 => {
-                    let data = object! {
-                    date: date,
-                    counterparty: counterparty,
-                    storage: storage,
-                    number: number,
-                };
-                    service_create(app, data, "warehouse/receive/document")?
-                },
-                1 => {
-                    documents[0].clone()
-                },
-                _ => {
-                    unreachable!("two or more same documents in db")
-                },
-            }
-        } else {
-            let data = object! {
-                date: date,
-                counterparty: &record[6],
-                storage: &record[7],
-                number: number,
-                };
-            service_create(app, data, "warehouse/receive/document")?
-        };
+        let document = json(app,
+                             object! {number: number},
+                             DOCUMENT.to_vec(),
+                             &|| object! {
+                                date: date.clone(),
+                                counterparty: counterparty["_uuid"].clone(),
+                                storage: storage["_uuid"].clone(),
+                                number: number,
+                            })?;
 
         let unit = &record[3];
-        let uom = if let Ok(units) = service_find(app,object! {uom: unit}, "warehouse/receive/uom") {
-            match units.len() {
-                0 => {
-                    let uom = object! { uom: unit };
-                    service_create(app,uom, "warehouse/receive/uom")?
-                },
-                1 => {
-                    units[0].clone()
-                },
-                _ => {
-                    unreachable!("two or more same uom in db")
-                },
-            }
-        } else {
-            let uom = object! { uom: unit };
-            service_create(app,uom, "warehouse/receive/uom")?
-        };
+        let uom = json(app, object! {uom: unit}, UOM.to_vec(), &|| object! { uom: unit })?;
 
         let vendor_code = &record[2];
-        let item = if let Ok(items) = service_find(app, object! { vendor_code: vendor_code }, "warehouse/receive/material") {
-            match items.len() {
-                0 => {
-                    let item = object!{
-                    name: &record[1],
-                    vendor_code: vendor_code,
-                    uom: uom.clone(),
-                    counterparty: &record[6],
-                };
-                    service_create(app,item, "warehouse/receive/material")?
-                },
-                1 => {
-                    items[0].clone()
-                },
-                _ => {
-                    unreachable!("two or more same items in db")
-                },
-            }
-        } else {
-            let item = object!{
-                name: &record[1],
-                vendor_code: vendor_code,
-                uom: uom.clone(),
-                counterparty: &record[6],
-            };
-            service_create(app,item, vec!["material".into()])?
-        };
+        let item = json(app,
+                        object! { vendor_code: vendor_code },
+                        MATERIAL.to_vec(),
+                        &|| object!{
+                            name: &record[1],
+                            vendor_code: vendor_code,
+                            uom: uom["_uuid"].clone(),
+                            counterparty: counterparty["_uuid"].clone(),
+                        })?;
 
         // cell at the warehouse
         let cell: std::option::Option<String> = None;
 
-        // let qty = Quantity { number: record[4].parse::<Decimal>().unwrap(), uom };
-
         let price: Decimal = 0.into();
-        // let cost = Cost { number: 0.into(), currency: "rub".to_string() };
 
         let number = record[4].parse::<Decimal>().unwrap();
 
+        let currency = memories_create(app, object! {name: "rub"}, CURRENCY.to_vec())?;
+
         let data = object! {
-            document: document,
-            item: item,
-            storage: cell,
-            qty: object! { number: number.to_json(), uom: uom },
+            document: document["_uuid"].clone(),
+            item: item["_uuid"].clone(),
+            cell: cell,
+            qty: object! { number: number.to_json(), uom: uom["_uuid"].clone() },
             price: price.to_json(),
-            cost: object! { number: Decimal::default().to_json(), currency: "rub".to_string() },
+            cost: object! { number: Decimal::default().to_json(), currency: currency["_uuid"].clone() },
         };
 
-        let res = service_create(app, data, vec!["warehouse".into(),"receive".into()])?;
+        let res = memories_create(app, data, WAREHOUSE_RECEIVE.to_vec())?;
 
         println!("data: {res:?}");
     }
@@ -189,19 +133,19 @@ pub fn receive_csv_to_json(app: &Application, path: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn service_find(app: &Application, filter: JsonValue, ctx: Vec<&str>) -> Result<Vec<JsonValue>, Error> {
-    let oid = ID::from("Midas-Plastics");
-    let result = app.service("memories").find(object!{oid: oid.to_base64(), ctx: ctx, filter: filter})?;
-
-    Ok(result["data"].members().map(|o|o.clone()).collect())
-}
-
-fn service_create(app: &Application, data: JsonValue, ctx: Vec<&str>) -> Result<JsonValue, Error> {
-    let oid = ID::from("Midas-Plastics");
-
-    let result = app.service("memories").create(data, object!{oid: oid.to_base64(), ctx: ctx })?;
-
-    // println!("create_result: {result:?}");
-
-    Ok(result)
-}
+// fn memories_find(app: &Application, filter: JsonValue, ctx: Vec<&str>) -> Result<Vec<JsonValue>, Error> {
+//     let oid = ID::from("Midas-Plastics");
+//     let result = app.service("memories").find(object!{oid: oid.to_base64(), ctx: ctx, filter: filter})?;
+//
+//     Ok(result["data"].members().map(|o|o.clone()).collect())
+// }
+//
+// fn memories_create(app: &Application, data: JsonValue, ctx: Vec<&str>) -> Result<JsonValue, Error> {
+//     let oid = ID::from("Midas-Plastics");
+//
+//     let result = app.service("memories").create(data, object!{oid: oid.to_base64(), ctx: ctx })?;
+//
+//     // println!("create_result: {result:?}");
+//
+//     Ok(result)
+// }

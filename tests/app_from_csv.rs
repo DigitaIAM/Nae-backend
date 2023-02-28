@@ -14,10 +14,9 @@ use std::io;
 //     test::{TestRequest, init_service, call_and_read_body},
 //     http::header::ContentType
 // };
-
+use service::Services;
 use nae_backend::{commutator::Application,
                   animo::memory::ID,
-                  services::Services,
                   api,
                   use_cases::uc_005::receive_csv_to_json,
                   storage::SOrganizations,

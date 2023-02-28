@@ -26,7 +26,9 @@ use super::{balance::{BalanceDelta, BalanceForGoods}, check_batch_store_date::Ch
      db::Db};
 pub use super::error::WHError;
 use utils::time::time_to_string;
+
 use crate::GetWarehouse;
+use service::Services;
 
 use utils::json::JsonParams;
 
@@ -1148,10 +1150,10 @@ impl ToJson for Report {
         }
 
         object! {
-      from_date: time_to_naive_string(self.from_date),
-      till_date: time_to_naive_string(self.till_date),
-      items: vec![self.items.0.to_json(), arr]
-    }
+          from_date: time_to_naive_string(self.from_date),
+          till_date: time_to_naive_string(self.till_date),
+          items: vec![self.items.0.to_json(), arr]
+        }
     }
 }
 
@@ -1219,7 +1221,7 @@ pub(crate) fn new_get_aggregations(
 }
 
 pub fn receive_data(
-    app: &impl GetWarehouse,
+    app: &(impl GetWarehouse + Services),
     time: DateTime<Utc>,
     mut data: JsonValue,
     ctx: &Vec<String>,
@@ -1234,12 +1236,12 @@ pub fn receive_data(
     let old_data = data.clone();
 
     if let Some(store) = data["storage"].uuid_or_none() {
-        let mut before = match json_to_ops(&mut before, store.clone(), time.clone(), ctx) {
+        let mut before = match json_to_ops(app, &mut before, store.clone(), time.clone(), ctx) {
             Ok(res) => res,
             Err(_) => return Ok(old_data),
         };
 
-        let mut after = match json_to_ops(&mut data, store, time, ctx) {
+        let mut after = match json_to_ops(app, &mut data, store, time, ctx) {
             Ok(res) => res,
             Err(_) => return Ok(old_data),
         };
@@ -1269,6 +1271,7 @@ pub fn receive_data(
 
         app.warehouse().mutate(&ops)?;
 
+
         if ops.is_empty() {
             Ok(old_data)
         } else {
@@ -1280,6 +1283,7 @@ pub fn receive_data(
 }
 
 fn json_to_ops(
+    app: &impl Services,
     data: &mut JsonValue,
     store: Uuid,
     time: DateTime<Utc>,
@@ -1302,7 +1306,19 @@ fn json_to_ops(
         _ => return Ok(ops),
     };
 
-    let date = data["date"].date()?;
+    let oid = ID::from("Midas-Plastics");
+    let doc_ctx = format!("warehouse/{}/document", type_of_operation);
+    let result = app.service("memories").find(object!{oid: oid.to_base64(), ctx: vec![doc_ctx.as_str()], filter: object! {_uuid: data["document"]}})?;
+
+    let documents: Vec<JsonValue> = result["data"].members().map(|o|o.clone()).collect();
+
+    let document = match documents.len() {
+        0 => Err(WHError::new("No such document fn json_to_ops")),
+        1 => documents[0].clone(),
+        _ => Err(WHError::new("Two or more documents fn json_to_ops")),
+    };
+
+    let date = document["date"].date()?;
     let transfer = if type_of_operation == "transfer" {
         match data["transfer"].uuid_or_none() {
             Some(uuid) => Some(uuid),

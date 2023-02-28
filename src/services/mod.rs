@@ -13,6 +13,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use service::Service;
+
 use crate::animo::error::DBError;
 use errors::Error;
 use utils::json::JsonParams;
@@ -45,162 +47,202 @@ pub enum Event {
   Removed(String, Data),
 }
 
-pub trait Services: Send + Sync {
-  fn register(&mut self, service: Arc<dyn Service>);
-  fn service<S: AsRef<str> + ToString>(&self, name: S) -> Arc<dyn Service>;
+// pub trait Services: Send + Sync {
+//   fn register(&mut self, service: Arc<dyn Service>);
+//   fn service<S: AsRef<str> + ToString>(&self, name: S) -> Arc<dyn Service>;
+// }
+//
+// pub trait Service: Send + Sync {
+//   fn path(&self) -> &str;
+//
+//   fn find(&self, params: Params) -> Result;
+//   fn get(&self, id: String, params: Params) -> Result;
+//   fn create(&self, data: Data, params: Params) -> Result;
+//   fn update(&self, id: String, data: Data, params: Params) -> Result;
+//   fn patch(&self, id: String, data: Data, params: Params) -> Result;
+//   fn remove(&self, id: String, params: Params) -> Result;
+//
+//   fn id(&self, name: &str, params: &Params) -> std::result::Result<ID, Error> {
+//     if let Some(id) = params[name].as_str() {
+//       ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))
+//     } else {
+//       Err(Error::GeneralError(format!("id `{name}` not found")))
+//     }
+//   }
+//
+//   fn uuid(&self, name: &str, params: &Params) -> std::result::Result<uuid::Uuid, Error> {
+//     if let Some(id) = params[name].as_str() {
+//       uuid::Uuid::parse_str(id).map_err(|e| Error::GeneralError(e.to_string()))
+//     } else {
+//       Err(Error::GeneralError(format!("uuid `{name}` not found")))
+//     }
+//   }
+//
+//   fn ctx(&self, params: &Params) -> Vec<String> {
+//     self.params(params)["ctx"]
+//       .members()
+//       .map(|j| j.string_or_none())
+//       .filter(|v| v.is_some())
+//       .map(|v| v.unwrap_or_default())
+//       .collect()
+//   }
+//
+//   fn oid(&self, params: &Params) -> std::result::Result<ID, Error> {
+//     if params.is_array() {
+//       self.id("oid", &params[0])
+//     } else {
+//       self.id("oid", params)
+//     }
+//   }
+//
+//   fn cid(&self, params: &Params) -> std::result::Result<ID, Error> {
+//     if params.is_array() {
+//       self.id("cid", &params[0])
+//     } else {
+//       self.id("cid", params)
+//     }
+//   }
+//
+//   fn pid(&self, params: &Params) -> std::result::Result<ID, Error> {
+//     if params.is_array() {
+//       self.id("pid", &params[0])
+//     } else {
+//       self.id("pid", params)
+//     }
+//   }
+//
+//   fn parse_date(&self, str: &str) -> std::result::Result<DateTime<Utc>, Error> {
+//     match NaiveDate::parse_from_str(str, "%Y-%m-%d") {
+//       Ok(d) => Ok(DateTime::<Utc>::from_utc(NaiveDateTime::new(d, NaiveTime::default()), Utc)),
+//       Err(e) => Err(Error::GeneralError(e.to_string())),
+//     }
+//   }
+//
+//   fn date(&self, name: &str, params: &Params) -> std::result::Result<Option<DateTime<Utc>>, Error> {
+//     let params = {
+//       if params.is_array() {
+//         &params[0]
+//       } else {
+//         params
+//       }
+//     };
+//
+//     if let Some(date) = params[name].as_str() {
+//       // if date == "today" {
+//       //   todo!() // Ok(Utc::now().into())
+//       // } else {
+//       let date = self.parse_date(date)?;
+//       Ok(Some(date))
+//       // }
+//     } else {
+//       Ok(None)
+//     }
+//   }
+//
+//   fn date_range(&self, params: &Params) -> std::result::Result<Option<DateRange>, Error> {
+//     let params = {
+//       if params.is_array() {
+//         &params[0]
+//       } else {
+//         params
+//       }
+//     };
+//
+//     let dates = &params["dates"];
+//
+//     if let Some(date) = dates["from"].as_str() {
+//       let from = self.parse_date(date)?;
+//       // println!("FN_DATE_RANGE {date:?}");
+//       if let Some(date) = dates["till"].as_str() {
+//         let till = self.parse_date(date)?;
+//
+//         Ok(Some(DateRange(from, till)))
+//       } else {
+//         return Err(Error::GeneralError("dates require `till`".into()));
+//       }
+//     } else {
+//       Ok(None)
+//     }
+//   }
+//
+//   fn limit(&self, params: &Params) -> usize {
+//     let params = {
+//       if params.is_array() {
+//         &params[0]
+//       } else {
+//         params
+//       }
+//     };
+//
+//     if let Some(limit) = params["$limit"].as_number() {
+//       usize::try_from(limit).unwrap_or(10).max(100)
+//     } else {
+//       10
+//     }
+//   }
+//
+//   fn skip(&self, params: &Params) -> usize {
+//     let params = {
+//       if params.is_array() {
+//         &params[0]
+//       } else {
+//         params
+//       }
+//     };
+//
+//     if let Some(skip) = params["$skip"].as_number() {
+//       usize::try_from(skip).unwrap_or(0)
+//     } else {
+//       0
+//     }
+//   }
+//
+//   fn params<'a>(&self, params: &'a Params) -> &'a JsonValue {
+//     if params.is_array() {
+//       &params[0]
+//     } else {
+//       params
+//     }
+//   }
+// }
+
+pub fn id(name: &str, params: &Params) -> std::result::Result<ID, Error> {
+  if let Some(id) = params[name].as_str() {
+    ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))
+  } else {
+    Err(Error::GeneralError(format!("id `{name}` not found")))
+  }
 }
 
-pub trait Service: Send + Sync {
-  fn path(&self) -> &str;
-
-  fn find(&self, params: Params) -> Result;
-  fn get(&self, id: String, params: Params) -> Result;
-  fn create(&self, data: Data, params: Params) -> Result;
-  fn update(&self, id: String, data: Data, params: Params) -> Result;
-  fn patch(&self, id: String, data: Data, params: Params) -> Result;
-  fn remove(&self, id: String, params: Params) -> Result;
-
-  fn id(&self, name: &str, params: &Params) -> std::result::Result<ID, Error> {
-    if let Some(id) = params[name].as_str() {
-      ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))
-    } else {
-      Err(Error::GeneralError(format!("id `{name}` not found")))
-    }
+pub fn uuid(name: &str, params: &Params) -> std::result::Result<uuid::Uuid, Error> {
+  if let Some(id) = params[name].as_str() {
+    uuid::Uuid::parse_str(id).map_err(|e| Error::GeneralError(e.to_string()))
+  } else {
+    Err(Error::GeneralError(format!("uuid `{name}` not found")))
   }
+}
 
-  fn uuid(&self, name: &str, params: &Params) -> std::result::Result<uuid::Uuid, Error> {
-    if let Some(id) = params[name].as_str() {
-      uuid::Uuid::parse_str(id).map_err(|e| Error::GeneralError(e.to_string()))
-    } else {
-      Err(Error::GeneralError(format!("uuid `{name}` not found")))
-    }
+pub fn oid(params: &Params) -> std::result::Result<ID, Error> {
+  if params.is_array() {
+    id("oid", &params[0])
+  } else {
+    id("oid", params)
   }
+}
 
-  fn ctx(&self, params: &Params) -> Vec<String> {
-    self.params(params)["ctx"]
-      .members()
-      .map(|j| j.string_or_none())
-      .filter(|v| v.is_some())
-      .map(|v| v.unwrap_or_default())
-      .collect()
+pub fn cid(params: &Params) -> std::result::Result<ID, Error> {
+  if params.is_array() {
+    id("cid", &params[0])
+  } else {
+    id("cid", params)
   }
+}
 
-  fn oid(&self, params: &Params) -> std::result::Result<ID, Error> {
-    if params.is_array() {
-      self.id("oid", &params[0])
-    } else {
-      self.id("oid", params)
-    }
-  }
-
-  fn cid(&self, params: &Params) -> std::result::Result<ID, Error> {
-    if params.is_array() {
-      self.id("cid", &params[0])
-    } else {
-      self.id("cid", params)
-    }
-  }
-
-  fn pid(&self, params: &Params) -> std::result::Result<ID, Error> {
-    if params.is_array() {
-      self.id("pid", &params[0])
-    } else {
-      self.id("pid", params)
-    }
-  }
-
-  fn parse_date(&self, str: &str) -> std::result::Result<DateTime<Utc>, Error> {
-    match NaiveDate::parse_from_str(str, "%Y-%m-%d") {
-      Ok(d) => Ok(DateTime::<Utc>::from_utc(NaiveDateTime::new(d, NaiveTime::default()), Utc)),
-      Err(e) => Err(Error::GeneralError(e.to_string())),
-    }
-  }
-
-  fn date(&self, name: &str, params: &Params) -> std::result::Result<Option<DateTime<Utc>>, Error> {
-    let params = {
-      if params.is_array() {
-        &params[0]
-      } else {
-        params
-      }
-    };
-
-    if let Some(date) = params[name].as_str() {
-      // if date == "today" {
-      //   todo!() // Ok(Utc::now().into())
-      // } else {
-      let date = self.parse_date(date)?;
-      Ok(Some(date))
-      // }
-    } else {
-      Ok(None)
-    }
-  }
-
-  fn date_range(&self, params: &Params) -> std::result::Result<Option<DateRange>, Error> {
-    let params = {
-      if params.is_array() {
-        &params[0]
-      } else {
-        params
-      }
-    };
-
-    let dates = &params["dates"];
-
-    if let Some(date) = dates["from"].as_str() {
-      let from = self.parse_date(date)?;
-      // println!("FN_DATE_RANGE {date:?}");
-      if let Some(date) = dates["till"].as_str() {
-        let till = self.parse_date(date)?;
-
-        Ok(Some(DateRange(from, till)))
-      } else {
-        return Err(Error::GeneralError("dates require `till`".into()));
-      }
-    } else {
-      Ok(None)
-    }
-  }
-
-  fn limit(&self, params: &Params) -> usize {
-    let params = {
-      if params.is_array() {
-        &params[0]
-      } else {
-        params
-      }
-    };
-
-    if let Some(limit) = params["$limit"].as_number() {
-      usize::try_from(limit).unwrap_or(10).max(100)
-    } else {
-      10
-    }
-  }
-
-  fn skip(&self, params: &Params) -> usize {
-    let params = {
-      if params.is_array() {
-        &params[0]
-      } else {
-        params
-      }
-    };
-
-    if let Some(skip) = params["$skip"].as_number() {
-      usize::try_from(skip).unwrap_or(0)
-    } else {
-      0
-    }
-  }
-
-  fn params<'a>(&self, params: &'a Params) -> &'a JsonValue {
-    if params.is_array() {
-      &params[0]
-    } else {
-      params
-    }
+pub fn pid(params: &Params) -> std::result::Result<ID, Error> {
+  if params.is_array() {
+    id("pid", &params[0])
+  } else {
+    id("pid", params)
   }
 }
 

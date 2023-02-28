@@ -1,4 +1,6 @@
 extern crate rust_decimal;
+extern crate service;
+extern crate json;
 
 use wh_storage::WHStorage;
 

@@ -13,6 +13,7 @@ strip = true
 #panic = "abort"
 
 [dependencies]
+service = { path = "./service" }
 errors = { path = "./errors" }
 utils = { path = "./utils" }
 store = { path = "./store" }

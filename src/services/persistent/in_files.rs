@@ -12,10 +12,11 @@ use tantivy::HasLen;
 use uuid::Uuid;
 
 use crate::animo::error::DBError;
-use crate::services::{Data, Params, Service};
+use crate::services::{Data, Params};
+use service::{Service, Services};
 use errors::Error;
 use crate::ws::error_general;
-use crate::{auth, commutator::Application, animo::memory::Memory, services::Services, animo::memory::Transformation, animo::memory::TransformationKey, animo::memory::Value, animo::memory::ID};
+use crate::{auth, commutator::Application, animo::memory::Memory, animo::memory::Transformation, animo::memory::TransformationKey, animo::memory::Value, animo::memory::ID};
 
 pub struct InFiles {
   app: Application,

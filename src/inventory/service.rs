@@ -1,10 +1,11 @@
 use crate::animo::error::DBError;
 use errors::Error;
-use crate::services::{string_to_id, Data, Params, Service};
+use crate::services::{string_to_id, Data, Params};
+use service::{Service, Services};
 use store::{elements::{Report, ToJson}, error::WHError};
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, storage::SOrganizations, services::Services, animo::memory::{ChangeTransformation, Memory, Transformation, TransformationKey, Value, ID},
+  auth, commutator::Application, storage::SOrganizations, animo::memory::{ChangeTransformation, Memory, Transformation, TransformationKey, Value, ID},
 };
 use chrono::{DateTime, Utc};
 use json::object::Object;
@@ -29,12 +30,12 @@ impl Service for Inventory {
 
   fn find(&self, params: Params) -> crate::services::Result {
     
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
     
     // let limit = self.limit(&params);
     // let skip = self.skip(&params);
 
-    let storage = self.uuid("storage", &params)?;
+    let storage = crate::services::uuid("storage", &params)?;
     
     let dates = if let Some(dates) = self.date_range(&params)? {
       dates

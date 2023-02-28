@@ -73,13 +73,15 @@ use crate::hr::services::companies::Companies;
 use crate::hr::services::departments::Departments;
 use crate::hr::services::shifts::Shifts;
 use crate::memories::MemoriesInFiles;
-use crate::services::{People, Services};
+use crate::services::People;
+use service::Services;
 use crate::settings::Settings;
 use crate::storage::SOrganizations;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
 use animo::db::AnimoDB;
 use animo::memory::Memory;
+use inventory::service::Inventory;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "basic")]
@@ -185,6 +187,7 @@ async fn startup() -> std::io::Result<()> {
   app.register(Events::new(app.clone(), "events", storage.clone()));
 
   app.register(MemoriesInFiles::new(app.clone(), "memories", storage.clone()));
+  app.register(Inventory::new(app.clone()));
 
   println!("app started up");
 

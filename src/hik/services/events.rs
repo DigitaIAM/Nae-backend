@@ -17,13 +17,14 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::animo::error::DBError;
-use crate::services::{string_to_id, Data, Params, Service};
+use crate::services::{string_to_id, Data, Params};
+use service::{Service, Services};
 use errors::Error;
 use crate::storage::SEvent;
 use utils::time::string_to_time;
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, storage::SOrganizations, services::Services, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
 };
 pub struct Events {
   app: Application,
@@ -44,7 +45,7 @@ impl Service for Events {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
     // let cid = self.cid(&params)?;
 
     let date = Utc::now(); // self.date(&params)?;
@@ -74,8 +75,8 @@ impl Service for Events {
   }
 
   fn get(&self, id: String, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
-    let cid = self.cid(&params)?;
+    let oid = crate::services::oid(&params)?;
+    let cid = crate::services::cid(&params)?;
 
     let ts = string_to_time(id.clone())?;
 
@@ -94,8 +95,8 @@ impl Service for Events {
     let time = event["time"].as_str().unwrap_or("").trim().to_string();
     let time = string_to_time(time)?;
 
-    let oid = self.oid(&data)?;
-    let cid = self.cid(&data)?;
+    let oid = crate::services::oid(&data)?;
+    let cid = crate::services::cid(&data)?;
 
     let id = time.to_rfc3339_opts(SecondsFormat::Millis, true);
 

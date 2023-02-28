@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+service = { path = "../service" }
 errors = { path = "../errors" }
 utils = { path = "../utils" }
 

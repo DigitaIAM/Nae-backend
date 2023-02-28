@@ -16,12 +16,13 @@ use crate::animo::error::DBError;
 use crate::hik::camera::States;
 use crate::hik::error::Error;
 use crate::hik::{camera, Camera, ConfigCamera, StatusCamera};
-use crate::services::{string_to_id, Data, Params, Service};
+use crate::services::{string_to_id, Data, Params};
+use service::{Service, Services};
 use crate::storage::{SCamera, SOrganizations};
 use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, services::Services, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth, commutator::Application, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
 };
 type ORG = crate::animo::memory::ID;
 type CAM = crate::animo::memory::ID;
@@ -116,7 +117,7 @@ impl Service for Cameras {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
 
     let limit = self.limit(&params);
     let skip = self.skip(&params);

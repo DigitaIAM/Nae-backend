@@ -13,12 +13,13 @@ use uuid::Uuid;
 
 use crate::animo::error::DBError;
 use crate::services::JsonData;
-use crate::services::{Data, Params, Service};
+use crate::services::{Data, Params};
+use service::{Service, Services};
 use errors::Error;
 use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, storage::SOrganizations, services::Services, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
 };
 pub(crate) struct Companies {
   app: Application,

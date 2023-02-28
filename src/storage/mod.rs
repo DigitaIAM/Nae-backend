@@ -1,5 +1,5 @@
 mod cameras;
-mod memories;
+pub mod memories;
 mod old_references;
 mod organizations;
 

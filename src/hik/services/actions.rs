@@ -22,12 +22,13 @@ use crate::animo::error::DBError;
 use crate::hik::actions::list_devices::{DeviceMgmt, GetRequest, HttpClient};
 use crate::hik::actions::task::{CommandMeta, Stage};
 use crate::hik::{ConfigCamera, StatusCamera};
-use crate::services::{string_to_id, Data, Params, Service};
+use crate::services::{string_to_id, Data, Params};
+use service::{Service, Services};
 use utils::json::JsonParams;
 use utils::time::now_in_seconds;
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, storage::SOrganizations, services::Services, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
 };
 
 pub struct Actions {
@@ -131,9 +132,9 @@ impl Service for Actions {
       "hikvision-create_user" => {
         let id = ID::random();
 
-        let oid = self.oid(&params)?;
-        let cid = self.cid(&params)?;
-        let pid = self.pid(&params)?;
+        let oid = crate::services::oid(&params)?;
+        let cid = crate::services::cid(&params)?;
+        let pid = crate::services::pid(&params)?;
 
         // let mut cameras = self.app.storage.as_ref().unwrap().get(&oid).camera_configs();
 
@@ -166,9 +167,9 @@ impl Service for Actions {
       "hikvision-register_image" => {
         let id = ID::random();
 
-        let oid = self.oid(&params)?;
-        let cid = self.cid(&params)?;
-        let pid = self.pid(&params)?;
+        let oid = crate::services::oid(&params)?;
+        let cid = crate::services::cid(&params)?;
+        let pid = crate::services::pid(&params)?;
 
         // let mut cameras = self.app.storage.as_ref().unwrap().get(&oid).camera_configs();
         let camera = self.app.storage.as_ref().unwrap().get(&oid).camera(&cid).config()?;

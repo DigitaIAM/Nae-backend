@@ -7,7 +7,7 @@ use json::{object, JsonValue};
 use crate::animo::db::AnimoDB;
 use crate::animo::memory::{ChangeTransformation, TransformationKey};
 use crate::commutator::Application;
-use crate::services::Services;
+use service::Services;
 use crate::animo::memory::Memory;
 use qstring::QString;
 
