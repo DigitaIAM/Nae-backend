@@ -48,11 +48,43 @@ impl Service for MemoriesInFiles {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let memories = self.orgs.get(&oid).memories(ctx.clone());
-    let list = memories.list()?;
+    let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
 
+    let memories = self.orgs.get(&oid).memories(ctx.clone());
+    let list = memories.list(Some(reverse))?;
+
+    let search = &self.params(&params)["search"];
     let filters = &self.params(&params)["filter"];
-    let (total, mut list): (isize, Vec<JsonValue>) = if filters.is_object() {
+    let (total, mut list): (isize, Vec<JsonValue>) = if let Some(search) = search.as_str() {
+      let mut total = 0;
+      let list: Vec<JsonValue> = list
+        .into_iter()
+        .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+        .filter(|o| o.is_object())
+        .filter(|o| {
+          for (name, v) in o.entries() {
+            if let Some(str) = v.as_str() {
+              if str.contains(search) {
+                return true;
+              }
+            }
+          }
+          return false;
+        })
+        .map(|o| {
+          total += 1;
+          o
+        })
+        .skip(skip)
+        .take(limit)
+        .collect::<_>();
+
+      if list.is_empty() {
+        (total, list)
+      } else {
+        (-1, list)
+      }
+    } else if filters.is_object() {
       let mut total = 0;
       let list: Vec<JsonValue> = list
         .into_iter()
@@ -90,7 +122,7 @@ impl Service for MemoriesInFiles {
         .orgs
         .get(&oid)
         .memories(vec!["production".into(), "produce".into()])
-        .list()?;
+        .list(None)?;
       for mut order in &mut list {
         let filters = vec![("order", &order["_id"])];
 
@@ -175,7 +207,7 @@ impl Service for MemoriesInFiles {
       let mut patch = data.clone();
       patch.remove("_id"); // TODO check id?
 
-      obj.merge(&patch);
+      obj = obj.merge(&patch);
 
       // for (n, v) in data.entries() {
       //   if n != "_id" {
