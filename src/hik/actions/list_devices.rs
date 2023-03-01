@@ -4,7 +4,7 @@ use crate::hik::error::Error;
 use crate::hik::ConfigCamera;
 use crate::services::Mutation;
 use crate::websocket::WsConn;
-use crate::{Application, ID};
+use crate::{commutator::Application, animo::memory::ID};
 use actix::prelude::*;
 use async_trait::async_trait;
 use json::JsonValue;
@@ -17,7 +17,7 @@ use tokio::fs::File;
 use tokio::runtime::Handle;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
-use crate::utils::json::JsonParams;
+use utils::json::JsonParams;
 use actix_interop::{critical_section, with_ctx, FutureInterop};
 use chrono::{Datelike, Utc};
 use rand::Rng;
@@ -330,11 +330,11 @@ impl HttpClient {
         Mutation::Patch("actions".into(), id.to_base64(), data, JsonValue::Null)
       },
       Err(e) => {
-        // println!("response error: {e}");
+        // println!("response errors: {e}");
         Mutation::Patch(
           "actions".into(),
           id.to_base64(),
-          json::object! { "error": e.to_string(), "state": crate::hik::actions::task::Stage::completed().to_json() },
+          json::object! { "errors": e.to_string(), "state": crate::hik::actions::task::Stage::completed().to_json() },
           JsonValue::Null,
         )
       },

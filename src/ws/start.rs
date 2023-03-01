@@ -1,7 +1,7 @@
 use actix::Addr;
 use actix_web::{web, get, HttpRequest, HttpResponse, Error};
 use actix_web_actors::ws;
-use crate::Commutator;
+use crate::commutator::Commutator;
 use crate::websocket::WsConn;
 
 #[get("/")]

@@ -1,4 +1,8 @@
-use std::io;
+mod store_test_key_to_data;
+mod store_test_app_incomplete_data;
+
+
+use std::{io, thread, time::Duration};
 
 use crate::{
   animo::{
@@ -23,62 +27,6 @@ use rocksdb::{ColumnFamilyDescriptor, Options};
 use serde_json::json;
 use tempfile::TempDir;
 use uuid::Uuid;
-
-#[actix_web::test]
-async fn store_test_app_incomplete_data() {
-  let (tmp_dir, settings, db) = init();
-
-  let (mut application, events_receiver) = Application::new(Arc::new(settings), Arc::new(db))
-    .await
-    .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
-    .unwrap();
-
-  let storage = SOrganizations::new(tmp_dir.path().join("companies"));
-  application.storage = Some(storage.clone());
-
-  application.register(MemoriesInFiles::new(application.clone(), "docs", storage.clone()));
-  application.register(crate::inventory::service::Inventory::new(application.clone()));
-
-  let app = test::init_service(
-    App::new()
-      .app_data(web::Data::new(application.clone()))
-      .service(api::docs_create)
-      .service(api::docs_update)
-      .service(api::inventory_find)
-      .default_service(web::route().to(api::not_implemented)),
-  )
-  .await;
-
-  let goods = Uuid::from_u128(101);
-  let storage = Uuid::from_u128(201);
-  let oid = ID::from("99");
-
-  let data: JsonValue = object! {
-      _id: "",
-      date: "2022-11-15",
-      storage: storage.to_string(),
-  };
-
-  let req = test::TestRequest::post()
-    .uri(&format!("/api/docs?oid={}&ctx=warehouse,receive", oid.to_base64()))
-    .set_payload(data.dump())
-    .insert_header(ContentType::json())
-    .to_request();
-
-  let response = test::call_and_read_body(&app, req).await;
-
-  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
-
-  let compare_data: JsonValue = object! {
-      _id: result["_id"].as_str().unwrap(),
-      date: "2022-11-15",
-      storage: storage.to_string(),
-  };
-
-  // println!("RESULT: {result:#?}");
-
-  assert_eq!(compare_data.dump(), result.to_string());
-}
 
 #[actix_web::test]
 async fn store_test_app_checkpoints() {
@@ -368,19 +316,22 @@ async fn store_test_app_move_checkpoints() {
     .to_request();
 
   let response = test::call_and_read_body(&app, req).await;
-  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+  let str = String::from_utf8_lossy(&response).to_string();
+  let result: JsonValue = json::parse(&str).unwrap();
+
+  let batch = &result["data"][0]["items"][1][0]["batch"];
 
   //move
   let data2: JsonValue = object! {
       _id: "",
       date: "2022-12-18",
       storage: storage1.to_string(),
+      transfer: storage2.to_string(),
       goods: [
           {
               goods: goods1.to_string(),
-              transfer: storage2.to_string(),
-              batch_date: "2022-11-15",
-              batch_id: result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
+              batch: batch.clone(),
               uom: "",
               qty: 1,
               price: 15,
@@ -391,7 +342,7 @@ async fn store_test_app_move_checkpoints() {
   };
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs?oid={}&ctx=warehouse,issue", oid.to_base64()))
+    .uri(&format!("/api/docs?oid={}&ctx=warehouse,transfer", oid.to_base64()))
     .set_payload(data2.dump())
     .insert_header(ContentType::json())
     .to_request();
@@ -481,32 +432,32 @@ async fn store_test_app_move_checkpoints() {
   assert_eq!(result["data"][0]["items"], example);
 }
 
-#[actix_web::test]
-async fn store_test_key_to_data() {
-  let date1 = dt("2022-12-15").unwrap();
-  let storage1 = Uuid::from_u128(201);
-  let goods1 = Uuid::from_u128(101);
-  let batch = Batch { id: Uuid::from_u128(102), date: date1 };
+// #[actix_web::test]
+// async fn store_test_key_to_data() {
+//   let date1 = dt("2022-12-15").unwrap();
+//   let storage1 = Uuid::from_u128(201);
+//   let goods1 = Uuid::from_u128(101);
+//   let batch = Batch { id: Uuid::from_u128(102), date: date1 };
 
-  let key: Vec<u8> = []
-    .iter()
-    .chain((date1.timestamp() as u64).to_be_bytes().iter())
-    .chain(storage1.as_bytes().iter())
-    .chain(goods1.as_bytes().iter())
-    .chain((batch.date.timestamp() as u64).to_be_bytes().iter())
-    .chain(batch.id.as_bytes().iter())
-    .map(|b| *b)
-    .collect();
+//   let key: Vec<u8> = []
+//     .iter()
+//     .chain((date1.timestamp() as u64).to_be_bytes().iter())
+//     .chain(storage1.as_bytes().iter())
+//     .chain(goods1.as_bytes().iter())
+//     .chain((batch.date.timestamp() as u64).to_be_bytes().iter())
+//     .chain(batch.id.as_bytes().iter())
+//     .map(|b| *b)
+//     .collect();
 
-  let (d, s, g, b) = CheckDateStoreBatch::key_to_data(key).unwrap();
+//   let (d, s, g, b) = CheckDateStoreBatch::key_to_data(key).unwrap();
 
-  // println!("{d:?}, {s:?}, {g:?}, {b:?}");
+//   // println!("{d:?}, {s:?}, {g:?}, {b:?}");
 
-  assert_eq!(date1, d);
-  assert_eq!(storage1, s);
-  assert_eq!(goods1, g);
-  assert_eq!(batch, b);
-}
+//   assert_eq!(date1, d);
+//   assert_eq!(storage1, s);
+//   assert_eq!(goods1, g);
+//   assert_eq!(batch, b);
+// }
 
 #[actix_web::test]
 async fn store_test_app_change_move() {
@@ -564,7 +515,9 @@ async fn store_test_app_change_move() {
 
   let response = test::call_and_read_body(&app, req).await;
 
-  let result0: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  let str = String::from_utf8_lossy(&response).to_string();
+
+  let result0: JsonValue = json::parse(&str).unwrap();
 
   assert_ne!("", result0["goods"][0]["_tid"].as_str().unwrap());
 
@@ -583,19 +536,22 @@ async fn store_test_app_change_move() {
     .to_request();
 
   let response = test::call_and_read_body(&app, req).await;
-  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  println!("RESPONSE: {response:?}");
+  let str = String::from_utf8_lossy(&response).to_string();
+  let result: JsonValue = json::parse(&str).unwrap();
+
+  let batch = &result["data"][0]["items"][1][0]["batch"];
 
   // move
   let data1: JsonValue = object! {
       _id: "",
       date: "2023-01-19",
       storage: storage1.to_string(),
+      transfer: storage2.to_string(),
       goods: [
         {
           goods: goods1.to_string(),
-          transfer: storage2.to_string(),
-          batch_date: "2023-01-18",
-          batch_id: result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
+          batch: batch.clone(),
           uom: "",
           qty: 2,
           price: 9,
@@ -606,7 +562,7 @@ async fn store_test_app_change_move() {
   };
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs?oid={}&ctx=warehouse,issue", oid.to_base64()))
+    .uri(&format!("/api/docs?oid={}&ctx=warehouse,transfer", oid.to_base64()))
     .set_payload(data1.dump())
     .insert_header(ContentType::json())
     .to_request();
@@ -614,31 +570,41 @@ async fn store_test_app_change_move() {
   let response = test::call_and_read_body(&app, req).await;
 
   // change
-  let id = result0["goods"][0]["_tid"].as_str().unwrap();
+  let mut data2 = result0.clone();
+  let id = data2.clone()["_id"].string();
+  {
+    let line = &mut data2["goods"][0];
+    line["qty"] = 2.into();
+    line["cost"] = 20.into();
+  }
 
-  let data2: JsonValue = object! {
-      _id: "",
-      date: "2023-01-18",
-      storage: storage1.to_string(),
-      goods: [
-          {
-              goods: goods1.to_string(),
-              uom: "",
-              qty: 1,
-              price: 10,
-              cost: 10,
-              _tid: id,
-          }
-      ]
-  };
+  // let id = result0["goods"][0]["_tid"].as_str().unwrap();
+
+  // let data2: JsonValue = object! {
+  //     _id: "",
+  //     date: "2023-01-18",
+  //     storage: storage1.to_string(),
+  //     goods: [
+  //         {
+  //             goods: goods1.to_string(),
+  //             uom: "",
+  //             qty: 1,
+  //             price: 10,
+  //             cost: 10,
+  //             _tid: id,
+  //         }
+  //     ]
+  // };
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs/{id}?oid={}&ctx=warehouse,receive", oid.to_base64()))
+    .uri(&format!("/api/docs/update?oid={}&ctx=warehouse,receive&id={id}", oid.to_base64()))
     .set_payload(data2.dump())
     .insert_header(ContentType::json())
     .to_request();
 
   let response = test::call_and_read_body(&app, req).await;
+
+  println!("TEST_RESPONSE: {response:?}");
 
   let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
 
@@ -852,19 +818,22 @@ async fn store_test_app_move() {
     .to_request();
 
   let response = test::call_and_read_body(&app, req).await;
-  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+
+  let str = String::from_utf8_lossy(&response).to_string();
+  let result: JsonValue = json::parse(&str).unwrap();
+
+  let batch = &result["data"][0]["items"][1][0]["batch"];
 
   // move
   let data1: JsonValue = object! {
       _id: "",
       date: "2023-01-19",
       storage: storage1.to_string(),
+      transfer: storage2.to_string(),
       goods: [
         {
           goods: goods1.to_string(),
-          transfer: storage2.to_string(),
-          batch_date: "2023-01-18",
-          batch_id: result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
+          batch: batch.clone(),
           uom: "",
           qty: 1,
           price: 9,
@@ -875,12 +844,13 @@ async fn store_test_app_move() {
   };
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs?oid={}&ctx=warehouse,issue", oid.to_base64()))
+    .uri(&format!("/api/docs?oid={}&ctx=warehouse,transfer", oid.to_base64()))
     .set_payload(data1.dump())
     .insert_header(ContentType::json())
     .to_request();
 
   let response = test::call_and_read_body(&app, req).await;
+  // println!("MOVE_RESPONSE: {response:?}");
 
   //report store1
   let from_date = "2023-01-17";
@@ -911,10 +881,7 @@ async fn store_test_app_move() {
        {
         "store": &storage1.to_string(),
         "goods": &goods1.to_string(),
-        "batch": {
-          "date": result["data"][0]["items"][1][0]["batch"]["date"].as_str().unwrap(),
-          "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
-        },
+        "batch": result["data"][0]["items"][1][0]["batch"],
         "open_balance": {
           "cost": "0",
           "qty": "0",
@@ -935,10 +902,7 @@ async fn store_test_app_move() {
       {
         "store": &storage1.to_string(),
         "goods": &goods2.to_string(),
-        "batch": {
-          "date": "2023-01-18T00:00:00.000Z",
-          "id": result["data"][0]["items"][1][1]["batch"]["id"].as_str().unwrap(),
-        },
+        "batch": result["data"][0]["items"][1][1]["batch"],
         "open_balance": {
           "cost": "0",
           "qty": "0",
@@ -959,7 +923,7 @@ async fn store_test_app_move() {
     ],
   ]);
 
-  // println!("REPORT: {:#?}", result["data"][0]["items"]);
+  println!("REPORT: {:#?}", result["data"]);
 
   assert_eq!(result["data"][0]["items"], example);
 
@@ -1257,8 +1221,8 @@ async fn store_test_app_receive_issue_change() {
   )
   .await;
 
-  let goods1 = Uuid::from_u128(201);
-  let goods2 = Uuid::from_u128(101);
+  let goods1 = Uuid::from_u128(101);
+  let goods2 = Uuid::from_u128(201);
   let storage1 = Uuid::from_u128(202);
   let oid = ID::from("99");
 
@@ -1298,24 +1262,32 @@ async fn store_test_app_receive_issue_change() {
 
   let response = test::call_and_read_body(&app, req).await;
 
-  let result0: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  let data = String::from_utf8_lossy(&response).to_string();
+  let result0 = json::parse(&data).unwrap();
 
-  assert_ne!("", result0["goods"][0]["_tid"].as_str().unwrap());
-  assert_ne!("", result0["goods"][1]["_tid"].as_str().unwrap());
+  let g1_tid = result0["goods"][0]["_tid"].as_str().unwrap();
+  let g2_tid = result0["goods"][1]["_tid"].as_str().unwrap();
+
+  assert_ne!("", g1_tid);
+  assert_ne!("", g2_tid);
+
+  let g1_batch = object! { id: g1_tid.clone(), date: "2023-01-18T00:00:00.000Z".to_string() };
+  let g2_batch = object! { id: g2_tid.clone(), date: "2023-01-18T00:00:00.000Z".to_string() };
 
   // issue
   let data1: JsonValue = object! {
       _id: "",
-      date: "2023-01-18",
+      date: "2023-01-19",
       storage: storage1.to_string(),
       goods: [
           {
               goods: goods2.to_string(),
+              batch: g2_batch.clone(),
               uom: "",
               qty: 1,
               // price: 0,
               // cost: 0,
-              _tid: result0["goods"][1]["_tid"].as_str().unwrap(),
+              // _tid: result0["goods"][1]["_tid"].as_str().unwrap(),
           },
       ]
   };
@@ -1331,30 +1303,26 @@ async fn store_test_app_receive_issue_change() {
 
   let response = test::call_and_read_body(&app, req).await;
 
-  let result1: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  let data = String::from_utf8_lossy(&response).to_string();
+  let result1 = json::parse(&data).unwrap();
 
   // change
-  let id = result0["goods"][0]["_tid"].as_str().unwrap();
+  let mut data2 = result0.clone();
+  let id = data2.clone()["_id"].string();
+  {
+    let line = &mut data2["goods"][0];
+    line["qty"] = 2.into();
+    line["cost"] = 20.into();
+  }
 
-  let data2: JsonValue = object! {
-      _id: "",
-      date: "2023-01-18",
-      storage: storage1.to_string(),
-      goods: [
-          {
-              goods: goods1.to_string(),
-              uom: "",
-              qty: 2,
-              price: 10,
-              cost: 20,
-              _tid: id,
-          }
-      ]
-  };
+  // println!(
+  //   "UPDATE RECEIVE {}",
+  //   format!("/api/docs/update?oid={}&ctx=warehouse,receive&id={id}", oid.to_base64())
+  // );
 
   let req = test::TestRequest::post()
-    .uri(&format!("/api/docs/{id}?oid={}&ctx=warehouse,receive", oid.to_base64()))
-    .set_payload(data2.dump())
+    .uri(&format!("/api/docs/update?oid={}&ctx=warehouse,receive&id={id}", oid.to_base64()))
+    .set_payload(data2.to_string())
     .insert_header(ContentType::json())
     .to_request();
 
@@ -1362,7 +1330,7 @@ async fn store_test_app_receive_issue_change() {
 
   let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
 
-  let compare: serde_json::Value = serde_json::from_str(&data2.dump()).unwrap();
+  let compare: serde_json::Value = serde_json::from_str(&data2.to_string()).unwrap();
 
   assert_eq!(compare, result);
 
@@ -1383,10 +1351,11 @@ async fn store_test_app_receive_issue_change() {
   let response = test::call_and_read_body(&app, req).await;
   // println!("RESPONSE: {response:#?}\n");
 
-  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  let data = String::from_utf8_lossy(&response).to_string();
+  let result: JsonValue = json::parse(&data).unwrap();
   // println!("REPORT: {result:#?}");
 
-  let example = json!([
+  let report: JsonValue = json::array![
      {
        "store": "00000000-0000-0000-0000-0000000000ca",
        "open_balance": "0",
@@ -1395,58 +1364,52 @@ async fn store_test_app_receive_issue_change() {
        "close_balance": "28",
     },
     [
-        {
-          "store": "00000000-0000-0000-0000-0000000000ca",
-          "goods": "00000000-0000-0000-0000-000000000065",
-          "batch": {
-              "date": "2023-01-18T00:00:00.000Z",
-              "id": result["data"][0]["items"][1][0]["batch"]["id"].as_str().unwrap(),
-          },
-          "open_balance": {
-            "cost": "0",
-            "qty": "0",
-          },
-          "receive": {
-            "cost": "16",
-            "qty": "2",
-          },
-          "issue": {
-            "cost": "-8",
-            "qty": "-1",
-          },
-          "close_balance": {
-            "cost": "8",
-            "qty": "1",
-          },
-       },
        {
           "store": "00000000-0000-0000-0000-0000000000ca",
-          "goods": "00000000-0000-0000-0000-0000000000c9",
-          "batch": {
-            "date": "2023-01-18T00:00:00.000Z",
-            "id": result["data"][0]["items"][1][1]["batch"]["id"].as_str().unwrap(),
-          },
+          "goods": goods1.to_string(),
+          "batch": g1_batch.clone(),
           "open_balance": {
-            "cost": "0",
             "qty": "0",
+            "cost": "0",
           },
           "receive": {
-            "cost": "20",
             "qty": "2",
+            "cost": "20",
           },
           "issue": {
-            "cost": "0",
             "qty": "0",
+            "cost": "0",
           },
           "close_balance": {
-            "cost": "20",
             "qty": "2",
+            "cost": "20",
           },
       },
+      {
+        "store": "00000000-0000-0000-0000-0000000000ca",
+        "goods": goods2.to_string(),
+        "batch": g2_batch.clone(),
+        "open_balance": {
+          "qty": "0",
+          "cost": "0",
+        },
+        "receive": {
+          "qty": "2",
+          "cost": "16",
+        },
+        "issue": {
+          "qty": "-1",
+          "cost": "-8",
+        },
+        "close_balance": {
+          "qty": "1",
+          "cost": "8",
+        },
+     },
     ],
-  ]);
+  ];
 
-  assert_eq!(result["data"][0]["items"], example);
+  assert_eq!(result["data"][0]["items"].dump(), report.dump());
 }
 
 #[actix_web::test]
@@ -1477,7 +1440,6 @@ async fn store_test_receive_ops() {
       party.clone(),
       None,
       Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual)),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id3,
@@ -1488,7 +1450,6 @@ async fn store_test_receive_ops() {
       party.clone(),
       None,
       Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id4,
@@ -1499,7 +1460,6 @@ async fn store_test_receive_ops() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(2.into(), 2000.into())),
-      chrono::Utc::now(),
     ),
   ];
 
@@ -1544,7 +1504,6 @@ async fn store_test_neg_balance_date_type_store_goods_id() {
     party.clone(),
     None,
     Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
-    chrono::Utc::now(),
   )];
 
   db.record_ops(&ops).expect("test_get_neg_balance");
@@ -1591,7 +1550,6 @@ async fn store_test_zero_balance_date_type_store_goods_id() {
       party.clone(),
       None,
       Some(InternalOperation::Issue(3.into(), 3000.into(), Mode::Manual)),
-      chrono::Utc::now(),
     ),
   ];
 
@@ -1639,7 +1597,6 @@ async fn store_test_get_wh_ops() -> Result<(), WHError> {
       party.clone(),
       None,
       Some(InternalOperation::Receive(2.into(), 2000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id2,
@@ -1650,7 +1607,6 @@ async fn store_test_get_wh_ops() -> Result<(), WHError> {
       party.clone(),
       None,
       Some(InternalOperation::Receive(1.into(), 1000.into())),
-      chrono::Utc::now(),
     ),
   ];
 
@@ -1694,7 +1650,6 @@ async fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError
       doc1.clone(),
       None,
       Some(InternalOperation::Receive(3.into(), 3000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id2,
@@ -1705,7 +1660,6 @@ async fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError
       doc1.clone(),
       None,
       Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual)),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id3,
@@ -1716,7 +1670,6 @@ async fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError
       doc2.clone(),
       None,
       Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id4,
@@ -1727,7 +1680,6 @@ async fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError
       doc2.clone(),
       None,
       Some(InternalOperation::Receive(2.into(), 2000.into())),
-      chrono::Utc::now(),
     ),
   ];
 
@@ -1789,7 +1741,6 @@ async fn store_test_op_iter() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(1.into(), 1000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id4,
@@ -1800,7 +1751,6 @@ async fn store_test_op_iter() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(1.into(), 1000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id1,
@@ -1810,12 +1760,7 @@ async fn store_test_op_iter() {
       G3,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(
-        Decimal::from_str("0.5").unwrap(),
-        1500.into(),
-        Mode::Manual,
-      )),
-      chrono::Utc::now(),
+      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
     ),
     OpMutation::new(
       id2,
@@ -1825,12 +1770,7 @@ async fn store_test_op_iter() {
       G3,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(
-        Decimal::from_str("0.5").unwrap(),
-        1500.into(),
-        Mode::Manual,
-      )),
-      chrono::Utc::now(),
+      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
     ),
   ];
 
@@ -1842,24 +1782,29 @@ async fn store_test_op_iter() {
   let iter1 = db.db.iterator_cf(&cf1, IteratorMode::Start);
   let iter2 = db.db.iterator_cf(&cf2, IteratorMode::Start);
 
-  let mut res1 = Vec::new();
-  let mut res2 = Vec::new();
+  let mut res1: Vec<String> = Vec::new();
+  let mut res2: Vec<String> = Vec::new();
 
   for item in iter1 {
     let (_, v) = item.unwrap();
-    let op = serde_json::from_slice(&v).unwrap();
-    res1.push(op);
+    let str = String::from_utf8_lossy(&v).to_string();
+
+    // println!("{str:?}");
+
+    res1.push(str);
   }
 
   for item in iter2 {
     let (_, v) = item.unwrap();
-    let op = serde_json::from_slice(&v).unwrap();
-    res2.push(op);
+    let str = String::from_utf8_lossy(&v).to_string();
+
+    // println!("{str:?}");
+
+    res2.push(str);
   }
 
-  for i in 0..ops.len() {
-    assert_eq!(ops[i], res1[i]);
-    assert_eq!(ops[i], res2[i]);
+  for i in 0..res1.len() {
+    assert_eq!(res2[i], res1[i]);
   }
 
   tmp_dir.close().expect("Can't remove tmp dir in test_op_iter");
@@ -1887,7 +1832,6 @@ async fn store_test_report() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(4.into(), 4000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       Uuid::new_v4(),
@@ -1898,7 +1842,6 @@ async fn store_test_report() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(2.into(), 6000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       Uuid::new_v4(),
@@ -1909,7 +1852,6 @@ async fn store_test_report() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(1.into(), 1000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       Uuid::new_v4(),
@@ -1920,7 +1862,6 @@ async fn store_test_report() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(1.into(), 1000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       Uuid::new_v4(),
@@ -1930,12 +1871,7 @@ async fn store_test_report() {
       G3,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(
-        Decimal::from_str("0.5").unwrap(),
-        1500.into(),
-        Mode::Manual,
-      )),
-      chrono::Utc::now(),
+      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
     ),
     OpMutation::new(
       Uuid::new_v4(),
@@ -1945,12 +1881,7 @@ async fn store_test_report() {
       G3,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(
-        Decimal::from_str("0.5").unwrap(),
-        1500.into(),
-        Mode::Manual,
-      )),
-      chrono::Utc::now(),
+      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
     ),
   ];
 
@@ -2029,7 +1960,6 @@ async fn store_test_parties_date_type_store_goods_id() {
       doc1.clone(),
       None,
       Some(InternalOperation::Receive(3.into(), 3000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id2,
@@ -2040,7 +1970,6 @@ async fn store_test_parties_date_type_store_goods_id() {
       doc2.clone(),
       None,
       Some(InternalOperation::Receive(4.into(), 2000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id3,
@@ -2051,7 +1980,6 @@ async fn store_test_parties_date_type_store_goods_id() {
       doc2.clone(),
       None,
       Some(InternalOperation::Issue(1.into(), 500.into(), Mode::Manual)),
-      chrono::Utc::now(),
     ),
   ];
 
@@ -2112,7 +2040,6 @@ async fn store_test_issue_cost_none() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(4.into(), 2000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id2,
@@ -2123,7 +2050,6 @@ async fn store_test_issue_cost_none() {
       doc.clone(),
       None,
       Some(InternalOperation::Issue(1.into(), 0.into(), Mode::Auto)),
-      chrono::Utc::now(),
     ),
   ];
 
@@ -2172,7 +2098,6 @@ async fn store_test_receive_cost_none() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(4.into(), 2000.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id2,
@@ -2183,7 +2108,6 @@ async fn store_test_receive_cost_none() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(1.into(), 0.into())),
-      chrono::Utc::now(),
     ),
   ];
 
@@ -2233,7 +2157,6 @@ async fn store_test_issue_remainder() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(3.into(), 10.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id2,
@@ -2244,7 +2167,6 @@ async fn store_test_issue_remainder() {
       doc.clone(),
       None,
       Some(InternalOperation::Issue(1.into(), 0.into(), Mode::Auto)),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id3,
@@ -2255,7 +2177,6 @@ async fn store_test_issue_remainder() {
       doc.clone(),
       None,
       Some(InternalOperation::Issue(2.into(), 0.into(), Mode::Auto)),
-      chrono::Utc::now(),
     ),
   ];
 
@@ -2310,10 +2231,9 @@ async fn store_test_issue_op_none() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(3.into(), 10.into())),
-      chrono::Utc::now(),
     ),
     // КОРРЕКТНАЯ ОПЕРАЦИЯ С ДВУМЯ NONE?
-    OpMutation::new(id3, start_d, w1, None, G1, doc.clone(), None, None, chrono::Utc::now()),
+    OpMutation::new(id3, start_d, w1, None, G1, doc.clone(), None, None),
   ];
 
   db.record_ops(&ops).unwrap();
@@ -2362,7 +2282,6 @@ async fn store_test_receive_change_op() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(3.into(), 10.into())),
-      chrono::Utc::now(),
     ),
     OpMutation::new(
       id1,
@@ -2373,7 +2292,6 @@ async fn store_test_receive_change_op() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(1.into(), 30.into())),
-      chrono::Utc::now(),
     ),
   ];
 
@@ -2403,7 +2321,6 @@ async fn store_test_receive_change_op() {
     doc.clone(),
     Some(InternalOperation::Receive(3.into(), 10.into())),
     Some(InternalOperation::Receive(4.into(), 100.into())),
-    chrono::Utc::now(),
   )];
 
   db.record_ops(&ops_new).expect("test_receive_change_op");

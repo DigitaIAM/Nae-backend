@@ -1,0 +1,12 @@
+[package]
+name = "errors"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+quick-error = "2"
+chrono = { version = "0.4.22", features = ["serde", "rkyv"] }
+uuid = { version = "1.2.1", features = ["v4", "serde"] }
+json = "0.12.4" # replacement for serde_json ?

@@ -1,14 +1,18 @@
 use crate::animo::memory::ID;
 use crate::commutator::Application;
-use crate::services::{Data, Error};
+use crate::services::Data;
+use errors::Error;
 use crate::storage::{json, load, save};
-use crate::store::{dt, receive_data, Batch, NumberForGoods, OpMutation};
-use crate::utils::time::time_to_string;
+use store::elements::{dt, receive_data, Batch, NumberForGoods, OpMutation};
+use utils::json::JsonParams;
+use utils::time::time_to_string;
 use chrono::{DateTime, Utc};
-use json::JsonValue;
+use json::{JsonValue, object};
 use rust_decimal::Decimal;
 use std::path::PathBuf;
 use std::str::FromStr;
+use service::Services;
+use errors::Error::GeneralError;
 
 pub(crate) struct SMemories {
   pub(crate) oid: ID,
@@ -47,12 +51,19 @@ fn save_data(
   // data = { _id: "", date: "2023-01-11", storage: "uuid", goods: [{goods: "", uom: "", qty: 0, price: 0, cost: 0, _tid: ""}, ...]}
   // cost = qty * price
 
+  println!("loading before {path_latest:?}");
+
   let before = match load(&path_latest) {
     Ok(x) => x,
     Err(_) => JsonValue::Null,
   };
 
-  let data = receive_data(app, time, data, ctx, before)?;
+  println!("loaded before {before:?}");
+
+  let data = replenish(app, data, ctx)?;
+  let before = replenish(app, before, ctx)?;
+
+  let data = receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?;
 
   println!("saving");
   save(&path_current, data.dump())?;
@@ -64,6 +75,47 @@ fn save_data(
   println!("done");
 
   Ok(data)
+}
+
+fn replenish(app: &Application, operation: JsonValue, ctx: &Vec<String>) -> Result<JsonValue, Error> {
+  match ctx.get(1) {
+    Some(v) => {
+      let ctx = format!("warehouse/{}/document", v);
+      let document = memories_find(app, operation["document"].clone(), vec![ctx.as_str()])?;
+
+      match document.get(0) {
+        Some(d) => {
+          Ok(object! {
+            document: document[0].clone(),
+            item: operation["item"].clone(),
+            cell: operation["cell"].clone(),
+            qty: operation["qty"].clone(),
+            price: operation["price"].clone(),
+            cost: operation["cost"].clone(),
+          })
+        },
+        None => Err(GeneralError(String::from("No document in memories")))
+      }
+    },
+    None => Err(GeneralError(String::from("Wrong ctx in memories")))
+  }
+}
+
+pub fn memories_find(app: &Application, filter: JsonValue, ctx: Vec<&str>) -> Result<Vec<JsonValue>, Error> {
+  let oid = ID::from("Midas-Plastics");
+  let result = app.service("memories").find(object!{oid: oid.to_base64(), ctx: ctx, filter: filter})?;
+
+  Ok(result["data"].members().map(|o|o.clone()).collect())
+}
+
+pub fn memories_create(app: &Application, data: JsonValue, ctx: Vec<&str>) -> Result<JsonValue, Error> {
+  let oid = ID::from("Midas-Plastics");
+
+  let result = app.service("memories").create(data, object!{oid: oid.to_base64(), ctx: ctx })?;
+
+  // println!("create_result: {result:?}");
+
+  Ok(result)
 }
 
 impl SMemories {
@@ -114,6 +166,8 @@ impl SMemories {
     })?;
 
     data["_id"] = id.clone().into();
+
+    data["_uuid"] = uuid::Uuid::new_v4().to_string().into();
 
     save_data(app, &folder, &self.ctx, &id, time, data)
   }

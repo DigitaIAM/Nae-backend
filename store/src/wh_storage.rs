@@ -1,7 +1,9 @@
 use super::{
   check_batch_store_date::CheckBatchStoreDate, check_date_store_batch::CheckDateStoreBatch,
   date_type_store_batch_id::DateTypeStoreBatchId, store_date_type_batch_id::StoreDateTypeBatchId,
-  CheckpointTopology, Db, OpMutation, OrderedTopology, WHError,
+  elements::{CheckpointTopology, OpMutation, OrderedTopology},
+  db::Db,
+  error::WHError,
 };
 use chrono::DateTime;
 use rocksdb::{ColumnFamilyDescriptor, Options, DB};
@@ -13,7 +15,7 @@ pub struct WHStorage {
 }
 
 impl WHStorage {
-  pub fn receive_operations(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
+  pub fn mutate(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
     Ok(self.database.record_ops(ops)?)
   }
 

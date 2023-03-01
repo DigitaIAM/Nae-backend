@@ -1,23 +1,24 @@
 use crate::animo::error::DBError;
-use crate::services::{string_to_id, Data, Error, Params, Service};
-use crate::store::{Report, WHError, ToJson};
+use errors::Error;
+use crate::services::{string_to_id, Data, Params};
+use service::{Service, Services};
+use store::{elements::{Report, ToJson}, error::WHError};
 use crate::ws::error_general;
 use crate::{
-  auth, Application, ChangeTransformation, Memory, SOrganizations, Services, Transformation,
-  TransformationKey, Value, ID,
+  auth, commutator::Application, storage::SOrganizations, animo::memory::{ChangeTransformation, Memory, Transformation, TransformationKey, Value, ID},
 };
 use chrono::{DateTime, Utc};
 use json::object::Object;
 use json::JsonValue;
 use std::sync::{Arc, RwLock};
 
-pub(crate) struct Inventory {
+pub struct Inventory {
   app: Application,
   path: Arc<String>,
 }
 
 impl Inventory {
-  pub(crate) fn new(app: Application) -> Arc<dyn Service> {
+  pub fn new(app: Application) -> Arc<dyn Service> {
     Arc::new(Inventory { app, path: Arc::new("inventory".to_string()) })
   }
 }
@@ -29,12 +30,12 @@ impl Service for Inventory {
 
   fn find(&self, params: Params) -> crate::services::Result {
     
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
     
     // let limit = self.limit(&params);
     // let skip = self.skip(&params);
 
-    let storage = self.uuid("storage", &params)?;
+    let storage = crate::services::uuid("storage", &params)?;
     
     let dates = if let Some(dates) = self.date_range(&params)? {
       dates

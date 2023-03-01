@@ -11,10 +11,12 @@ use std::path::PathBuf;
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::animo::error::DBError;
 use crate::animo::Time;
-use crate::{Decimal, Settings};
+use crate::settings::Settings;
 use blake2::{Blake2s256, Digest};
 use json::JsonValue;
 use json::JsonValue::Number;
+use std::convert::TryFrom;
+use crate::warehouse::primitives::Decimal;
 
 type Hasher = Blake2s256;
 pub(crate) const ID_BYTES: usize = 32;
@@ -408,7 +410,7 @@ impl ID {
     }
   }
 
-  pub(crate) fn to_base64(&self) -> String {
+  pub fn to_base64(&self) -> String {
     base64::encode_config(self.0, base64::URL_SAFE_NO_PAD)
   }
 
@@ -469,7 +471,7 @@ impl Context {
   // }
 }
 
-pub(crate) trait Memory {
+pub trait Memory {
   fn init(folder: PathBuf) -> Result<Self, DBError>
   where
     Self: Sized;
@@ -516,7 +518,7 @@ pub(crate) fn create(zone: ID, primary: ID, pairs: Vec<(ID, Value)>) -> Vec<Chan
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::DESC;
+  use crate::animo::DESC;
 
   #[test]
   fn test_transformation_json() {

@@ -2,7 +2,7 @@ use crate::animo::error::DBError;
 use crate::animo::memory::*;
 use crate::animo::{OpsManager, Txn};
 use crate::text_search::TextSearch;
-use crate::{Animo, Memory, Settings, Topology, WHStoreAggregationTopology, WHStoreTopology};
+use crate::{animo::{Animo, Memory, Topology}, settings::Settings, warehouse::store_aggregation_topology::WHStoreAggregationTopology, warehouse::store_topology::WHStoreTopology};
 use rkyv::AlignedVec;
 use rocksdb::{
   BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch,
@@ -181,7 +181,7 @@ impl Memory for AnimoDB {
 
     self.text_search.modification(&s, tx, &mutations)?;
 
-    // TODO how to handle error?
+    // TODO how to handle errors?
     let dispatchers = { self.dispatchers.lock().map_err(|e| DBError::from(e.to_string()))?.clone() };
 
     for dispatcher in dispatchers.iter() {

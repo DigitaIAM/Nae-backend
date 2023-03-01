@@ -2,8 +2,8 @@ pub(crate) mod balance;
 pub(crate) mod balance_operation;
 pub(crate) mod balance_operations;
 pub(crate) mod primitives;
-pub(crate) mod store_aggregation_topology;
-pub(crate) mod store_topology;
+pub mod store_aggregation_topology;
+pub mod store_topology;
 pub(crate) mod turnover;
 
 use crate::animo::Time;
@@ -46,16 +46,16 @@ pub mod test_util {
   use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
   use crate::warehouse::store_topology::WHStoreTopology;
   use crate::warehouse::turnover::{Goods, Store};
-  use crate::{AnimoDB, Memory, Settings};
+  use crate::{animo::db::AnimoDB, animo::memory::Memory, settings::Settings};
   use chrono::DateTime;
   use std::sync::Arc;
-  use tempfile::TempDir;
+  use tempfile::{TempDir, tempdir};
 
-  pub(crate) fn init() -> (TempDir, Settings, AnimoDB) {
+  pub fn init() -> (TempDir, Settings, AnimoDB) {
     std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
     let _ = env_logger::builder().is_test(true).try_init();
 
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempdir().unwrap();
     let tmp_path = tmp_dir.path().to_str().unwrap();
 
     let settings = Settings::test(tmp_path.into());

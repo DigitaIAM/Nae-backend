@@ -23,6 +23,6 @@ pub(crate) fn error_not_found<S: AsRef<str>>(message: S) -> JsonValue {
 }
 
 pub(crate) fn error_general<S: AsRef<str>>(message: S) -> JsonValue {
-  error("general-error", "GeneralError", 500, message.as_ref())
+  error("general-errors", "GeneralError", 500, message.as_ref())
 }
 

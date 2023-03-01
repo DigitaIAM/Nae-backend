@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
 use super::{
-  balance::BalanceForGoods, dt, first_day_next_month, Balance, CheckpointTopology, Db, Op,
-  OpMutation, Store, WHError, UUID_NIL,
+  balance::BalanceForGoods,
+  elements::{dt, first_day_next_month, Balance, CheckpointTopology, Op,
+   OpMutation, Store, UUID_NIL},
+  db::Db,
+  error::WHError,
 };
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, DB};
@@ -79,24 +82,6 @@ impl CheckpointTopology for CheckBatchStoreDate {
       .map(|b| *b)
       .collect()
   }
-
-  // fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError> {
-  //   if let Some(bytes) = self.db.get_cf(&self.cf()?, self.key_latest_checkpoint_date())? {
-  //     let date = serde_json::from_slice(&bytes)?;
-  //     dt(date)
-  //   } else {
-  //     // Ok(DateTime::<Utc>::default())
-  //     dt("1970-01-01")
-  //   }
-  // }
-
-  // fn set_latest_checkpoint_date(&self, date: DateTime<Utc>) -> Result<(), WHError> {
-  //   Ok(self.db.put_cf(
-  //     &self.cf()?,
-  //     self.key_latest_checkpoint_date(),
-  //     serde_json::to_string(&date)?,
-  //   )?)
-  // }
 
   fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError> {
     if let Some(bytes) = self

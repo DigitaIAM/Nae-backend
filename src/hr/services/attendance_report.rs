@@ -16,14 +16,16 @@ use uuid::Uuid;
 
 use crate::animo::error::DBError;
 use crate::hik::ConfigCamera;
-use crate::services::{Data, Error, JsonData, Params, Service};
+use crate::services::{Data, JsonData, Params};
+use service::{Service, Services};
+use errors::Error;
 use crate::storage::{SCamera, SEvent};
-use crate::utils::json::JsonParams;
-use crate::utils::time::DateRange;
+use utils::json::JsonParams;
+use utils::time::DateRange;
 use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
 use crate::{
-  auth, Application, Memory, SOrganizations, Services, Transformation, TransformationKey, Value, ID,
+  auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
 };
 
 pub(crate) struct AttendanceReport {
@@ -103,7 +105,7 @@ impl Service for AttendanceReport {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
 
     let people = self.orgs.get(&oid).people();
 

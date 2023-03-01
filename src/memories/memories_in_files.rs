@@ -13,13 +13,16 @@ use tantivy::HasLen;
 use uuid::Uuid;
 
 use crate::animo::error::DBError;
-use crate::services::{Data, Error, Params, Service};
+use crate::services::{Data, Params};
+use service::{Service, Services};
+use errors::Error;
 use crate::storage::SOrganizations;
+use utils::json::{JsonMerge, JsonParams};
 use crate::store::ToJson;
-use crate::utils::json::{JsonMerge, JsonParams};
 use crate::ws::error_general;
-use crate::{auth, Application, Memory, Services, Transformation, TransformationKey, Value, ID};
-
+use crate::{
+  auth, commutator::Application, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+};
 // warehouse: { receiving, Put-away, transfer,  }
 // production: { manufacturing }
 
@@ -31,7 +34,7 @@ pub struct MemoriesInFiles {
 }
 
 impl MemoriesInFiles {
-  pub(crate) fn new(app: Application, name: &str, orgs: SOrganizations) -> Arc<dyn Service> {
+  pub fn new(app: Application, name: &str, orgs: SOrganizations) -> Arc<dyn Service> {
     Arc::new(MemoriesInFiles { app, name: Arc::new(name.to_string()), orgs })
   }
 }
@@ -42,7 +45,7 @@ impl Service for MemoriesInFiles {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
     let limit = self.limit(&params);
@@ -151,7 +154,7 @@ impl Service for MemoriesInFiles {
   }
 
   fn get(&self, id: String, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
     if id.len() < 10 {
@@ -163,7 +166,7 @@ impl Service for MemoriesInFiles {
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
     let memories = self.orgs.get(&oid).memories(ctx);
@@ -175,7 +178,7 @@ impl Service for MemoriesInFiles {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
-      let oid = self.oid(&params)?;
+      let oid = crate::services::oid(&params)?;
       let ctx = self.ctx(&params);
 
       if id.len() < 10 {
@@ -189,7 +192,7 @@ impl Service for MemoriesInFiles {
   }
 
   fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
     if id.len() < 10 {

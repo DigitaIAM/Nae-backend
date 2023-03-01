@@ -13,13 +13,14 @@ use uuid::Uuid;
 
 use crate::animo::error::DBError;
 use crate::services::{string_to_id, JsonData};
-use crate::services::{Data, Error, Params, Service};
+use crate::services::{Data, Params};
+use service::{Service, Services};
+use errors::Error;
 use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
 use crate::{
-  auth, Application, Memory, SOrganizations, Services, Transformation, TransformationKey, Value, ID,
+  auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
 };
-
 pub(crate) struct Shifts {
   app: Application,
   name: String,
@@ -39,7 +40,7 @@ impl Service for Shifts {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
 
     let limit = self.limit(&params);
     let skip = self.skip(&params);
@@ -57,14 +58,14 @@ impl Service for Shifts {
   }
 
   fn get(&self, id: String, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
 
     let id = crate::services::string_to_id(id)?;
     self.orgs.get(&oid).shift(id).load()
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
-    let oid = self.oid(&data)?;
+    let oid = crate::services::oid(&data)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -80,7 +81,7 @@ impl Service for Shifts {
   }
 
   fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    let oid = self.oid(&data)?;
+    let oid = crate::services::oid(&data)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -96,7 +97,7 @@ impl Service for Shifts {
   }
 
   fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -118,7 +119,7 @@ impl Service for Shifts {
   }
 
   fn remove(&self, id: String, params: Params) -> crate::services::Result {
-    let oid = self.oid(&params)?;
+    let oid = crate::services::oid(&params)?;
     let id = string_to_id(id)?;
 
     self.orgs.get(&oid).shift(id).delete()

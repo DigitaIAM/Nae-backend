@@ -3,6 +3,9 @@ name = "nae-backend"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["./store"]
+
 [profile.release]
 strip = true
 #opt-level = "z" #optimize for size
@@ -10,6 +13,10 @@ strip = true
 #panic = "abort"
 
 [dependencies]
+service = { path = "./service" }
+errors = { path = "./errors" }
+utils = { path = "./utils" }
+store = { path = "./store" }
 derives = { path = "./derives" }
 lazy_static = "1.4.0"
 walkdir = "2.3.2"

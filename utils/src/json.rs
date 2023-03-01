@@ -5,14 +5,14 @@ use json::JsonValue;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
-use crate::services::Error;
+use errors::Error;
 
 pub trait JsonParams {
   fn string(&self) -> String;
 
   fn string_or_none(&self) -> Option<String>;
 
-  fn uuid(&self) -> Uuid;
+  fn uuid(&self) -> Result<Uuid, Error>;
 
   // fn uuid_from_datetime(&self) -> Uuid;
 
@@ -22,6 +22,7 @@ pub trait JsonParams {
   fn number_or_none(&self) -> Option<Decimal>;
 
   fn date(&self) -> Result<DateTime<Utc>, Error>;
+  fn datetime(&self) -> Result<DateTime<Utc>, Error>;
 }
 
 impl JsonParams for JsonValue {
@@ -33,8 +34,8 @@ impl JsonParams for JsonValue {
     self.as_str().map(|s| s.to_string())
   }
 
-  fn uuid(&self) -> Uuid {
-    Uuid::try_parse(&self.string()).unwrap_or_default()
+  fn uuid(&self) -> Result<Uuid, Error> {
+    Ok(Uuid::try_parse(&self.string())?)
   }
 
   // fn uuid_from_datetime(&self) -> Uuid {
@@ -45,15 +46,18 @@ impl JsonParams for JsonValue {
   fn uuid_or_none(&self) -> Option<Uuid> {
     if let Some(s) = self.string_or_none() {
       if &s == "null" || &s == "" {
+        // log::debug!("FN_UUID_OR_NONE EMPTY");
         None
       } else {
         if let Ok(res) = Uuid::try_parse(&s) {
+          // log::debug!("FN_UUID_OR_NONE: {res:?}");
           Some(res)
         } else {
           None
         }
       }
     } else {
+      // log::debug!("FN_UUID_OR_NONE FAILED TO PARSE STRING");
       None
     }
   }
@@ -77,6 +81,13 @@ impl JsonParams for JsonValue {
   fn date(&self) -> Result<DateTime<Utc>, Error> {
     let s = self.string();
     let dt = DateTime::parse_from_rfc3339(format!("{s}T00:00:00Z").as_str())?.into();
+
+    Ok(dt)
+  }
+
+  fn datetime(&self) -> Result<DateTime<Utc>, Error> {
+    let s = self.string();
+    let dt = DateTime::parse_from_rfc3339(&s)?.into();
 
     Ok(dt)
   }

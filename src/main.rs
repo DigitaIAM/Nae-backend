@@ -3,6 +3,21 @@ extern crate core;
 
 #[macro_use]
 extern crate quick_error;
+extern crate json;
+extern crate store;
+extern crate utils;
+extern crate actix;
+extern crate jsonwebtoken;
+extern crate rust_decimal;
+extern crate tracing;
+extern crate rkyv;
+extern crate dbase;
+extern crate reqwest;
+extern crate csv;
+extern crate uuid;
+extern crate actix_web;
+extern crate errors;
+// extern crate tempfile;
 
 use crate::commutator::{Application, Commutator};
 use actix::{Actor, Addr};
@@ -33,7 +48,6 @@ mod inventory;
 mod services;
 mod settings;
 mod storage;
-mod utils;
 mod websocket;
 mod ws;
 
@@ -42,7 +56,6 @@ mod animo;
 mod api;
 mod hr;
 mod memories;
-pub mod store;
 mod text_search;
 mod use_cases;
 pub mod warehouse;
@@ -60,15 +73,15 @@ use crate::hr::services::companies::Companies;
 use crate::hr::services::departments::Departments;
 use crate::hr::services::shifts::Shifts;
 use crate::memories::MemoriesInFiles;
-use crate::services::{People, Services};
+use crate::services::People;
+use service::Services;
 use crate::settings::Settings;
 use crate::storage::SOrganizations;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
 use animo::db::AnimoDB;
 use animo::memory::Memory;
-
-pub type Decimal = f64; // rust_decimal::Decimal;
+use inventory::service::Inventory;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "basic")]
@@ -174,6 +187,7 @@ async fn startup() -> std::io::Result<()> {
   app.register(Events::new(app.clone(), "events", storage.clone()));
 
   app.register(MemoriesInFiles::new(app.clone(), "memories", storage.clone()));
+  app.register(Inventory::new(app.clone()));
 
   println!("app started up");
 
@@ -188,6 +202,7 @@ async fn startup() -> std::io::Result<()> {
         "001" => use_cases::uc_001::import(&app.db),
         "002" => use_cases::uc_002::import(&app.db),
         "003" => use_cases::uc_003::import(&app),
+        "005" => use_cases::uc_005::import(&app),
         _ => unreachable!(),
       }
       Ok(())
@@ -197,6 +212,7 @@ async fn startup() -> std::io::Result<()> {
         "001" => use_cases::uc_001::report(&app.db),
         "002" => use_cases::uc_002::report(&app.db),
         "003" => use_cases::uc_003::report(&app),
+        "005" => use_cases::uc_005::report(&app),
         _ => unreachable!(),
       }
       Ok(())

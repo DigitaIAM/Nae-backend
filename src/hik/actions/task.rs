@@ -1,7 +1,7 @@
-use crate::services::Error;
-use crate::utils::json::JsonParams;
-use crate::utils::time::now_in_seconds;
-use crate::{Application, ID};
+use errors::Error;
+use utils::json::JsonParams;
+use utils::time::now_in_seconds;
+use crate::{commutator::Application, animo::memory::ID};
 use async_trait::async_trait;
 use json::number::Number;
 use json::JsonValue;
@@ -107,7 +107,7 @@ impl CommandMeta {
     if let Some(result) = self.result.as_ref() {
       match result {
         Ok(data) => o.insert("data", data.clone()),
-        Err(error) => o.insert("error", error.to_string()),
+        Err(error) => o.insert("errors", error.to_string()),
       };
     };
 
