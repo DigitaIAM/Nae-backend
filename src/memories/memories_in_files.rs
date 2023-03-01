@@ -2,6 +2,7 @@ use actix_web::error::ParseError::Status;
 use dbase::FieldConversionError;
 use json::object::Object;
 use json::JsonValue;
+use rust_decimal::Decimal;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::io::Write;
@@ -17,6 +18,7 @@ use service::{Service, Services};
 use errors::Error;
 use crate::storage::SOrganizations;
 use utils::json::{JsonMerge, JsonParams};
+use crate::store::ToJson;
 use crate::ws::error_general;
 use crate::{
   auth, commutator::Application, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
@@ -49,24 +51,49 @@ impl Service for MemoriesInFiles {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let memories = self.orgs.get(&oid).memories(ctx);
-    let list = memories.list()?;
+    let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
 
+    let memories = self.orgs.get(&oid).memories(ctx.clone());
+    let list = memories.list(Some(reverse))?;
+
+    let search = &self.params(&params)["search"];
     let filters = &self.params(&params)["filter"];
-    let (total, list): (isize, Vec<JsonValue>) = if filters.is_object() {
+    let (total, mut list): (isize, Vec<JsonValue>) = if let Some(search) = search.as_str() {
       let mut total = 0;
       let list: Vec<JsonValue> = list
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
         .filter(|o| {
-          for (name, value) in filters.entries() {
-            if &o[name] != value {
-              return false;
+          for (name, v) in o.entries() {
+            if let Some(str) = v.as_str() {
+              if str.contains(search) {
+                return true;
+              }
             }
           }
-          return true;
+          return false;
         })
+        .map(|o| {
+          total += 1;
+          o
+        })
+        .skip(skip)
+        .take(limit)
+        .collect::<_>();
+
+      if list.is_empty() {
+        (total, list)
+      } else {
+        (-1, list)
+      }
+    } else if filters.is_object() {
+      let mut total = 0;
+      let list: Vec<JsonValue> = list
+        .into_iter()
+        .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+        .filter(|o| o.is_object())
+        .filter(|o| filters.entries().all(|(n, v)| &o[n] == v))
         .map(|o| {
           total += 1;
           o
@@ -91,6 +118,33 @@ impl Service for MemoriesInFiles {
           .collect::<Result<_, _>>()?,
       )
     };
+
+    // workaround: count produced
+    if &ctx == &vec!["production", "order"] {
+      let produced = self
+        .orgs
+        .get(&oid)
+        .memories(vec!["production".into(), "produce".into()])
+        .list(None)?;
+      for mut order in &mut list {
+        let filters = vec![("order", &order["_id"])];
+
+        let mut boxes = 0_u32;
+        let sum: Decimal = produced
+          .iter()
+          .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+          .filter(|o| o.is_object())
+          .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
+          .map(|o| o["qty"].number())
+          .map(|o| {
+            boxes += 1;
+            o
+          })
+          .sum();
+
+        order["produced"] = json::object! { "piece": sum.to_json(), "box": boxes.to_string() };
+      }
+    }
 
     Ok(json::object! {
       data: JsonValue::Array(list),
@@ -156,7 +210,7 @@ impl Service for MemoriesInFiles {
       let mut patch = data.clone();
       patch.remove("_id"); // TODO check id?
 
-      obj.merge(&patch);
+      obj = obj.merge(&patch);
 
       // for (n, v) in data.entries() {
       //   if n != "_id" {

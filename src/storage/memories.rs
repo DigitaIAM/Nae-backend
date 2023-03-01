@@ -197,7 +197,7 @@ impl SMemories {
     SDoc { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path }
   }
 
-  pub(crate) fn list(&self) -> std::io::Result<Vec<SDoc>> {
+  pub(crate) fn list(&self, reverse: Option<bool>) -> std::io::Result<Vec<SDoc>> {
     let mut result = Vec::new();
 
     // let mut folder = self.folder.clone();
@@ -236,7 +236,13 @@ impl SMemories {
       }
     }
 
-    result.sort_by(|a, b| b.id.cmp(&a.id));
+    if let Some(reverse) = reverse {
+      if reverse {
+        result.sort_by(|a, b| a.id.cmp(&b.id));
+      } else {
+        result.sort_by(|a, b| b.id.cmp(&a.id));
+      }
+    }
 
     Ok(result)
   }
