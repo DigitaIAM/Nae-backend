@@ -1,10 +1,11 @@
 use std::collections::HashSet;
 use std::fmt::Debug;
 use chrono::{TimeZone, Utc};
+use rkyv::AlignedVec;
 use serde::{Deserialize, Serialize};
 use crate::animo::error::DBError;
 use crate::animo::memory::{Context, ID, ID_BYTES, ID_MAX, ID_MIN};
-use crate::AnimoDB;
+use crate::{AnimoDB, Zone};
 use crate::animo::db::{FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 use crate::animo::*;
 use crate::animo::ops_manager::*;
@@ -41,6 +42,10 @@ impl PositionInTopology for WHQueryStoreBalance {
 
     fn position(&self) -> &Vec<u8> {
         &self.position
+    }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        todo!()
     }
 }
 
@@ -107,6 +112,10 @@ impl PositionInTopology for WHQueryStoreOperation {
 
     fn position(&self) -> &Vec<u8> {
         &self.position
+    }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        todo!()
     }
 }
 
@@ -262,39 +271,50 @@ impl OperationsTopology for WHStoreTopology {
         ]
     }
 
-    fn on_mutation(&self, tx: &mut Txn, cs: HashSet<Context>) -> Result<Vec<DeltaOp<Self::Obj,Self::Op,Self::TObj,Self::TOp>>, DBError> {
+    fn on_mutation(&self, tx: &mut Txn, cs: HashSet<(Zone, Context)>) -> Result<Vec<DeltaOp<Self::Obj,Self::Op,Self::TObj,Self::TOp>>, DBError> {
         // GoodsReceive, GoodsIssue
 
         // TODO handle delete case
 
+        let ts = std::time::Instant::now();
+
         // filter contexts by "object type"
         let mut contexts = HashSet::with_capacity(cs.len());
-        for c in cs {
-            if let Some(instance_of) = tx.resolve(&c, *SPECIFIC_OF)? {
+        for (zone, context) in cs {
+            if let Some(instance_of) = tx.resolve(zone, &context, *SPECIFIC_OF)? {
                 if instance_of.into_before.one_of(&[*GOODS_RECEIVE, *GOODS_ISSUE])
                     || instance_of.into_after.one_of(&[*GOODS_RECEIVE, *GOODS_ISSUE]){
-                    contexts.insert(c);
+                    contexts.insert((zone, context));
                 }
             }
         }
+        // println!("on_mutation contexts preparation: {:.2?}", ts.elapsed());
 
         // TODO resolve up-dependent contexts
 
+        let ts = std::time::Instant::now();
+
         let mut ops = Vec::with_capacity(contexts.len());
-        for context in contexts {
-            let (before,after) = StoreMovement::resolve(tx, &context)?;
+        for (zone, context) in contexts {
+            let (before,after) = StoreMovement::resolve(tx, zone, &context)?;
 
             if before.is_some() || after.is_some() {
                 ops.push(DeltaOp::new(context, before, after));
             }
         }
+        println!("on_mutation contexts processed: {:.2?}", ts.elapsed());
+
+        let ts = std::time::Instant::now();
+
         tx.ops_manager().write_ops(tx, &ops)?;
+
+        println!("on_mutation write_ops: {:.2?}", ts.elapsed());
 
         Ok(ops)
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)] // , Serialize, Deserialize)]
 pub(crate) struct StoreBalance {
     pub(crate) balance: WHBalance,
 
@@ -305,7 +325,7 @@ pub(crate) struct StoreBalance {
 }
 
 impl ToKVBytes for StoreBalance {
-    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, AlignedVec), DBError> {
         let k = WHStoreTopology::position_at_end(self.store, &self.date);
         let v = self.balance.to_bytes()?;
         Ok((k,v))
@@ -332,7 +352,7 @@ impl From<&StoreBalance> for WHBalance {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)] // , Serialize, Deserialize)]
 pub(crate) struct StoreMovement {
     pub(crate) op: BalanceOperation,
 
@@ -356,7 +376,7 @@ impl StoreMovement {
 }
 
 impl ToKVBytes for StoreMovement {
-    fn to_kv_bytes(&self) -> Result<(Vec<u8>, Vec<u8>), DBError> {
+    fn to_kv_bytes(&self) -> Result<(Vec<u8>, AlignedVec), DBError> {
         let k = WHStoreTopology::position_of_operation(self.store, self.goods, self.date.clone(), &self.op);
         let v = self.op.to_bytes()?;
         Ok((k,v))
@@ -379,38 +399,42 @@ impl PositionInTopology for StoreMovement {
     fn position(&self) -> &Vec<u8> {
         &self.position
     }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        todo!()
+    }
 }
 
 impl OperationInTopology<WHBalance,BalanceOperation,StoreBalance> for StoreMovement {
-    fn resolve(env: &Txn, context: &Context) -> Result<(Option<Self>,Option<Self>), DBError> {
+    fn resolve(env: &Txn, zone: Zone, context: &Context) -> Result<(Option<Self>,Option<Self>), DBError> {
 
-        let change_instance_of = if let Some(change) = env.resolve(context, *SPECIFIC_OF)? {
+        let change_instance_of = if let Some(change) = env.resolve(zone, context, *SPECIFIC_OF)? {
             change
         } else {
             return Ok((None,None));
         };
-        let change_store = if let Some(change) = env.resolve(context, *STORE)? {
+        let change_store = if let Some(change) = env.resolve(zone, context, *STORE)? {
             change
         } else {
             return Ok((None,None));
         };
-        let change_goods = if let Some(change) = env.resolve(context, *GOODS)? {
+        let change_goods = if let Some(change) = env.resolve(zone, context, *GOODS)? {
             change
         } else {
             return Ok((None,None));
         };
-        let change_date = if let Some(change) = env.resolve(context, *DATE)? {
+        let change_date = if let Some(change) = env.resolve(zone, context, *DATE)? {
             change
         } else {
             return Ok((None,None));
         };
 
-        let change_qty = if let Some(change) = env.resolve(context, *QTY)? {
+        let change_qty = if let Some(change) = env.resolve(zone, context, *QTY)? {
             change
         } else {
             return Ok((None,None));
         };
-        let change_cost = if let Some(change) = env.resolve(context, *COST)? {
+        let change_cost = if let Some(change) = env.resolve(zone, context, *COST)? {
             change
         } else {
             return Ok((None,None));
@@ -519,8 +543,8 @@ impl OperationInTopology<WHBalance,BalanceOperation,StoreBalance> for StoreMovem
         Ok((before,after))
     }
 
-    fn operation(&self) -> BalanceOperation {
-        self.op.clone()
+    fn operation(&self) -> &BalanceOperation {
+        &self.op
     }
 
     fn to_value(&self) -> StoreBalance {

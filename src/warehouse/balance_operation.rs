@@ -1,4 +1,6 @@
-use serde::{Deserialize, Serialize};
+use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
+use bytecheck::CheckBytes;
+
 use crate::animo::Operation;
 use crate::animo::error::DBError;
 use crate::animo::memory::ID;
@@ -7,7 +9,13 @@ use crate::animo::shared::*;
 use crate::warehouse::balance::WHBalance;
 use crate::warehouse::primitives::{Money, MoneyOp, MoneyOps, Qty};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+#[archive_attr(derive(CheckBytes, Debug))]
 pub enum BalanceOperation {
     In(Qty, Money),
     Out(Qty, Money),
@@ -35,16 +43,23 @@ impl BalanceOperation {
 }
 
 impl ToBytes for BalanceOperation {
-    fn to_bytes(&self) -> Result<Vec<u8>, DBError> {
-        serde_json::to_vec(self)
-            .map_err(|e| e.to_string().into())
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        rkyv::to_bytes::<_, 1024>(self)
+            .map_err(|e| DBError::from(e.to_string()))
+        // serde_json::to_vec(self)
+        //     .map_err(|e| e.to_string().into())
     }
 }
 
 impl FromBytes<BalanceOperation> for BalanceOperation {
-    fn from_bytes(bs: &[u8]) -> Result<BalanceOperation, DBError> {
-        serde_json::from_slice(bs)
-            .map_err(|e| e.to_string().into())
+    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+        match rkyv::check_archived_root::<Self>(bs) {
+            Ok(archived) => {
+                let value: Self = archived.deserialize(&mut rkyv::Infallible).unwrap();
+                Ok(value)
+            },
+            Err(e) => Err(DBError::from(e.to_string()))
+        }
     }
 }
 

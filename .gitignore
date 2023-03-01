@@ -12,3 +12,10 @@ Cargo.lock
 
 # Added by cargo
 /target
+
+# Ignore data folder
+/data/
+
+.idea/
+
+.DS_Store

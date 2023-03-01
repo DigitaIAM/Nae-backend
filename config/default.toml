@@ -1,7 +1,8 @@
 debug = false
 
 [database]
-folder = "./data/memory"
+memory = "./data/memory"
+inventory = "./data/inventory"
 
 [jwt_config]
 audience = "https://yourdomain.com"

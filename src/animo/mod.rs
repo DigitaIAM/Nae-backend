@@ -18,7 +18,8 @@ use crate::animo::db::*;
 pub(crate) use crate::animo::time::{Time, TimeInterval};
 use crate::animo::memory::*;
 use crate::animo::ops_manager::*;
-use crate::warehouse::{WHGoodsTopology, WHTopology};
+use crate::DESC;
+use crate::text_search::TextSearch;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
 
@@ -62,9 +63,9 @@ pub(crate) trait Delta<V> {
 // TV - object in topology
 // BV - base object
 pub(crate) trait OperationInTopology<BV,BO,TV: ObjectInTopology<BV,BO,Self>>: PositionInTopology + Sized + Debug + FromKVBytes<Self> + ToKVBytes {
-    fn resolve(env: &Txn, context: &Context) -> Result<(Option<Self>,Option<Self>), DBError>;
+    fn resolve(env: &Txn, zone: Zone, context: &Context) -> Result<(Option<Self>,Option<Self>), DBError>;
 
-    fn operation(&self) -> BO;
+    fn operation(&self) -> &BO;
 
     fn to_value(&self) -> TV;
 }
@@ -144,6 +145,18 @@ where
             unreachable!("internal error")
         }
     }
+
+    fn suffix(&self) -> &(usize, Vec<u8>) {
+        todo!()
+    }
+}
+
+pub(crate) trait SearchableTopology {
+    // TODO remove `&self`
+    fn depends_on(&self) -> Vec<ID>;
+
+    // TODO remove `&self`
+    fn on_mutation(&self, tx: &mut Txn, contexts: HashSet<Context>) -> Result<(), DBError>;
 }
 
 pub(crate) trait OperationsTopology {
@@ -157,7 +170,7 @@ pub(crate) trait OperationsTopology {
     fn depends_on(&self) -> Vec<ID>;
 
     // TODO remove `&self`
-    fn on_mutation(&self, tx: &mut Txn, contexts: HashSet<Context>) -> Result<Vec<DeltaOp<Self::Obj,Self::Op,Self::TObj,Self::TOp>>, DBError>;
+    fn on_mutation(&self, tx: &mut Txn, contexts: HashSet<(Zone, Context)>) -> Result<Vec<DeltaOp<Self::Obj,Self::Op,Self::TObj,Self::TOp>>, DBError>;
 }
 
 // Aggregation object
@@ -173,17 +186,22 @@ pub(crate) trait AOperation<TV>: Sized + ToBytes + FromBytes<Self> {
 }
 
 // Aggregation object in topology
-pub(crate) trait AObjectInTopology<BV,BO,TO: AOperationInTopology<BV,BO,Self>>: Sized + ToKVBytes + FromKVBytes<Self> {
+pub(crate) trait AObjectInTopology<BV,BO,TC: ACheckpoint, TO: AOperationInTopology<BV,BO,TC, Self>>: Sized + ToKVBytes + FromKVBytes<Self> {
     fn position(&self) -> Vec<u8>;
     fn value(&self) -> &BV;
 
     fn apply(&self, op: &TO) -> Result<Option<Self>,DBError>;
 }
 
+pub(crate) trait ACheckpoint: Sized + PositionInTopology + ToBytes + FromBytes<Self> {
+}
+
 // Aggregation operation in topology
-pub(crate) trait AOperationInTopology<BV,BO,TV: AObjectInTopology<BV,BO,Self>>: Sized + PositionInTopology {
+pub(crate) trait AOperationInTopology<BV,BO,TC: ACheckpoint, TV: AObjectInTopology<BV,BO,TC,Self>>: Sized + PositionInTopology {
 
     fn position_of_aggregation(&self) -> Result<Vec<u8>, DBError>;
+
+    fn checkpoint(&self) -> TC;
 
     fn operation(&self) -> BO;
 
@@ -241,12 +259,16 @@ impl<V> MemoOfList<V> {
     pub fn get(&self, index: usize) -> Option<&Memo<V>> {
         self.list.get(index)
     }
+
+    pub fn list(&self) -> &Vec<Memo<V>> {
+        &self.list
+    }
 }
 
 pub(crate) struct Txn<'a> {
     pub(crate) s: &'a Snapshot<'a>,
     batch: WriteBatch,
-    changes: Option<HashMap<&'a Context, HashMap<&'a ID, &'a ChangeTransformation>>>
+    changes: Option<HashMap<Zone, HashMap<&'a Context, HashMap<&'a ID, &'a ChangeTransformation>>>>
 }
 
 impl<'a> Txn<'a> {
@@ -259,12 +281,11 @@ impl<'a> Txn<'a> {
         let mut changes = HashMap::with_capacity(mutations.len());
 
         for change in mutations {
-            if !changes.contains_key(&change.context) {
-                changes.insert(&change.context, HashMap::new());
-            }
-            let map = changes.get_mut(&change.context).unwrap();
+            let zone = changes.entry(change.zone).or_insert(HashMap::new());
+            let context = zone.entry(&change.context)
+                .or_insert(HashMap::new());
 
-            map.insert(&change.what, change);
+            context.insert(&change.what, change);
         }
 
         Txn { s, batch: WriteBatch::default(), changes: Some(changes) }
@@ -355,65 +376,72 @@ impl<'a> Txn<'a> {
         self.get_light(&self.s.cf_values(), position.as_slice())
     }
 
+    pub(crate) fn value_heavy<O: FromKVBytes<O>>(&self, position: &Vec<u8>) -> Result<Option<O>, DBError> {
+        self.get_heavy(&self.s.cf_values(), position.as_slice())
+    }
+
     pub(crate) fn put_value<V: ToKVBytes>(&mut self, v: &V) -> Result<(), DBError> {
         let (k,v) = v.to_kv_bytes()?;
 
         log::debug!("put value {:?} {:?}", k, v);
 
-        self.batch.put_cf(&self.s.cf_values(), k.as_slice(), v.as_slice());
+        self.batch.put_cf(&self.s.cf_values(), k.as_slice(), v);
         Ok(())
     }
 
     pub(crate) fn update_value<V: ToBytes + Debug>(&mut self, position: &Vec<u8>, value: &V) -> Result<(), DBError> {
 
-        log::debug!("update value {:?} {:?}", value, position);
+      log::debug!("update value {:?} {:?}", value, position);
 
-        self.batch.put_cf(&self.s.cf_values(), position, value.to_bytes()?);
-        Ok(())
+      self.batch.put_cf(&self.s.cf_values(), position, value.to_bytes()?);
+      Ok(())
     }
 
     pub(crate) fn delete_value(&mut self, position: &Vec<u8>) -> Result<(), DBError> {
-        log::debug!("delete value {:?}", position);
-        self.batch.delete_cf(&self.s.cf_values(), position);
-        Ok(())
+      log::debug!("delete value {:?}", position);
+      self.batch.delete_cf(&self.s.cf_values(), position);
+      Ok(())
     }
 
     pub(crate) fn commit(self) -> Result<(),DBError> {
-        log::debug!("commit");
-        self.s.rf.db.write(self.batch)
-            .map_err(|e| e.to_string().into())
+      log::debug!("commit");
+      self.s.rf.db.write(self.batch)
+        .map_err(|e| e.to_string().into())
     }
 
     pub(crate) fn ops_manager(&mut self) -> Arc<OpsManager> {
-        self.s.rf.ops_manager.clone()
+      self.s.rf.ops_manager.clone()
     }
 
-    fn load_by(&self, context: &Context, what: &ID) -> Result<Option<ChangeTransformation>, DBError> {
-        if let Some(changes) = self.changes.as_ref() {
-            if let Some(map) = changes.get(context) {
-                if let Some(tr) = map.get(what) {
-                    return Ok(Some((**tr).clone()));
-                }
+    fn load_by(&self, zone: Zone, context: &Context, what: &ID) -> Result<Option<ChangeTransformation>, DBError> {
+      if let Some(map_changes) = self.changes.as_ref() {
+        if let Some(map_zone) = map_changes.get(&zone) {
+          if let Some(map) = map_zone.get(context) {
+            if let Some(tr) = map.get(what) {
+                return Ok(Some((**tr).clone()));
             }
+          }
         }
+      }
 
-        let memory = self.s.load_by(context, &what)?;
-        if memory != Value::Nothing {
-            return Ok(Some(ChangeTransformation {
-                context: context.clone(),
-                what: what.clone(),
-                into_before: memory.clone(),
-                into_after: memory
-            }));
-        }
-        Ok(None)
+      let memory = self.s.load_by(context, &what)?;
+      if memory != Value::Nothing {
+        return Ok(Some(ChangeTransformation {
+          zone,
+          context: context.clone(),
+          what: what.clone(),
+          into_before: memory.clone(),
+          into_after: memory
+        }));
+      }
+      Ok(None)
     }
 
-    pub(crate) fn resolve(&self, context: &Context, what: ID) -> Result<Option<ChangeTransformation>, DBError> {
+    pub(crate) fn resolve(&self, zone: Zone, context: &Context, what: ID) -> Result<Option<ChangeTransformation>, DBError> {
         // TODO calculate
 
         // read value for give `context` and `what`. In case it's not exist, repeat on "above" context
-        if let Some(tr) = self.load_by(context, &what)? {
+        if let Some(tr) = self.load_by(zone, context, &what)? {
             Ok(Some(tr))
         } else {
             let mut context = context.clone();
@@ -422,7 +450,7 @@ impl<'a> Txn<'a> {
                     Some((_, ids)) => {
                         context = Context(ids.to_vec());
 
-                        if let Some(tr) = self.load_by(&context, &what)? {
+                        if let Some(tr) = self.load_by(*DESC, &context, &what)? {
                             break Ok(Some(tr))
                         }
                     }
@@ -435,10 +463,8 @@ impl<'a> Txn<'a> {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub(crate) enum Topology {
-    Warehouse(Arc<WHTopology>),
     WarehouseStore(Arc<WHStoreTopology>),
     WarehouseStoreAggregation(Arc<WHStoreAggregationTopology>),
-    WarehouseGoods(Arc<WHGoodsTopology>),
 }
 
 #[derive(Default)]
@@ -453,27 +479,12 @@ pub(crate) struct Animo {
     // list of node producers that depend on id
     what_to_topologies: HashMap<ID, HashSet<Topology>>,
 
-    op_to_topologies: HashMap<Topology, HashSet<Topology>>
+    op_to_topologies: HashMap<Topology, HashSet<Topology>>,
 }
 
 impl Animo {
     pub fn register_topology(&mut self, topology: Topology) {
         match &topology {
-            Topology::Warehouse(top) => {
-                // update helper map for fast resolve of dependants on given mutation
-                for id in top.depends_on() {
-                    match self.what_to_topologies.get_mut(&id) {
-                        None => {
-                            let mut set = HashSet::new();
-                            set.insert(topology.clone());
-                            self.what_to_topologies.insert(id, set);
-                        }
-                        Some(v) => {
-                            v.insert(topology.clone());
-                        }
-                    }
-                }
-            }
             Topology::WarehouseStore(top) => {
                 // update helper map for fast resolve of dependants on given mutation
                 for id in top.depends_on() {
@@ -495,12 +506,6 @@ impl Animo {
 
                 set.insert(Topology::WarehouseStoreAggregation(top.clone()));
             }
-            Topology::WarehouseGoods(top) => {
-                let mut set = self.op_to_topologies.entry(self.topologies[0].clone())
-                    .or_insert(HashSet::new());
-
-                set.insert(Topology::WarehouseGoods(top.clone()));
-            }
         }
 
         // add to list of op-producers
@@ -511,18 +516,20 @@ impl Animo {
 impl Dispatcher for Animo {
     // push propagation of mutations
     fn on_mutation(&self, s: &Snapshot, mutations: &[ChangeTransformation]) -> Result<(), DBError> {
+        let mut count = 0;
         // calculate node_producers that affected by mutations
-        let mut topologies: HashMap<Topology, HashSet<Context>> = HashMap::new();
+        let mut topologies: HashMap<Topology, HashSet<(Zone, Context)>> = HashMap::new();
         for mutation in mutations {
+            // profiling::scope!("Looped Contexts");
             if let Some(set) = self.what_to_topologies.get(&mutation.what) {
                 for item in set {
                     match topologies.get_mut(item) {
                         Some(contexts) => {
-                            contexts.insert(mutation.context.clone());
+                            contexts.insert((mutation.zone, mutation.context.clone()));
                         },
                         None => {
                             let mut contexts = HashSet::new();
-                            contexts.insert(mutation.context.clone());
+                            contexts.insert((mutation.zone, mutation.context.clone()));
                             topologies.insert(item.clone(), contexts);
                         }
                     }
@@ -537,46 +544,25 @@ impl Dispatcher for Animo {
         // generate new operations or overwrite existing
         for (topology, contexts) in topologies.into_iter() {
             match topology {
-                Topology::Warehouse(top) => {
-                    let ops = top.on_mutation(&mut tx, contexts)?;
-
-                    match self.op_to_topologies.get(&Topology::Warehouse(top)) {
-                        None => {}
-                        Some(set) => {
-                            for dependant in set {
-                                match dependant {
-                                    Topology::Warehouse(_) => {},
-                                    Topology::WarehouseStore(_) => {},
-                                    Topology::WarehouseStoreAggregation(_) => {},
-                                    Topology::WarehouseGoods(top) => {
-                                        top.on_operation(&mut tx, &ops)?;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
                 Topology::WarehouseStore(top) => {
                     let ops = top.on_mutation(&mut tx, contexts)?;
 
-                    match self.op_to_topologies.get(&Topology::WarehouseStore(top)) {
+                    let top = Topology::WarehouseStore(top);
+                    match self.op_to_topologies.get(&top) {
                         None => {}
                         Some(set) => {
                             for dependant in set {
                                 match dependant {
-                                    Topology::Warehouse(_) => {},
                                     Topology::WarehouseStore(_) => {},
                                     Topology::WarehouseStoreAggregation(top) => {
                                         top.on_operation(&mut tx, &ops)?;
                                     }
-                                    Topology::WarehouseGoods(_) => {},
                                 }
                             }
                         }
                     }
                 },
                 Topology::WarehouseStoreAggregation(_) => {},
-                Topology::WarehouseGoods(_) => {},
             }
         }
 

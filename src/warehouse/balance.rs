@@ -1,13 +1,35 @@
-use serde::{Deserialize, Serialize};
-use derives::ImplBytes;
+use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
+use bytecheck::CheckBytes;
+
 use crate::animo::Object;
 use crate::animo::error::DBError;
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::warehouse::balance_operation::BalanceOperation;
 use crate::warehouse::primitives::{Money, Qty};
 
-#[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize, ImplBytes)]
+// #[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize, ImplBytes)]
+#[derive(Clone, Default)]
+#[derive(Archive, Deserialize, Serialize, Debug, PartialEq)]
+// This will generate a PartialEq impl between our unarchived and archived types
+// #[archive(compare(PartialEq))]
+// To use the safe API, you have to derive CheckBytes for the archived type
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct WHBalance(pub Qty, pub Money);
+
+impl FromBytes<WHBalance> for WHBalance {
+    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+        let archived = unsafe { rkyv::archived_root::<Self>(bs) };
+        let value: Self = archived.deserialize(&mut rkyv::Infallible).unwrap();
+        Ok(value)
+    }
+}
+
+impl ToBytes for WHBalance {
+    fn to_bytes(&self) -> Result<AlignedVec, DBError> {
+        rkyv::to_bytes::<_, 1024>(self)
+            .map_err(|e| DBError::from(e.to_string()))
+    }
+}
 
 impl std::ops::Add<WHBalance> for WHBalance {
     type Output = WHBalance;
