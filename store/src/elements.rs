@@ -1235,57 +1235,52 @@ pub fn receive_data(
 
     let old_data = data.clone();
 
-    if let Some(store) = data["storage"].uuid_or_none() {
-        let mut before = match json_to_ops(app, &mut before, store.clone(), time.clone(), ctx) {
-            Ok(res) => res,
-            Err(_) => return Ok(old_data),
-        };
+    let mut before = match json_to_ops(app, &mut before,time.clone(), ctx) {
+        Ok(res) => res,
+        Err(e) => {println!("WHERROR: {}", e.message()); return Ok(old_data); },
+    };
 
-        let mut after = match json_to_ops(app, &mut data, store, time, ctx) {
-            Ok(res) => res,
-            Err(_) => return Ok(old_data),
-        };
+    let mut after = match json_to_ops(app, &mut data,time, ctx) {
+        Ok(res) => res,
+        Err(e) => {println!("WHERROR: {}", e.message()); return Ok(old_data); },
+    };
 
-        log::debug!("OPS BEFOR: {before:?}");
-        log::debug!("OPS AFTER: {after:?}");
+    log::debug!("OPS BEFOR: {before:?}");
+    log::debug!("OPS AFTER: {after:?}");
 
-        let mut before = before.into_iter();
+    let mut before = before.into_iter();
 
-        let mut ops: Vec<OpMutation> = Vec::new();
+    let mut ops: Vec<OpMutation> = Vec::new();
 
-        while let Some(ref b) = before.next() {
-            if let Some(a) = after.remove_entry(&b.0) {
-                ops.push(OpMutation::new_from_ops(Some(b.1.clone()), Some(a.1)));
-            } else {
-                ops.push(OpMutation::new_from_ops(Some(b.1.clone()), None));
-            }
-        }
-
-        let mut after = after.into_iter();
-
-        while let Some(ref a) = after.next() {
-            ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
-        }
-
-        log::debug!("OPS: {:?}", ops);
-
-        app.warehouse().mutate(&ops)?;
-
-
-        if ops.is_empty() {
-            Ok(old_data)
+    while let Some(ref b) = before.next() {
+        if let Some(a) = after.remove_entry(&b.0) {
+            ops.push(OpMutation::new_from_ops(Some(b.1.clone()), Some(a.1)));
         } else {
-            Ok(data)
+            ops.push(OpMutation::new_from_ops(Some(b.1.clone()), None));
         }
-    } else {
+    }
+
+    let mut after = after.into_iter();
+
+    while let Some(ref a) = after.next() {
+        ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
+    }
+
+    log::debug!("OPS: {:?}", ops);
+
+    app.warehouse().mutate(&ops)?;
+
+
+    if ops.is_empty() {
         Ok(old_data)
+    } else {
+        Ok(data)
     }
 }
 
 fn json_to_ops(
     app: &impl Services,
     data: &mut JsonValue,
-    store: Uuid,
     time: DateTime<Utc>,
     ctx: &Vec<String>,
 ) -> Result<HashMap<String, Op>, WHError> {
@@ -1306,17 +1301,24 @@ fn json_to_ops(
         _ => return Ok(ops),
     };
 
-    let oid = ID::from("Midas-Plastics");
     let doc_ctx = format!("warehouse/{}/document", type_of_operation);
-    let result = app.service("memories").find(object!{oid: oid.to_base64(), ctx: vec![doc_ctx.as_str()], filter: object! {_uuid: data["document"]}})?;
+
+    let oid = app.service("companies").find(object! {limit: 1, skip: 0})?;
+    // log::debug!("OID: {:?}", oid["data"][0]["_id"]);
+
+    let result = app.service("memories").find(object!{oid: oid["data"][0]["_id"].as_str(), ctx: vec![doc_ctx.as_str()], filter: object! {_uuid: data["document"].clone()}})?;
 
     let documents: Vec<JsonValue> = result["data"].members().map(|o|o.clone()).collect();
 
     let document = match documents.len() {
-        0 => Err(WHError::new("No such document fn json_to_ops")),
+        // 0 => Err(WHError::new("No such document fn json_to_ops")),
+        0 => return Ok(ops),
         1 => documents[0].clone(),
-        _ => Err(WHError::new("Two or more documents fn json_to_ops")),
+        // _ => Err(WHError::new("Two or more documents fn json_to_ops")),
+        _ => return Ok(ops),
     };
+
+    log::debug!("DOCUMENT: {:?}", document.dump());
 
     let date = document["date"].date()?;
     let transfer = if type_of_operation == "transfer" {
@@ -1328,69 +1330,66 @@ fn json_to_ops(
         None
     };
 
-    for line in data["goods"].members_mut() {
-        log::debug!("line {:?}", line);
+    // TODO remove dependent_id, use op.id instead
+    let goods = match data["item"].uuid_or_none() {
+        Some(uuid) => uuid,
+        None => return Ok(ops),
+    };
 
-        // TODO remove dependent_id, use op.id instead
+    // log::debug!("before op");
 
-        let goods = match line["goods"].uuid_or_none() {
-            Some(uuid) => uuid,
-            None => continue,
-        };
+    let op = match type_of_operation.as_str() {
+        "receive" => InternalOperation::Receive(data["qty"]["number"].number(), data["cost"]["number"].number()),
+        "transfer" | "issue" => {
+            let (cost, mode) = if let Some(cost) = data["cost"]["number"].number_or_none() {
+                (cost, Mode::Manual)
+            } else {
+                (0.into(), Mode::Auto)
+            };
+            InternalOperation::Issue(data["qty"]["number"].number(), cost, mode)
+        },
+        _ => return Ok(ops),
+    };
 
-        // log::debug!("before op");
+    log::debug!("after op {op:?}");
 
-        let op = match type_of_operation.as_str() {
-            "receive" => InternalOperation::Receive(line["qty"].number(), line["cost"].number()),
-            "transfer" | "issue" => {
-                let (cost, mode) = if let Some(cost) = line["cost"].number_or_none() {
-                    (cost, Mode::Manual)
-                } else {
-                    (0.into(), Mode::Auto)
-                };
-                InternalOperation::Issue(line["qty"].number(), cost, mode)
-            },
-            _ => continue,
-        };
+    let tid = if let Some(tid) = data["_tid"].uuid_or_none() {
+        tid
+    } else {
+        let tid = Uuid::new_v4();
+        data["_tid"] = JsonValue::String(tid.to_string());
+        tid
+    };
 
-        log::debug!("after op {op:?}");
+    let batch = Batch { id: document["_uuid"].uuid()?, date };
 
-        let tid = if let Some(tid) = line["_tid"].uuid_or_none() {
-            tid
-        } else {
-            let tid = Uuid::new_v4();
-            line["_tid"] = JsonValue::String(tid.to_string());
-            tid
-        };
+    // let batch = if type_of_operation == "receive" {
+    //     Batch { id: tid, date }
+    // } else {
+    //     match &document["batch"] {
+    //         JsonValue::Object(b) => {
+    //             // log::debug!("b[id] = {}", b["id"]);
+    //             // log::debug!("b[date] = {}", b["date"]);
+    //             let id = match b["id"].uuid_or_none() {
+    //                 Some(uuid) => uuid,
+    //                 None => {
+    //                     // log::debug!("uuid_or_none RETURNED NONE");
+    //                     continue;
+    //                 },
+    //             };
+    //
+    //             let date = match b["date"].datetime() {
+    //                 Ok(dt) => dt,
+    //                 Err(_) => continue,
+    //             };
+    //             Batch { id, date }
+    //         },
+    //         _ => continue,
+    //     }
+    // };
 
-        let batch = if type_of_operation == "receive" {
-            Batch { id: tid, date }
-        } else {
-            match &line["batch"] {
-                JsonValue::Object(b) => {
-                    // log::debug!("b[id] = {}", b["id"]);
-                    // log::debug!("b[date] = {}", b["date"]);
-                    let id = match b["id"].uuid_or_none() {
-                        Some(uuid) => uuid,
-                        None => {
-                            // log::debug!("uuid_or_none RETURNED NONE");
-                            continue;
-                        },
-                    };
-
-                    let date = match b["date"].datetime() {
-                        Ok(dt) => dt,
-                        Err(_) => continue,
-                    };
-                    Batch { id, date }
-                },
-                _ => continue,
-            }
-        };
-
-        let op = Op { id: tid, date, store, transfer, goods, batch, op };
-        ops.insert(tid.to_string(), op);
-    }
+    let op = Op { id: tid, date, store: document["storage"].uuid()?, transfer, goods, batch, op };
+    ops.insert(tid.to_string(), op);
 
     Ok(ops)
 }

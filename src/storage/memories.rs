@@ -60,10 +60,11 @@ fn save_data(
 
   println!("loaded before {before:?}");
 
-  let data = replenish(app, data, ctx)?;
-  let before = replenish(app, before, ctx)?;
-
-  let data = receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?;
+  let data = if ctx.get(0) != Some(&"warehouse".to_string()) {
+    data
+  } else {
+    receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?
+  };
 
   println!("saving");
   save(&path_current, data.dump())?;
@@ -75,30 +76,6 @@ fn save_data(
   println!("done");
 
   Ok(data)
-}
-
-fn replenish(app: &Application, operation: JsonValue, ctx: &Vec<String>) -> Result<JsonValue, Error> {
-  match ctx.get(1) {
-    Some(v) => {
-      let ctx = format!("warehouse/{}/document", v);
-      let document = memories_find(app, operation["document"].clone(), vec![ctx.as_str()])?;
-
-      match document.get(0) {
-        Some(d) => {
-          Ok(object! {
-            document: document[0].clone(),
-            item: operation["item"].clone(),
-            cell: operation["cell"].clone(),
-            qty: operation["qty"].clone(),
-            price: operation["price"].clone(),
-            cost: operation["cost"].clone(),
-          })
-        },
-        None => Err(GeneralError(String::from("No document in memories")))
-      }
-    },
-    None => Err(GeneralError(String::from("Wrong ctx in memories")))
-  }
 }
 
 pub fn memories_find(app: &Application, filter: JsonValue, ctx: Vec<&str>) -> Result<Vec<JsonValue>, Error> {

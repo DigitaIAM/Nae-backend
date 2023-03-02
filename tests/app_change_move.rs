@@ -12,7 +12,7 @@ use nae_backend::animo::{
 };
 use nae_backend::storage::SOrganizations;
 use nae_backend::memories::MemoriesInFiles;
-use nae_backend::services::Services;
+use service::Services;
 
 use utils::json::JsonParams;
 

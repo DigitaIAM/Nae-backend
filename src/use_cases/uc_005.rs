@@ -48,7 +48,7 @@ pub(crate) fn report(app: &Application) {
 
     let result = app.service("inventory").find(object!{ctx: ctx, oid: oid.to_base64(), storage: storage["_uuid"].clone(), dates: {"from": from_date, "till": till_date}}).unwrap();
 
-    println!("report: {result:?}");
+    println!("report: {:#?}", result);
 }
 
 fn json(app: &Application, filter: JsonValue, ctx: Vec<&str>, item: &dyn Fn() -> JsonValue) -> Result<JsonValue, Error> {
@@ -119,7 +119,7 @@ pub fn receive_csv_to_json(app: &Application, path: &str) -> Result<(), Error> {
         let data = object! {
             document: document["_uuid"].clone(),
             item: item["_uuid"].clone(),
-            cell: cell,
+            storage: cell,
             qty: object! { number: number.to_json(), uom: uom["_uuid"].clone() },
             price: price.to_json(),
             cost: object! { number: Decimal::default().to_json(), currency: currency["_uuid"].clone() },
@@ -132,20 +132,3 @@ pub fn receive_csv_to_json(app: &Application, path: &str) -> Result<(), Error> {
 
     Ok(())
 }
-
-// fn memories_find(app: &Application, filter: JsonValue, ctx: Vec<&str>) -> Result<Vec<JsonValue>, Error> {
-//     let oid = ID::from("Midas-Plastics");
-//     let result = app.service("memories").find(object!{oid: oid.to_base64(), ctx: ctx, filter: filter})?;
-//
-//     Ok(result["data"].members().map(|o|o.clone()).collect())
-// }
-//
-// fn memories_create(app: &Application, data: JsonValue, ctx: Vec<&str>) -> Result<JsonValue, Error> {
-//     let oid = ID::from("Midas-Plastics");
-//
-//     let result = app.service("memories").create(data, object!{oid: oid.to_base64(), ctx: ctx })?;
-//
-//     // println!("create_result: {result:?}");
-//
-//     Ok(result)
-// }
