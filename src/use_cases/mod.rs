@@ -9,6 +9,7 @@ pub(crate) mod uc_001;
 pub(crate) mod uc_002;
 pub(crate) mod uc_003;
 pub mod uc_005;
+pub mod uc_006;
 // pub(crate) mod uc_004;
 
 const MAX_WRITES: usize = 17;

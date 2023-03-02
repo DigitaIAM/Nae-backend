@@ -18,11 +18,11 @@ use errors::Error;
 
 const COUNTERPARTY: [&str; 1] = ["counterparty"];
 const STORAGE: [&str; 1] = ["storage"];
-const DOCUMENT: [&str; 1] = ["warehouse/receive/document"];
+const DOCUMENT: [&str; 1] = ["warehouse/issue/document"];
 const UOM: [&str; 1] = ["uom"];
 const MATERIAL: [&str; 1] = ["material"];
 const CURRENCY: [&str; 1] = ["currency"];
-const WAREHOUSE_RECEIVE: [&str; 2] = ["warehouse","receive"];
+const WAREHOUSE_ISSUE: [&str; 2] = ["warehouse","issue"];
 
 struct Quantity {
     number: Decimal,
@@ -35,7 +35,7 @@ struct Cost {
 }
 
 pub(crate) fn import(app: &Application) {
-    receive_csv_to_json(app, "./tests/data/test_dista_receive.csv").unwrap();
+    receive_csv_to_json(app, "./tests/data/test_dista_issue.csv").unwrap();
 }
 
 pub(crate) fn report(app: &Application) {
@@ -116,16 +116,22 @@ pub fn receive_csv_to_json(app: &Application, path: &str) -> Result<(), Error> {
 
         let currency = memories_create(app, object! {name: "rub"}, CURRENCY.to_vec())?;
 
+        let document_from = memories_find(app, object! {number: "1"}, vec!["warehouse/receive/document"])?;
+
         let data = object! {
             document: document["_uuid"].clone(),
             item: item["_uuid"].clone(),
+            document_from: match document_from.get(0) {
+                Some(o) => o.clone(),
+                None => JsonValue::Null,
+            },
             storage: cell,
             qty: object! { number: number.to_json(), uom: uom["_uuid"].clone() },
             price: price.to_json(),
             cost: object! { number: Decimal::default().to_json(), currency: currency["_uuid"].clone() },
         };
 
-        let res = memories_create(app, data, WAREHOUSE_RECEIVE.to_vec())?;
+        let res = memories_create(app, data, WAREHOUSE_ISSUE.to_vec())?;
 
         println!("data: {res:?}");
     }

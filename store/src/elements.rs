@@ -1361,7 +1361,16 @@ fn json_to_ops(
         tid
     };
 
-    let batch = Batch { id: document["_uuid"].uuid()?, date };
+    let batch = if type_of_operation == "receive" {
+        Batch { id: document["_uuid"].uuid()?, date }
+    } else {
+      match &data["document_from"] {
+          JsonValue::Object(d) => {
+              Batch { id: d["_uuid"].uuid()?, date: d["date"].date()? }
+          },
+          _ => Batch { id: document["_uuid"].uuid()?, date },
+      }
+    };
 
     // let batch = if type_of_operation == "receive" {
     //     Batch { id: tid, date }
