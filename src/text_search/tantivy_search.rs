@@ -1,17 +1,21 @@
-use std::collections::HashSet;
-use std::path::Path;
-use std::sync::{Arc, RwLock};
-use actix_web::web::BufMut;
-use tantivy::{Directory, Index, doc, schema::{Schema, STORED, TEXT, INDEXED}, Score, DocAddress, Term, IndexWriter, IndexReader, Document};
-use tantivy::collector::TopDocs;
-use tantivy::query::{FuzzyTermQuery, QueryParser, RegexQuery};
-use tantivy::schema::{Field, STRING};
+use crate::animo::db::Snapshot;
+use crate::animo::error::{convert, DBError};
 use crate::animo::memory::ChangeTransformation;
 use crate::animo::shared::*;
 use crate::animo::{DeltaOp, OperationsTopology, Txn};
-use crate::{Context, ID, Value};
-use crate::animo::db::Snapshot;
-use crate::animo::error::{convert, DBError};
+use crate::{Context, Value, ID};
+use actix_web::web::BufMut;
+use std::collections::HashSet;
+use std::path::Path;
+use std::sync::{Arc, RwLock};
+use tantivy::collector::TopDocs;
+use tantivy::query::{FuzzyTermQuery, QueryParser, RegexQuery};
+use tantivy::schema::{Field, STRING};
+use tantivy::{
+  doc,
+  schema::{Schema, INDEXED, STORED, TEXT},
+  Directory, DocAddress, Document, Index, IndexReader, IndexWriter, Score, Term,
+};
 
 pub struct TextSearch {
   index: Index,
@@ -27,7 +31,7 @@ impl TextSearch {
     let mut schema_builder = Schema::builder();
     let field_key = schema_builder.add_text_field("key", TEXT | STORED);
     let field_text = schema_builder.add_text_field("text", TEXT);
-    let field_string = schema_builder.add_text_field("text", STRING);
+    let field_string = schema_builder.add_text_field("string", STRING);
     (schema_builder.build(), field_key, field_text, field_string)
   }
 
@@ -47,14 +51,19 @@ impl TextSearch {
   }
 
   fn depends_on(&self) -> Vec<ID> {
-      todo!()
+    todo!()
   }
 
   fn on_mutation(&self, tx: &mut Txn, changes: Vec<ChangeTransformation>) -> Result<(), DBError> {
     todo!()
   }
 
-  pub(crate) fn modification(&self, s: &Snapshot, tx: Txn, changes: &Vec<ChangeTransformation>) -> Result<(), DBError> {
+  pub(crate) fn modification(
+    &self,
+    s: &Snapshot,
+    tx: Txn,
+    changes: &Vec<ChangeTransformation>,
+  ) -> Result<(), DBError> {
     let mut to_index = HashSet::with_capacity(changes.len());
 
     for change in changes {
@@ -80,17 +89,17 @@ impl TextSearch {
               //   context: "test",
               //   text: str
               // ));
-            }
+            },
             Value::String(str) => {
               let key = "test";
               let key_term = Term::from_field_text(self.field_key, key);
 
               indexing.push((key, key_term, str));
-            }
-            _ => {}
+            },
+            _ => {},
           }
-        }
-        None => {}
+        },
+        None => {},
       }
     }
 
@@ -125,16 +134,14 @@ impl TextSearch {
     let searcher = self.reader.searcher();
 
     let query_parser = QueryParser::for_index(index, vec![self.field_text]);
-    let query = query_parser.parse_query(str)
-        .map_err(convert)?;
+    let query = query_parser.parse_query(str).map_err(convert)?;
 
-    let top_docs: Vec<(Score, DocAddress)> = searcher.search(&query, &TopDocs::with_limit(10))
-        .map_err(convert)?;
+    let top_docs: Vec<(Score, DocAddress)> =
+      searcher.search(&query, &TopDocs::with_limit(10)).map_err(convert)?;
 
     println!("1st:");
     for (_score, doc_address) in top_docs {
-      let retrieved_doc = searcher.doc(doc_address)
-          .map_err(convert)?;
+      let retrieved_doc = searcher.doc(doc_address).map_err(convert)?;
       println!("{}", schema.to_json(&retrieved_doc));
     }
 
@@ -143,27 +150,25 @@ impl TextSearch {
     let term = Term::from_field_text(self.field_text, q.as_str());
     let query = FuzzyTermQuery::new(term, 1, true);
 
-    let top_docs: Vec<(Score, DocAddress)> = searcher.search(&query, &TopDocs::with_limit(10))
-        .map_err(convert)?;
+    let top_docs: Vec<(Score, DocAddress)> =
+      searcher.search(&query, &TopDocs::with_limit(10)).map_err(convert)?;
 
     println!("2nd:");
     for (_score, doc_address) in top_docs {
-      let retrieved_doc = searcher.doc(doc_address)
-          .map_err(convert)?;
+      let retrieved_doc = searcher.doc(doc_address).map_err(convert)?;
       println!("{}", schema.to_json(&retrieved_doc));
     }
 
-    let q= format!("({})(.+)", str);
+    let q = format!("({})(.+)", str);
     let query = RegexQuery::from_pattern(q.as_str(), self.field_text)
       .map_err(|e| DBError::from(e.to_string()))?;
 
-    let top_docs: Vec<(Score, DocAddress)> = searcher.search(&query, &TopDocs::with_limit(10))
-      .map_err(convert)?;
+    let top_docs: Vec<(Score, DocAddress)> =
+      searcher.search(&query, &TopDocs::with_limit(10)).map_err(convert)?;
 
     println!("3rd:");
     for (_score, doc_address) in top_docs {
-      let retrieved_doc = searcher.doc(doc_address)
-        .map_err(convert)?;
+      let retrieved_doc = searcher.doc(doc_address).map_err(convert)?;
       println!("{}", schema.to_json(&retrieved_doc));
     }
 
@@ -171,15 +176,14 @@ impl TextSearch {
 
     Ok(())
   }
-
 }
 
 #[cfg(test)]
 mod tests {
-  use std::thread::Thread;
   use crate::animo::{memory::create, shared::*};
-  use crate::{Memory, Value};
   use crate::warehouse::test_util::init;
+  use crate::{Memory, Value};
+  use std::thread::Thread;
 
   use super::*;
 
@@ -198,52 +202,64 @@ mod tests {
     println!("goods2 {:?}", goods2);
     println!("goods3 {:?}", goods3);
 
-    changes.extend(create(*DESC, goods1, vec![
-      (*REFERENCE, "IMDIFL12LMC".into()),
-      (*LABEL, "Локализатор поврежд IFL12 24-48В Modbus".into())
-    ]));
-    changes.extend(create(*CAN_BUY_FROM, schneider_electric, vec![
-      (goods1, vec![
-        (*PRICE, vec![
-            (*NUMBER, 3.into()),
-            (*CURRENCY, Value::from(*EUR))
-        ].into())
-      ].into())
-    ]));
+    changes.extend(create(
+      *DESC,
+      goods1,
+      vec![
+        (*REFERENCE, "IMDIFL12LMC".into()),
+        (*LABEL, "Локализатор поврежд IFL12 24-48В Modbus".into()),
+      ],
+    ));
+    changes.extend(create(
+      *CAN_BUY_FROM,
+      schneider_electric,
+      vec![(
+        goods1,
+        vec![(*PRICE, vec![(*NUMBER, 3.into()), (*CURRENCY, Value::from(*EUR))].into())].into(),
+      )],
+    ));
 
     println!("{:?}", changes);
 
-    changes.extend(create(*DESC, goods2, vec![
-      (*REFERENCE, "METSECTV35010".into()),
-      (*LABEL, "Трансформатор тока неразъемный 3в1 RJ45 35мм 100А:1/3В".into())
-    ]));
-    changes.extend(create(*CAN_BUY_FROM, schneider_electric, vec![
-      (goods2, vec![
-        (*PRICE, vec![
-          (*NUMBER, 5.into()),
-          (*CURRENCY, Value::from(*EUR))
-        ].into())
-      ].into())
-    ]));
+    changes.extend(create(
+      *DESC,
+      goods2,
+      vec![
+        (*REFERENCE, "METSECTV35010".into()),
+        (*LABEL, "Трансформатор тока неразъемный 3в1 RJ45 35мм 100А:1/3В".into()),
+      ],
+    ));
+    changes.extend(create(
+      *CAN_BUY_FROM,
+      schneider_electric,
+      vec![(
+        goods2,
+        vec![(*PRICE, vec![(*NUMBER, 5.into()), (*CURRENCY, Value::from(*EUR))].into())].into(),
+      )],
+    ));
 
-    changes.extend(create(*DESC, goods3, vec![
-      (*REFERENCE, "IMDIFL12L".into()),
-      (*LABEL, "Локализатор повреждения изоляции IFL12, 24-48В".into())
-    ]));
-    changes.extend(create(*CAN_BUY_FROM, schneider_electric, vec![
-      (goods3, vec![
-        (*PRICE, vec![
-          (*NUMBER, 7.into()),
-          (*CURRENCY, Value::from(*EUR))
-        ].into())
-      ].into())
-    ]));
-
+    changes.extend(create(
+      *DESC,
+      goods3,
+      vec![
+        (*REFERENCE, "IMDIFL12L".into()),
+        (*LABEL, "Локализатор повреждения изоляции IFL12, 24-48В".into()),
+      ],
+    ));
+    changes.extend(create(
+      *CAN_BUY_FROM,
+      schneider_electric,
+      vec![(
+        goods3,
+        vec![(*PRICE, vec![(*NUMBER, 7.into()), (*CURRENCY, Value::from(*EUR))].into())].into(),
+      )],
+    ));
 
     db.modify(changes).unwrap();
     // std::thread::sleep(std::time::Duration::from_millis(100));
 
-    for text in vec!["Локализатор повреждения", "локализатор", "лока", "Трансформатор то"] {
+    for text in vec!["Локализатор повреждения", "локализатор", "лока", "Трансформатор то"]
+    {
       println!("{:?}", text);
       db.text_search.search(text).unwrap();
     }
