@@ -11,6 +11,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use rocksdb::{BoundColumnFamily, IteratorMode, ReadOptions, DB};
 use uuid::Uuid;
 use service::utils::time::timestamp_to_time;
+use std::convert::TryFrom;
 
 const CF_NAME: &str = "cf_checkpoint_date_store_batch";
 
@@ -98,14 +99,21 @@ impl CheckpointTopology for CheckDateStoreBatch {
     store: Store,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError> {
-    let mut result = Vec::new();
+    let mut balances = Vec::new();
 
-    let ts = u64::try_from(first_day_current_month(date).timestamp()).unwrap_or_default();
+    let current_date = first_day_current_month(date);
+
+    let latest_checkpoint_date = self.get_latest_checkpoint_date()?;
+
+    if current_date > latest_checkpoint_date {
+      self.actualize_balances(current_date, latest_checkpoint_date);
+    }
+
+    let mut ts = u64::try_from(current_date.timestamp()).unwrap_or_default();
 
     let from: Vec<u8> = ts
       .to_be_bytes()
       .iter()
-      // .chain(UUID_NIL.as_bytes().iter())
       .chain(store.as_bytes().iter())
       .chain(min_batch().iter())
       .map(|b| *b)
@@ -113,7 +121,6 @@ impl CheckpointTopology for CheckDateStoreBatch {
     let till: Vec<u8> = ts
       .to_be_bytes()
       .iter()
-      // .chain(UUID_MAX.as_bytes().iter())
       .chain(store.as_bytes().iter())
       .chain(max_batch().iter())
       .map(|b| *b)
@@ -131,16 +138,63 @@ impl CheckpointTopology for CheckDateStoreBatch {
       let (date, store, goods, batch) = CheckDateStoreBatch::key_to_data(k.to_vec())?;
 
       let balance = Balance { date, store, goods, batch, number: b };
-      result.push(balance);
+      balances.push(balance);
     }
 
-    Ok(result)
+    Ok(balances)
+  }
+
+  fn actualize_balances(&self, current_date: DateTime<Utc>, latest_checkpoint_date: DateTime<Utc>) -> Result<(), WHError> {
+    let ts = u64::try_from(latest_checkpoint_date.timestamp()).unwrap_or_default();
+    let from: Vec<u8> = [].iter()
+        .chain(ts.to_be_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .chain(u64::MIN.to_be_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
+
+    let till: Vec<u8> = [].iter()
+        .chain(ts.to_be_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(u64::MAX.to_be_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
+
+    let mut opts = ReadOptions::default();
+    opts.set_iterate_range(from..till);
+
+    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+
+    while let Some(res) = iter.next() {
+      let (k, v) = res?;
+      let b: BalanceForGoods = serde_json::from_slice(&v)?;
+      // println!("BAL: {b:#?}");
+      let (date, store, goods, batch) = CheckDateStoreBatch::key_to_data(k.to_vec())?;
+
+      let balance = Balance { date, store, goods, batch, number: b };
+
+      let mut latest_date = first_day_next_month(latest_checkpoint_date);
+
+      while current_date >= latest_date {
+        println!("REFRESHING BALANCE");
+        let key = self.key_checkpoint(&balance, latest_date);
+        self.set_balance(&key, balance.clone().number)?;
+
+        latest_date = first_day_next_month(latest_date);
+      }
+    }
+    self.set_latest_checkpoint_date(current_date);
+    Ok(())
   }
 
   fn key_latest_checkpoint_date(&self) -> Vec<u8> {
     [].iter()
-      .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
@@ -153,7 +207,6 @@ impl CheckpointTopology for CheckDateStoreBatch {
       let date = serde_json::from_slice(&bytes)?;
       Ok(DateTime::parse_from_rfc3339(date)?.into())
     } else {
-      // Ok(DateTime::<Utc>::default())
       dt("1970-01-01")
     }
   }

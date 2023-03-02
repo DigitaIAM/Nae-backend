@@ -195,6 +195,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
     // log::debug!("DATE_TYPE_STORE_BATCH.get_report");
+
     let balances = db.get_checkpoints_before_date(storage, from_date)?;
 
     let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
@@ -203,23 +204,6 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
     Ok(Report { from_date, till_date, items })
   }
-
-  // fn data_update(&self, op: &OpMutation) -> Result<(), WHError> {
-  //   if op.before.is_none() {
-  //     self.mutate_op(op)
-  //   } else {
-  //     if let Ok(Some(bytes)) = self.db.get_cf(&self.cf()?, self.key(&op.to_op())) {
-  //       let o: Op = serde_json::from_slice(&bytes)?;
-  //       if op.before == Some(o.op) {
-  //         self.mutate_op(op)
-  //       } else {
-  //         return Err(WHError::new("Wrong 'before' state in operation"));
-  //       }
-  //     } else {
-  //       return Err(WHError::new("There is no such operation in db"));
-  //     }
-  //   }
-  // }
 
   fn key(&self, op: &Op) -> Vec<u8> {
     let ts = op.date.timestamp() as u64;

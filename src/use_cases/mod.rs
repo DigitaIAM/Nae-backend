@@ -10,6 +10,8 @@ pub(crate) mod uc_002;
 pub(crate) mod uc_003;
 pub mod uc_005;
 pub mod uc_006;
+pub mod uc_007;
+pub(crate) mod csv;
 // pub(crate) mod uc_004;
 
 const MAX_WRITES: usize = 17;

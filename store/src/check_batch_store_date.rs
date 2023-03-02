@@ -105,4 +105,8 @@ impl CheckpointTopology for CheckBatchStoreDate {
       serde_json::to_string(&date).map_err(|_| WHError::new("set serde_json::from_slice"))?,
     )?)
   }
+
+  fn actualize_balances(&self, current_date: DateTime<Utc>, latest_checkpoint_date: DateTime<Utc>) -> Result<(), WHError> {
+    todo!()
+  }
 }

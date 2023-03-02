@@ -18,7 +18,7 @@ use service::Services;
 use nae_backend::{commutator::Application,
                   animo::memory::ID,
                   api,
-                  use_cases::uc_005::receive_csv_to_json,
+                  use_cases::uc_006::receive_csv_to_json,
                   storage::SOrganizations,
                   memories::MemoriesInFiles};
 use actix_web::{test::{TestRequest, call_and_read_body, init_service},

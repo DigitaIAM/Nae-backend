@@ -202,6 +202,7 @@ async fn startup() -> std::io::Result<()> {
         "003" => use_cases::uc_003::import(&app),
         "005" => use_cases::uc_005::import(&app),
         "006" => use_cases::uc_006::import(&app),
+        "007" => use_cases::uc_007::import(&app),
         _ => unreachable!(),
       }
       Ok(())
@@ -213,6 +214,7 @@ async fn startup() -> std::io::Result<()> {
         "003" => use_cases::uc_003::report(&app),
         "005" => use_cases::uc_005::report(&app),
         "006" => use_cases::uc_006::report(&app),
+        "007" => use_cases::uc_007::report(&app),
         _ => unreachable!(),
       }
       Ok(())
