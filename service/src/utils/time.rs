@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, SecondsFormat, Utc, NaiveDateTime};
 use std::mem;
 use std::time::SystemTime;
-use errors::Error;
+use crate::error::Error;
 
 pub struct DateRange(pub DateTime<Utc>, pub DateTime<Utc>);
 

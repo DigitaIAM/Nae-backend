@@ -1,6 +1,6 @@
 use crate::services::{Data, Params};
 use service::{Service, Services};
-use errors::Error;
+use service::error::Error;
 use crate::{commutator::Application, animo::memory::ID};
 use json::JsonValue;
 use std::sync::{Arc, RwLock};

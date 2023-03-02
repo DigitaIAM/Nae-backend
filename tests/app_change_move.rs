@@ -14,7 +14,7 @@ use nae_backend::storage::SOrganizations;
 use nae_backend::memories::MemoriesInFiles;
 use service::Services;
 
-use utils::json::JsonParams;
+use service::utils::json::JsonParams;
 
 use actix_web::{
     web,

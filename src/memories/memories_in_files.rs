@@ -15,9 +15,9 @@ use uuid::Uuid;
 use crate::animo::error::DBError;
 use crate::services::{Data, Params};
 use service::{Service, Services};
-use errors::Error;
+use service::error::Error;
 use crate::storage::SOrganizations;
-use utils::json::{JsonMerge, JsonParams};
+use service::utils::json::{JsonMerge, JsonParams};
 use store::elements::ToJson;
 use crate::ws::error_general;
 use crate::{

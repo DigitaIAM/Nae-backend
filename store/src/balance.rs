@@ -13,7 +13,7 @@ use std::{
 
 use super::{elements::{Cost, Qty, InternalOperation, Op, ToJson}, error::WHError};
 
-use utils::json::JsonParams;
+use service::utils::json::JsonParams;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BalanceForGoods {

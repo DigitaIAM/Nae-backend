@@ -1,6 +1,6 @@
-use errors::Error;
-use utils::json::JsonParams;
-use utils::time::now_in_seconds;
+use service::error::Error;
+use service::utils::{json::JsonParams,
+                     time::now_in_seconds};
 use crate::{commutator::Application, animo::memory::ID};
 use async_trait::async_trait;
 use json::number::Number;

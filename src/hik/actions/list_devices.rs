@@ -17,7 +17,7 @@ use tokio::fs::File;
 use tokio::runtime::Handle;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
-use utils::json::JsonParams;
+use service::utils::json::JsonParams;
 use actix_interop::{critical_section, with_ctx, FutureInterop};
 use chrono::{Datelike, Utc};
 use rand::Rng;

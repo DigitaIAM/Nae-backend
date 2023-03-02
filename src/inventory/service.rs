@@ -1,5 +1,5 @@
 use crate::animo::error::DBError;
-use errors::Error;
+use service::error::Error;
 use crate::services::{string_to_id, Data, Params};
 use service::{Service, Services};
 use store::{elements::{Report, ToJson}, error::WHError};

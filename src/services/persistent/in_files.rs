@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::animo::error::DBError;
 use crate::services::{Data, Params};
 use service::{Service, Services};
-use errors::Error;
+use service::error::Error;
 use crate::ws::error_general;
 use crate::{auth, commutator::Application, animo::memory::Memory, animo::memory::Transformation, animo::memory::TransformationKey, animo::memory::Value, animo::memory::ID};
 

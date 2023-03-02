@@ -1,6 +1,6 @@
 use crate::animo::memory::ID;
 use crate::storage::{data, json, load, save};
-use errors::Error;
+use service::error::Error;
 use chrono::SecondsFormat::Millis;
 use chrono::{DateTime, Datelike, SecondsFormat, Utc};
 use json::JsonValue;

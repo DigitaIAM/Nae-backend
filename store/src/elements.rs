@@ -25,12 +25,12 @@ use super::{balance::{BalanceDelta, BalanceForGoods}, check_batch_store_date::Ch
             date_type_store_batch_id::DateTypeStoreBatchId,
      db::Db};
 pub use super::error::WHError;
-use utils::time::time_to_string;
+use service::utils::time::time_to_string;
 
 use crate::GetWarehouse;
 use service::Services;
 
-use utils::json::JsonParams;
+use service::utils::json::JsonParams;
 
 pub(crate) type Goods = Uuid;
 pub(crate) type Store = Uuid;
@@ -1372,33 +1372,71 @@ fn json_to_ops(
       }
     };
 
-    // let batch = if type_of_operation == "receive" {
-    //     Batch { id: tid, date }
-    // } else {
-    //     match &document["batch"] {
-    //         JsonValue::Object(b) => {
-    //             // log::debug!("b[id] = {}", b["id"]);
-    //             // log::debug!("b[date] = {}", b["date"]);
-    //             let id = match b["id"].uuid_or_none() {
-    //                 Some(uuid) => uuid,
-    //                 None => {
-    //                     // log::debug!("uuid_or_none RETURNED NONE");
-    //                     continue;
-    //                 },
-    //             };
-    //
-    //             let date = match b["date"].datetime() {
-    //                 Ok(dt) => dt,
-    //                 Err(_) => continue,
-    //             };
-    //             Batch { id, date }
-    //         },
-    //         _ => continue,
-    //     }
-    // };
-
-    let op = Op { id: tid, date, store: document["storage"].uuid()?, transfer, goods, batch, op };
+    let op = Op { id: tid, date, store: document["storage"].uuid()?, transfer: transfer.clone(), goods, batch, op };
     ops.insert(tid.to_string(), op);
+
+    // this cycle left just for tests, not in test it will not work
+    for line in data["goods"].members_mut() {
+        log::debug!("line {:?}", line);
+
+        let goods = match line["goods"].uuid_or_none() {
+            Some(uuid) => uuid,
+            None => continue,
+        };
+
+        // log::debug!("before op");
+
+        let op = match type_of_operation.as_str() {
+            "receive" => InternalOperation::Receive(line["qty"].number(), line["cost"].number()),
+            "transfer" | "issue" => {
+                let (cost, mode) = if let Some(cost) = line["cost"].number_or_none() {
+                    (cost, Mode::Manual)
+                } else {
+                    (0.into(), Mode::Auto)
+                };
+                InternalOperation::Issue(line["qty"].number(), cost, mode)
+            },
+            _ => continue,
+        };
+
+        log::debug!("after op {op:?}");
+
+        let tid = if let Some(tid) = line["_tid"].uuid_or_none() {
+            tid
+        } else {
+            let tid = Uuid::new_v4();
+            line["_tid"] = JsonValue::String(tid.to_string());
+            tid
+        };
+
+        let batch = if type_of_operation == "receive" {
+            Batch { id: tid, date }
+        } else {
+            match &line["batch"] {
+                JsonValue::Object(b) => {
+                    // log::debug!("b[id] = {}", b["id"]);
+                    // log::debug!("b[date] = {}", b["date"]);
+                    let id = match b["id"].uuid_or_none() {
+                        Some(uuid) => uuid,
+                        None => {
+                            // log::debug!("uuid_or_none RETURNED NONE");
+                            continue;
+                        },
+                    };
+
+                    let date = match b["date"].datetime() {
+                        Ok(dt) => dt,
+                        Err(_) => continue,
+                    };
+                    Batch { id, date }
+                },
+                _ => continue,
+            }
+        };
+
+        let op = Op { id: tid, date, store: document["storage"].uuid()?, transfer, goods, batch, op };
+        ops.insert(tid.to_string(), op);
+    }
 
     Ok(ops)
 }

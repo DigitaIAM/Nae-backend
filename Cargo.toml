@@ -14,8 +14,6 @@ strip = true
 
 [dependencies]
 service = { path = "./service" }
-errors = { path = "./errors" }
-utils = { path = "./utils" }
 store = { path = "./store" }
 derives = { path = "./derives" }
 lazy_static = "1.4.0"

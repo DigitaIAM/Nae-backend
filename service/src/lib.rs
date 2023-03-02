@@ -1,9 +1,10 @@
 extern crate actix_web;
 extern crate json;
 extern crate chrono;
-extern crate errors;
 
-// use store;
+pub mod utils;
+pub mod error;
+
 use actix_web::web::{Json};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, ParseResult, Utc};
 use json::JsonValue;
@@ -12,9 +13,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::convert::TryFrom;
 
-use errors::Error;
+use error::Error;
 use utils::json::JsonParams;
 use utils::time::DateRange;
+
+#[macro_use] extern crate quick_error;
 
 pub(crate) type Result = std::result::Result<JsonValue, Error>;
 pub(crate) type Data = JsonValue;
@@ -136,5 +139,43 @@ pub trait Service: Send + Sync {
     } else {
       params
     }
+  }
+}
+
+pub struct NoService(pub String);
+
+impl NoService {
+  fn error(&self) -> Result {
+    Err(Error::NotFound(format!("service {}", self.0)))
+  }
+}
+
+impl Service for NoService {
+  fn path(&self) -> &str {
+    self.0.as_str()
+  }
+
+  fn find(&self, params: Params) -> Result {
+    self.error()
+  }
+
+  fn get(&self, id: String, params: Params) -> Result {
+    self.error()
+  }
+
+  fn create(&self, data: Data, params: Params) -> Result {
+    self.error()
+  }
+
+  fn update(&self, id: String, data: Data, params: Params) -> Result {
+    self.error()
+  }
+
+  fn patch(&self, id: String, data: Data, params: Params) -> Result {
+    self.error()
+  }
+
+  fn remove(&self, id: String, params: Params) -> Result {
+    self.error()
   }
 }

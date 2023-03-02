@@ -27,7 +27,7 @@ use crate::hik::data::triggers_parser::TriggerItem;
 use crate::hik::error::{Error, Result};
 use crate::services::Mutation;
 use crate::storage::SCamera;
-use utils::time::now_in_seconds;
+use service::utils::time::now_in_seconds;
 use reqwest::header::CONTENT_TYPE;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

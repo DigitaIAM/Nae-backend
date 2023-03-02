@@ -17,8 +17,8 @@ impl WHError {
   }
 }
 
-impl std::convert::From<errors::Error> for WHError {
-  fn from(e: errors::Error) -> Self {
+impl std::convert::From<service::error::Error> for WHError {
+  fn from(e: service::error::Error) -> Self {
     WHError { message: e.to_string() }
   }
 }
@@ -59,8 +59,8 @@ impl From<uuid::Error> for WHError {
   }
 }
 
-// impl From<errors::Error> for WHError {
-//   fn from(e: errors::Error) -> Self {
+// impl From<service::error::Error> for WHError {
+//   fn from(e: service::error::Error) -> Self {
 //     WHError { message: e.to_string() }
 //   }
 // }

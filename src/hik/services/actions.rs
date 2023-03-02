@@ -24,8 +24,7 @@ use crate::hik::actions::task::{CommandMeta, Stage};
 use crate::hik::{ConfigCamera, StatusCamera};
 use crate::services::{string_to_id, Data, Params};
 use service::{Service, Services};
-use utils::json::JsonParams;
-use utils::time::now_in_seconds;
+use service::utils::{json::JsonParams, time::now_in_seconds};
 use crate::ws::error_general;
 use crate::{
   auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
@@ -94,7 +93,7 @@ impl Service for Actions {
 
     let tasks = self.tasks.read().unwrap();
     match tasks.get(&id) {
-      None => Err(errors::Error::NotFound(id.to_base64())),
+      None => Err(service::error::Error::NotFound(id.to_base64())),
       Some(task) => Ok(task.to_json()),
     }
   }
@@ -115,7 +114,7 @@ impl Service for Actions {
         let password = params["password"].string();
 
         let mgmt = DeviceMgmt { protocol, ip, port, username, password };
-        let request = mgmt.list_devices(id).map_err(|e| errors::Error::CameraError(e.to_string()))?;
+        let request = mgmt.list_devices(id).map_err(|e| service::error::Error::CameraError(e.to_string()))?;
 
         let meta = CommandMeta::new(id, command, params);
 
@@ -151,7 +150,7 @@ impl Service for Actions {
 
         let mgmt = DeviceMgmt::new(&camera);
         let request =
-          mgmt.create_user(id, dev_index, pid, name, gender).map_err(|e| errors::Error::CameraError(e.to_string()))?;
+          mgmt.create_user(id, dev_index, pid, name, gender).map_err(|e| service::error::Error::CameraError(e.to_string()))?;
 
         let meta = CommandMeta::new(id, command.clone(), params);
         let answer = meta.to_json();
@@ -187,7 +186,7 @@ impl Service for Actions {
         let mgmt = DeviceMgmt::new(&camera);
         let request = mgmt
           .register_picture(id, dev_index, pid, picture_path)
-            .map_err(|e| errors::Error::CameraError(e.to_string()))?;
+            .map_err(|e| service::error::Error::CameraError(e.to_string()))?;
 
         let meta = CommandMeta::new(id, command.clone(), params);
         let answer = meta.to_json();
@@ -200,17 +199,17 @@ impl Service for Actions {
 
         Ok(answer)
       },
-      _ => Err(errors::Error::NotImplemented),
+      _ => Err(service::error::Error::NotImplemented),
     }
   }
 
   fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    Err(errors::Error::NotImplemented)
+    Err(service::error::Error::NotImplemented)
   }
 
   fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
     if !data.is_object() {
-      Err(errors::Error::GeneralError("only object allowed".into()))
+      Err(service::error::Error::GeneralError("only object allowed".into()))
     } else {
       let id = crate::services::string_to_id(id)?;
 
@@ -228,7 +227,7 @@ impl Service for Actions {
               "data" => task.result = Some(Ok(v.clone())),
               "errors" => {
                 task.result =
-                  Some(Err(errors::Error::GeneralError(v.as_str().unwrap_or("").trim().to_string())))
+                  Some(Err(service::error::Error::GeneralError(v.as_str().unwrap_or("").trim().to_string())))
               },
               _ => {}, // ignore
             }
@@ -238,12 +237,12 @@ impl Service for Actions {
 
         Ok(data)
       } else {
-        Err(errors::Error::NotFound(id.to_base64()))
+        Err(service::error::Error::NotFound(id.to_base64()))
       }
     }
   }
 
   fn remove(&self, id: String, params: Params) -> crate::services::Result {
-    Err(errors::Error::NotImplemented)
+    Err(service::error::Error::NotImplemented)
   }
 }

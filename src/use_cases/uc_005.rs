@@ -14,7 +14,7 @@ use crate::storage::memories::{memories_create, memories_find};
 use crate::commutator::Application;
 use crate::animo::memory::ID;
 use service::Services;
-use errors::Error;
+use service::error::Error;
 
 const COUNTERPARTY: [&str; 1] = ["counterparty"];
 const STORAGE: [&str; 1] = ["storage"];

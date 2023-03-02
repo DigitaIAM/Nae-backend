@@ -5,7 +5,6 @@ extern crate core;
 extern crate quick_error;
 extern crate json;
 extern crate store;
-extern crate utils;
 extern crate actix;
 extern crate jsonwebtoken;
 extern crate rust_decimal;
@@ -16,7 +15,6 @@ extern crate reqwest;
 extern crate csv;
 extern crate uuid;
 extern crate actix_web;
-extern crate errors;
 // extern crate tempfile;
 
 use crate::commutator::{Application, Commutator};

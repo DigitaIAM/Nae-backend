@@ -4,7 +4,7 @@ mod old_references;
 mod organizations;
 
 use crate::services::JsonData;
-use errors::Error;
+use service::error::Error;
 pub(crate) use cameras::{SCamera, SEvent};
 use json::JsonValue;
 pub use organizations::SOrganizations;

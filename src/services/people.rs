@@ -1,7 +1,7 @@
 use crate::animo::error::DBError;
 use crate::services::{string_to_id, Data, Params};
 use service::{Service, Services};
-use errors::Error;
+use service::error::Error;
 use crate::ws::error_general;
 use crate::{
   auth, commutator::Application, animo::memory::ChangeTransformation, animo::memory::Memory, storage::SOrganizations, animo::memory::Transformation,

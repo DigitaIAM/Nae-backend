@@ -19,9 +19,9 @@ use walkdir::WalkDir;
 use crate::animo::error::DBError;
 use crate::services::{string_to_id, Data, Params};
 use service::{Service, Services};
-use errors::Error;
+use service::error::Error;
 use crate::storage::SEvent;
-use utils::time::string_to_time;
+use service::utils::time::string_to_time;
 use crate::ws::error_general;
 use crate::{
   auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},

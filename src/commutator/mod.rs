@@ -1,7 +1,7 @@
 use crate::animo::memory::ChangeTransformation;
 use crate::services::{Event, Mutation};
 use service::{Service, Services};
-use errors::Error;
+use service::error::Error;
 use crate::ws::{engine_io, error_general, socket_io, Connect, Disconnect, WsMessage};
 use crate::{ws, storage::SOrganizations};
 use crate::{animo::db::AnimoDB, settings::Settings, animo::memory::ID};
@@ -159,7 +159,7 @@ impl Services for Application {
     if let Some(service) = services.get(name.as_ref()) {
       service.clone()
     } else {
-      Arc::new(crate::services::NoService(name.to_string()))
+      Arc::new(service::NoService(name.to_string()))
     }
   }
 }

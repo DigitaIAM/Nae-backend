@@ -10,7 +10,7 @@ use super::{
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rocksdb::{BoundColumnFamily, IteratorMode, ReadOptions, DB};
 use uuid::Uuid;
-use utils::time::timestamp_to_time;
+use service::utils::time::timestamp_to_time;
 
 const CF_NAME: &str = "cf_checkpoint_date_store_batch";
 

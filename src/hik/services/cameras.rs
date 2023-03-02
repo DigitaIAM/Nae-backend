@@ -98,7 +98,7 @@ impl Cameras {
     // cam.save(data)?;
 
     let cam = self.orgs.get(&config.oid).camera(&config.id).create()?;
-    let data = config.data().map_err(|e| errors::Error::IOError(e.to_string()))?;
+    let data = config.data().map_err(|e| service::error::Error::IOError(e.to_string()))?;
     cam.save(data)?;
     Ok(JsonValue::Null)
   }
@@ -149,7 +149,7 @@ impl Service for Cameras {
 
     let objs = self.objs.read().unwrap();
     match objs.get(&id) {
-      None => Err(errors::Error::NotFound(id.to_base64())),
+      None => Err(service::error::Error::NotFound(id.to_base64())),
       Some((_, config)) => Ok(config.lock().unwrap().to_json()),
     }
   }
@@ -287,11 +287,11 @@ impl Service for Cameras {
 
       Ok(data)
     } else {
-      Err(errors::Error::NotFound(id.to_base64()))
+      Err(service::error::Error::NotFound(id.to_base64()))
     }
   }
 
   fn remove(&self, id: String, params: Params) -> crate::services::Result {
-    Err(errors::Error::NotImplemented)
+    Err(service::error::Error::NotImplemented)
   }
 }

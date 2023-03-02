@@ -1,6 +1,6 @@
 use crate::animo::error::DBError;
 use crate::animo::memory::{ChangeTransformation, Context, TransformationKey, Value, ID};
-use utils::time::{now_in_millis, now_in_seconds};
+use service::utils::time::{now_in_millis, now_in_seconds};
 use crate::{animo::db::AnimoDB, commutator::Application, animo::memory::Memory, settings::Settings, animo::shared::DESC};
 use actix_web::dev::{Payload, ServiceRequest};
 use actix_web::{post, web, Error, FromRequest, HttpRequest, HttpResponse, Responder};

@@ -18,10 +18,10 @@ use crate::animo::error::DBError;
 use crate::hik::ConfigCamera;
 use crate::services::{Data, JsonData, Params};
 use service::{Service, Services};
-use errors::Error;
+use service::error::Error;
 use crate::storage::{SCamera, SEvent};
-use utils::json::JsonParams;
-use utils::time::DateRange;
+use service::utils::{json::JsonParams,
+                     time::DateRange};
 use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
 use crate::{
