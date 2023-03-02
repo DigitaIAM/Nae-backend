@@ -36,7 +36,7 @@ actix-web-actors = "4.1.0"
 actix-cors = "0.6.3"
 actix-web-httpauth = "0.8.0"
 actix-files = "0.6.1"
-actix-multipart = "0.4"
+actix-multipart = "0.6"
 actix-interop = "0.4.0"
 thiserror = "1.0.37"
 actix-ratelimit = "0.3.1" # TODO use it
@@ -54,7 +54,7 @@ zerocopy = "0.6.1"
 rand = "0.8.5"
 
 rkyv = { version = "0.7.38", features = ["validation"] }
-bytecheck = "0.6.8"
+bytecheck = "0.7.0"
 
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_bytes = "0.11"
@@ -63,11 +63,11 @@ json = "0.12.4" # replacement for serde_json ?
 #bson = "0.14.1"
 #simd-json = "0.5.0"
 #bincode = "1.3.3"
-base64 = "0.13.1"
+base64 = "0.21"
 
 #ckb-rocksdb have transaction
-rocksdb = { version = "0.19.0", default-features = false, features = ["lz4", "multi-threaded-cf"] }
-tantivy = "0.18.0"
+rocksdb = { version = "0.20", default-features = false, features = ["lz4", "multi-threaded-cf"] }
+tantivy = "0.19"
 #Firebird Client
 #rsfbclient = "0.21.0"
 
@@ -90,16 +90,16 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "local-time"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7.4", features = ["codec"] }
-tokio-cron-scheduler = "0.8.1"
+tokio-cron-scheduler = "0.9"
 ureq = "2.5.0"
 
 crossbeam = "0.8"
 #crossbeam-channel = "0.5"
 
 log = "0.4.17"
-env_logger = "0.9.0"
+env_logger = "0.10"
 
-dbase = "0.2.3"
+dbase = "0.3"
 csv = "1.1.6"
 
 profiling = "1.0.6"
@@ -108,4 +108,4 @@ profiling = "1.0.6"
 
 [dev-dependencies]
 tempfile = "3.3.0"
-criterion = "0.3.5"
+criterion = "0.4"
