@@ -13,6 +13,9 @@ use json::{array, JsonValue};
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 use rust_decimal::Decimal;
 use uuid::Uuid;
+// use std::alloc::Global;
+use crate::elements::Goods;
+use std::convert::TryFrom;
 
 const CF_NAME: &str = "cf_date_type_store_batch_id";
 pub struct DateTypeStoreBatchId {
@@ -87,6 +90,30 @@ impl OrderedTopology for DateTypeStoreBatchId {
     }
 
     return Ok(BalanceForGoods::default());
+  }
+
+  fn goods_balance_before(&self, op: &Op, balances: Vec<Balance>) -> Result<Vec<(Batch, BalanceForGoods)>, WHError> {
+    let mut result = vec![];
+
+    // let mut balances: Vec<Balance> = db.get_checkpoints_for_goods(op.store, op.goods, op.date)?;
+
+    let ops = self.get_ops_for_goods(op.store, op.goods, first_day_current_month(op.date), op.date)?;
+
+    let mut operations = vec![];
+
+    for o in ops {
+      if o.store == op.store && o.goods == op.goods {
+        operations.push(o);
+      }
+    }
+
+    let items = new_get_aggregations(balances, operations, op.date);
+
+    for item in items.1 {
+
+    }
+
+    Ok(result)
   }
 
   fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
@@ -180,6 +207,56 @@ impl OrderedTopology for DateTypeStoreBatchId {
       // log::debug!("k {k:?}");
       // log::debug!("o {op:?}");
       // log::debug!("b {b:?}");
+
+      res.push(op);
+    }
+
+    Ok(res)
+  }
+
+  fn get_ops_for_goods(&self, store: Store, goods: Goods, from_date: DateTime<Utc>, till_date: DateTime<Utc>) -> Result<Vec<Op>, WHError> {
+
+    let ts_from = u64::try_from(from_date.timestamp()).unwrap_or_default();
+    let from: Vec<u8> = ts_from
+        .to_be_bytes()
+        .iter()
+        .chain(0_u8.to_be_bytes().iter())
+        .chain(store.as_bytes().iter())
+        .chain(goods.as_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .chain(u64::MIN.to_be_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
+
+    let ts_till = u64::try_from(till_date.timestamp()).unwrap_or_default();
+    let till: Vec<u8> = ts_till
+        .to_be_bytes()
+        .iter()
+        .chain(u8::MAX.to_be_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(u64::MAX.to_be_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
+
+    let mut options = ReadOptions::default();
+    options.set_iterate_range(from..till);
+
+    let expected: Vec<u8> = store.as_bytes().iter().map(|b| *b).collect();
+
+    let mut res = Vec::new();
+
+    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
+      let (k, value) = item?;
+
+      if k[9..25] != expected {
+        continue;
+      }
+
+      let (op, b) = self.from_bytes(&value)?;
 
       res.push(op);
     }

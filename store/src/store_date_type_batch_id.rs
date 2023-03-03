@@ -11,6 +11,8 @@ use chrono::{DateTime, Utc};
 use json::array;
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 use rust_decimal::Decimal;
+use crate::elements::Batch;
+use crate::elements::Goods;
 
 const CF_NAME: &str = "cf_store_date_type_batch_id";
 
@@ -79,6 +81,10 @@ impl OrderedTopology for StoreDateTypeBatchId {
     }
 
     Ok(BalanceForGoods::default())
+  }
+
+  fn goods_balance_before(&self, op: &Op, balances: Vec<Balance>) -> Result<Vec<(Batch, BalanceForGoods)>, WHError> {
+    unimplemented!()
   }
 
   fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
@@ -170,6 +176,10 @@ impl OrderedTopology for StoreDateTypeBatchId {
       }
   
       Ok(res)
+  }
+
+  fn get_ops_for_goods(&self, store: Store, goods: Goods, from_date: DateTime<Utc>, till_date: DateTime<Utc>) -> Result<Vec<Op>, WHError> {
+    unimplemented!()
   }
 
   fn get_report(

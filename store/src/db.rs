@@ -9,6 +9,7 @@ use super::{
    OrderedTopology, Store, Report},
   error::WHError,
 };
+use crate::elements::{Goods, Batch};
 
 #[derive(Clone)]
 pub struct Db {
@@ -56,16 +57,39 @@ impl Db {
 
   pub fn record_ops(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
     for op in ops {
+      let balances: Vec<Balance> = if op.is_issue() && op.batch.is_none() {
+        self.get_checkpoints_for_goods(op.store, op.goods, op.date)?
+      } else {
+        Vec::new()
+      };
+
       for checkpoint_topology in self.checkpoint_topologies.iter() {
+        // TODO pass balances.clone() as an argument
         checkpoint_topology.checkpoint_update(op)?;
       }
 
       for ordered_topology in self.ordered_topologies.iter() {
-        ordered_topology.data_update(op);
+        ordered_topology.data_update(op, balances.clone());
       }
     }
 
     Ok(())
+  }
+
+  pub fn get_checkpoints_for_goods(&self, store: Store, goods: Goods, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError> {
+    for checkpoint_topology in self.checkpoint_topologies.iter() {
+      match checkpoint_topology.get_checkpoints_for_goods(store, goods, date) {
+        Ok(result) => return Ok(result),
+        Err(e) => {
+          if e.message() == "Not supported".to_string() {
+            continue;
+          } else {
+            return Err(e);
+          }
+        },
+      }
+    }
+    Err(WHError::new("can't get checkpoint before date"))
   }
 
   pub fn get_checkpoints_before_date(

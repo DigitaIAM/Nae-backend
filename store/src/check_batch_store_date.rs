@@ -9,6 +9,7 @@ use super::{
 };
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, DB};
+use crate::elements::Goods;
 
 const CF_NAME: &str = "cf_checkpoint_batch_store_date";
 pub struct CheckBatchStoreDate {
@@ -104,5 +105,9 @@ impl CheckpointTopology for CheckBatchStoreDate {
       self.key_latest_checkpoint_date(),
       serde_json::to_string(&date).map_err(|_| WHError::new("set serde_json::from_slice"))?,
     )?)
+  }
+
+  fn get_checkpoints_for_goods(&self, store: Store, goods: Goods, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError> {
+    unimplemented!()
   }
 }
