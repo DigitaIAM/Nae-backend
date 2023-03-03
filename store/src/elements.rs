@@ -267,7 +267,6 @@ pub trait CheckpointTopology {
     fn key_latest_checkpoint_date(&self) -> Vec<u8>;
     fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError>;
     fn set_latest_checkpoint_date(&self, date: DateTime<Utc>) -> Result<(), WHError>;
-    fn actualize_balances(&self, current_date: DateTime<Utc>, latest_checkpoint_date: DateTime<Utc>) -> Result<(), WHError>;
 
     fn checkpoint_update(&self, op: &OpMutation) -> Result<(), WHError> {
         let mut tmp_date = op.date;
@@ -1331,7 +1330,6 @@ fn json_to_ops(
         None
     };
 
-    // TODO remove dependent_id, use op.id instead
     let goods = match data["item"].uuid_or_none() {
         Some(uuid) => uuid,
         None => return Ok(ops),

@@ -36,6 +36,7 @@ struct Cost {
 }
 
 pub(crate) fn report(app: &Application, company: &str, storage: &str, from_date: &str, till_date: &str, ) {
+    println!("CSV_REPORT");
     let oid = ID::from(company);
     let ctx = vec!["report"];
 

@@ -105,11 +105,11 @@ impl CheckpointTopology for CheckDateStoreBatch {
 
     let latest_checkpoint_date = self.get_latest_checkpoint_date()?;
 
-    if current_date > latest_checkpoint_date {
-      self.actualize_balances(current_date, latest_checkpoint_date);
-    }
-
-    let mut ts = u64::try_from(current_date.timestamp()).unwrap_or_default();
+    let ts = if current_date > latest_checkpoint_date {
+      u64::try_from(latest_checkpoint_date.timestamp()).unwrap_or_default()
+    } else {
+      u64::try_from(current_date.timestamp()).unwrap_or_default()
+    };
 
     let from: Vec<u8> = ts
       .to_be_bytes()
@@ -144,57 +144,10 @@ impl CheckpointTopology for CheckDateStoreBatch {
     Ok(balances)
   }
 
-  fn actualize_balances(&self, current_date: DateTime<Utc>, latest_checkpoint_date: DateTime<Utc>) -> Result<(), WHError> {
-    let ts = u64::try_from(latest_checkpoint_date.timestamp()).unwrap_or_default();
-    let from: Vec<u8> = [].iter()
-        .chain(ts.to_be_bytes().iter())
-        .chain(UUID_NIL.as_bytes().iter())
-        .chain(UUID_NIL.as_bytes().iter())
-        .chain(u64::MIN.to_be_bytes().iter())
-        .chain(UUID_NIL.as_bytes().iter())
-        .map(|b| *b)
-        .collect();
-
-    let till: Vec<u8> = [].iter()
-        .chain(ts.to_be_bytes().iter())
-        .chain(UUID_MAX.as_bytes().iter())
-        .chain(UUID_MAX.as_bytes().iter())
-        .chain(u64::MAX.to_be_bytes().iter())
-        .chain(UUID_MAX.as_bytes().iter())
-        .map(|b| *b)
-        .collect();
-
-    let mut opts = ReadOptions::default();
-    opts.set_iterate_range(from..till);
-
-    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
-
-    while let Some(res) = iter.next() {
-      let (k, v) = res?;
-      let b: BalanceForGoods = serde_json::from_slice(&v)?;
-      // println!("BAL: {b:#?}");
-      let (date, store, goods, batch) = CheckDateStoreBatch::key_to_data(k.to_vec())?;
-
-      let balance = Balance { date, store, goods, batch, number: b };
-
-      let mut latest_date = first_day_next_month(latest_checkpoint_date);
-
-      while current_date >= latest_date {
-        println!("REFRESHING BALANCE");
-        let key = self.key_checkpoint(&balance, latest_date);
-        self.set_balance(&key, balance.clone().number)?;
-
-        latest_date = first_day_next_month(latest_date);
-      }
-    }
-    self.set_latest_checkpoint_date(current_date);
-    Ok(())
-  }
-
   fn key_latest_checkpoint_date(&self) -> Vec<u8> {
     [].iter()
       .chain(u64::MIN.to_be_bytes().iter())
-        .chain(UUID_NIL.as_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
