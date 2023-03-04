@@ -23,6 +23,7 @@ pub trait JsonParams {
 
   fn date(&self) -> Result<DateTime<Utc>, Error>;
   fn datetime(&self) -> Result<DateTime<Utc>, Error>;
+  fn boolean(&self) -> bool;
 }
 
 impl JsonParams for JsonValue {
@@ -90,6 +91,14 @@ impl JsonParams for JsonValue {
     let dt = DateTime::parse_from_rfc3339(&s)?.into();
 
     Ok(dt)
+  }
+
+  fn boolean(&self) -> bool {
+    let s = self.string();
+    match s.as_str() {
+      "true" => true,
+      _ => false,
+    }
   }
 }
 

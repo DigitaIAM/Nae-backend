@@ -15,7 +15,6 @@ extern crate reqwest;
 extern crate csv;
 extern crate uuid;
 extern crate actix_web;
-// extern crate tempfile;
 
 use crate::commutator::{Application, Commutator};
 use actix::{Actor, Addr};
