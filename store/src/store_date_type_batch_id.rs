@@ -2,17 +2,19 @@ use std::{str::FromStr, sync::Arc};
 
 use super::{
   balance::BalanceForGoods,
-  elements::{InternalOperation, KeyValueStore, Op, OpMutation, OrderedTopology, Store,
-             first_day_current_month, new_get_aggregations, Balance, Report},
-  error::WHError,
   db::Db,
+  elements::{
+    first_day_current_month, new_get_aggregations, Balance, InternalOperation, KeyValueStore, Op,
+    OpMutation, OrderedTopology, Report, Store,
+  },
+  error::WHError,
 };
+use crate::elements::Goods;
+use crate::elements::{Batch, UUID_MAX, UUID_NIL};
 use chrono::{DateTime, Utc};
 use json::array;
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 use rust_decimal::Decimal;
-use crate::elements::Batch;
-use crate::elements::Goods;
 
 const CF_NAME: &str = "cf_store_date_type_batch_id";
 
@@ -58,7 +60,6 @@ impl OrderedTopology for StoreDateTypeBatchId {
   }
 
   fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
-
     let expected_store: Vec<u8> = op.store.as_bytes().iter().map(|b| *b).collect();
     let expected_batch: Vec<u8> = op.batch().iter().map(|b| *b).collect();
 
@@ -83,8 +84,31 @@ impl OrderedTopology for StoreDateTypeBatchId {
     Ok(BalanceForGoods::default())
   }
 
-  fn goods_balance_before(&self, op: &Op, balances: Vec<Balance>) -> Result<Vec<(Batch, BalanceForGoods)>, WHError> {
-    unimplemented!()
+  fn goods_balance_before(
+    &self,
+    op: &Op,
+    balances: Vec<Balance>,
+  ) -> Result<Vec<(Batch, BalanceForGoods)>, WHError> {
+    let mut result = vec![];
+
+    let ops =
+      self.get_ops_for_goods(op.store, op.goods, first_day_current_month(op.date), op.date)?;
+
+    let mut operations = vec![];
+
+    for o in ops {
+      if o.store == op.store && o.goods == op.goods {
+        operations.push(o);
+      }
+    }
+
+    let items = new_get_aggregations(balances, operations, op.date);
+
+    for item in items.1 {
+      result.push((item.batch.unwrap(), item.close_balance));
+    }
+
+    Ok(result)
   }
 
   fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
@@ -96,14 +120,12 @@ impl OrderedTopology for StoreDateTypeBatchId {
     let key = self.key(op);
 
     // TODO change iterator with range from..till?
-    let mut iter = self.db.iterator_cf(
-      &self.cf()?,
-      IteratorMode::From(&key, rocksdb::Direction::Forward),
-    );
+    let mut iter = self
+      .db
+      .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Forward));
 
     while let Some(bytes) = iter.next() {
       if let Ok((k, v)) = bytes {
-
         if k[0..16] != expected_store || k[25..65] != expected_batch || k[0..] == key {
           continue;
         }
@@ -145,41 +167,92 @@ impl OrderedTopology for StoreDateTypeBatchId {
       .map(|b| *b)
       .collect();
 
-      let mut options = ReadOptions::default();
-      options.set_iterate_range(from..till);
-  
-      // store
-      let expected: Vec<u8> = storage.as_bytes().iter().map(|b| *b).collect();
-  
-      // log::debug!("exp {expected:?}");
-  
-      let mut res = Vec::new();
-  
-      for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
-        let (k, value) = item?;
-  
-        // log::debug!("k__ {k:?}");
-        // log::debug!("k[0..16] {:?}", &k[0..16]);
-  
-        // || k[0..] == key
-        if k[0..16] != expected {
-          continue;
-        }
-  
-        let (op, b) = self.from_bytes(&value)?;
-  
-        // log::debug!("k {k:?}");
-        // log::debug!("o {op:?}");
-        // log::debug!("b {b:?}");
-  
-        res.push(op);
+    let mut options = ReadOptions::default();
+    options.set_iterate_range(from..till);
+
+    // store
+    let expected: Vec<u8> = storage.as_bytes().iter().map(|b| *b).collect();
+
+    // log::debug!("exp {expected:?}");
+
+    let mut res = Vec::new();
+
+    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
+      let (k, value) = item?;
+
+      // log::debug!("k__ {k:?}");
+      // log::debug!("k[0..16] {:?}", &k[0..16]);
+
+      // || k[0..] == key
+      if k[0..16] != expected {
+        continue;
       }
-  
-      Ok(res)
+
+      let (op, b) = self.from_bytes(&value)?;
+
+      // log::debug!("k {k:?}");
+      // log::debug!("o {op:?}");
+      // log::debug!("b {b:?}");
+
+      res.push(op);
+    }
+
+    Ok(res)
   }
 
-  fn get_ops_for_goods(&self, store: Store, goods: Goods, from_date: DateTime<Utc>, till_date: DateTime<Utc>) -> Result<Vec<Op>, WHError> {
-    unimplemented!()
+  fn get_ops_for_goods(
+    &self,
+    store: Store,
+    goods: Goods,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    let ts_from = u64::try_from(from_date.timestamp()).unwrap_or_default();
+    let from: Vec<u8> = store
+      .as_bytes()
+      .iter()
+      .chain(ts_from.to_be_bytes().iter())
+      .chain(0_u8.to_be_bytes().iter())
+      // .chain(goods.as_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(u64::MIN.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
+
+    let ts_till = u64::try_from(till_date.timestamp()).unwrap_or_default();
+    let till: Vec<u8> = store
+      .as_bytes()
+      .iter()
+      .chain(ts_till.to_be_bytes().iter())
+      .chain(u8::MAX.to_be_bytes().iter())
+      // .chain(goods.as_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(u64::MAX.to_be_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
+
+    let mut options = ReadOptions::default();
+    options.set_iterate_range(from..till);
+
+    let expected: Vec<u8> = goods.as_bytes().iter().map(|b| *b).collect();
+
+    let mut res = Vec::new();
+
+    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
+      let (k, value) = item?;
+
+      if k[25..41] != expected {
+        continue;
+      }
+
+      let (op, _) = self.from_bytes(&value)?;
+
+      res.push(op);
+    }
+
+    Ok(res)
   }
 
   fn get_report(

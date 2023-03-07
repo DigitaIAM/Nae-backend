@@ -149,7 +149,11 @@ pub trait OrderedTopology {
 
   fn key(&self, op: &Op) -> Vec<u8>;
 
-  fn data_update(&self, op: &OpMutation, balances: Vec<Balance>) -> Result<(), WHError> {
+  fn data_update(
+    &self,
+    op: &OpMutation,
+    balances: Vec<Balance>,
+  ) -> Result<Vec<OpMutation>, WHError> {
     if op.before.is_none() {
       if let Ok(None) = self.get(&op.to_op()) {
         self.mutate_op(op, balances)
@@ -176,12 +180,18 @@ pub trait OrderedTopology {
     }
   }
 
-  fn mutate_op(&self, op_mut: &OpMutation, balances: Vec<Balance>) -> Result<(), WHError> {
+  fn mutate_op(
+    &self,
+    op_mut: &OpMutation,
+    balances: Vec<Balance>,
+  ) -> Result<Vec<OpMutation>, WHError> {
     let mut ops: Vec<Op> = vec![];
+    let mut result: Vec<OpMutation> = vec![];
+
     ops.push(op_mut.to_op());
 
     while ops.len() > 0 {
-      let op = ops.remove(0);
+      let mut op = ops.remove(0);
 
       log::debug!("processing {:?}", op);
 
@@ -191,6 +201,8 @@ pub trait OrderedTopology {
         // calculate balance
         let before_balance: Vec<(Batch, BalanceForGoods)> =
           self.goods_balance_before(&op, balances.clone())?;
+
+        println!("BEFORE_BALANCE: {:?}", before_balance);
 
         let mut qty = match op.op {
           InternalOperation::Receive(_, _) => unreachable!(),
@@ -207,6 +219,7 @@ pub trait OrderedTopology {
             new.is_dependent = true;
             new.batch = batch;
             new.op = InternalOperation::Issue(balance.qty, balance.cost, Mode::Auto);
+            println!("NEW_OP: {:?}", new);
             ops.push(new);
 
             qty -= balance.qty;
@@ -228,6 +241,12 @@ pub trait OrderedTopology {
         }
 
         // todo!("update op with qty");
+        op.op = match op.op {
+          InternalOperation::Receive(_, _) => unreachable!(),
+          InternalOperation::Issue(q, c, m) => InternalOperation::Issue(qty, qty * (c / q), m),
+        };
+
+        op.batches = batches.clone();
 
         // calculate balance
         let before_balance: BalanceForGoods = self.balance_before(&op)?; // Vec<(Batch, BalanceForGoods)>
@@ -247,6 +266,18 @@ pub trait OrderedTopology {
         } else {
           //   self.put(&calculated_op, &new_balance, batches)?;
           self.put(&calculated_op, &new_balance)?;
+          result.push(OpMutation {
+            id: calculated_op.id,
+            date: calculated_op.date,
+            store: calculated_op.store,
+            transfer: calculated_op.transfer,
+            goods: calculated_op.goods,
+            batch: calculated_op.batch.clone(),
+            before: None,
+            after: Some(calculated_op.op.clone()),
+            is_dependent: calculated_op.is_dependent,
+            batches: calculated_op.batches.clone(),
+          });
         }
 
         // if next op have dependant add it to ops
@@ -272,6 +303,18 @@ pub trait OrderedTopology {
         } else {
           //   self.put(&calculated_op, &new_balance, batches)?;
           self.put(&calculated_op, &new_balance)?;
+          result.push(OpMutation {
+            id: calculated_op.id,
+            date: calculated_op.date,
+            store: calculated_op.store,
+            transfer: calculated_op.transfer,
+            goods: calculated_op.goods,
+            batch: calculated_op.batch.clone(),
+            before: None,
+            after: Some(calculated_op.op.clone()),
+            is_dependent: calculated_op.is_dependent,
+            batches: calculated_op.batches.clone(),
+          });
         }
 
         // if next op have dependant add it to ops
@@ -306,7 +349,7 @@ pub trait OrderedTopology {
       }
     }
 
-    Ok(())
+    Ok(result)
   }
 
   fn evaluate(&self, balance: &BalanceForGoods, op: &Op) -> (Op, BalanceForGoods) {
@@ -390,44 +433,48 @@ pub trait CheckpointTopology {
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError>;
 
-  fn checkpoint_update(&self, op: &OpMutation) -> Result<(), WHError> {
-    let mut tmp_date = op.date;
-    let mut check_point_date = op.date;
-    let mut last_checkpoint_date = self.get_latest_checkpoint_date()?;
+  fn checkpoint_update(&self, ops: Vec<OpMutation>) -> Result<(), WHError> {
+    for op in ops {
+      let mut tmp_date = op.date;
+      let mut check_point_date = op.date;
+      let mut last_checkpoint_date = self.get_latest_checkpoint_date()?;
 
-    if last_checkpoint_date < op.date {
-      let old_checkpoints = self.get_checkpoints_before_date(op.store, last_checkpoint_date)?;
+      if last_checkpoint_date < op.date {
+        let old_checkpoints = self.get_checkpoints_before_date(op.store, last_checkpoint_date)?;
 
-      last_checkpoint_date = first_day_next_month(op.date);
+        last_checkpoint_date = first_day_next_month(op.date);
 
-      for old_checkpoint in old_checkpoints.iter() {
-        let key = self.key_checkpoint(old_checkpoint, last_checkpoint_date);
-        self.set_balance(&key, old_checkpoint.clone().number)?;
+        for old_checkpoint in old_checkpoints.iter() {
+          let key = self.key_checkpoint(old_checkpoint, last_checkpoint_date);
+          self.set_balance(&key, old_checkpoint.clone().number)?;
+        }
       }
-    }
 
-    while check_point_date < last_checkpoint_date {
-      check_point_date = first_day_next_month(tmp_date);
+      while check_point_date < last_checkpoint_date {
+        check_point_date = first_day_next_month(tmp_date);
 
-      let key = self.key(&op.to_op(), check_point_date);
+        let key = self.key(&op.to_op(), check_point_date);
 
-      let mut balance = self.get_balance(&key)?;
+        let mut balance = self.get_balance(&key)?;
 
-      balance += op.to_delta();
+        balance += op.to_delta();
 
-      if balance.is_zero() {
-        self.del_balance(&key)?;
-      } else {
-        self.set_balance(&key, balance)?;
+        if balance.is_zero() {
+          self.del_balance(&key)?;
+        } else {
+          self.set_balance(&key, balance)?;
+        }
+        tmp_date = check_point_date;
       }
-      tmp_date = check_point_date;
-    }
 
-    self.set_latest_checkpoint_date(check_point_date)?;
+      self.set_latest_checkpoint_date(check_point_date)?;
 
-    if op.transfer.is_some() {
-      if let Some(dep) = &op.dependent() {
-        self.checkpoint_update(dep);
+      if op.transfer.is_some() {
+        if let Some(dep) = &op.dependent() {
+          let mut deps = vec![];
+          deps.push(dep.clone());
+          self.checkpoint_update(deps);
+        }
       }
     }
 
@@ -1083,6 +1130,13 @@ impl AgregationStoreGoods {
     }
     key
   }
+
+  fn is_zero(&self) -> bool {
+    self.open_balance.is_zero()
+      && self.receive.is_zero()
+      && self.issue.is_zero()
+      && self.close_balance.is_zero()
+  }
 }
 
 impl ToJson for AgregationStoreGoods {
@@ -1410,8 +1464,10 @@ pub(crate) fn new_get_aggregations(
   let mut res = Vec::new();
 
   for (_, agr) in aggregations {
-    master_aggregation.apply_agregation(Some(&agr));
-    res.push(agr);
+    if !agr.is_zero() {
+      master_aggregation.apply_agregation(Some(&agr));
+      res.push(agr);
+    }
   }
 
   (master_aggregation, res)

@@ -114,7 +114,9 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
     let items = new_get_aggregations(balances, operations, op.date);
 
-    for item in items.1 {}
+    for item in items.1 {
+      result.push((item.batch.unwrap(), item.close_balance));
+    }
 
     Ok(result)
   }
@@ -242,8 +244,8 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .to_be_bytes()
       .iter()
       .chain(u8::MAX.to_be_bytes().iter())
-      .chain(UUID_MAX.as_bytes().iter())
-      .chain(UUID_MAX.as_bytes().iter())
+      .chain(store.as_bytes().iter())
+      .chain(goods.as_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
       .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())

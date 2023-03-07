@@ -5,11 +5,12 @@ use rocksdb::DB;
 
 use super::{
   balance::BalanceForGoods,
-  elements::{first_day_next_month, Balance, CheckpointTopology, OpMutation,
-   OrderedTopology, Store, Report},
+  elements::{
+    first_day_next_month, Balance, CheckpointTopology, OpMutation, OrderedTopology, Report, Store,
+  },
   error::WHError,
 };
-use crate::elements::{Goods, Batch};
+use crate::elements::{Batch, Goods};
 
 #[derive(Clone)]
 pub struct Db {
@@ -63,20 +64,33 @@ impl Db {
         Vec::new()
       };
 
-      for checkpoint_topology in self.checkpoint_topologies.iter() {
-        // TODO pass balances.clone() as an argument
-        checkpoint_topology.checkpoint_update(op)?;
-      }
+      let mut new_ops = vec![];
 
       for ordered_topology in self.ordered_topologies.iter() {
-        ordered_topology.data_update(op, balances.clone());
+        new_ops = ordered_topology.data_update(op, balances.clone())?;
+      }
+
+      println!("NEW_OPS IN FN_RECORD_OPS: {:?}", new_ops);
+      if new_ops.is_empty() {
+        // println!("OPERATION IN FN_RECORD_OPS: {:?}", op);
+        new_ops.push(op.clone());
+      }
+
+      for checkpoint_topology in self.checkpoint_topologies.iter() {
+        // TODO pass balances.clone() as an argument
+        checkpoint_topology.checkpoint_update(new_ops.clone())?;
       }
     }
 
     Ok(())
   }
 
-  pub fn get_checkpoints_for_goods(&self, store: Store, goods: Goods, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError> {
+  pub fn get_checkpoints_for_goods(
+    &self,
+    store: Store,
+    goods: Goods,
+    date: DateTime<Utc>,
+  ) -> Result<Vec<Balance>, WHError> {
     for checkpoint_topology in self.checkpoint_topologies.iter() {
       match checkpoint_topology.get_checkpoints_for_goods(store, goods, date) {
         Ok(result) => return Ok(result),
