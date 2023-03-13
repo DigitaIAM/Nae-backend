@@ -10,6 +10,9 @@ use super::{
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, DB};
 use crate::elements::Goods;
+use std::collections::hash_map::RandomState;
+use std::collections::HashMap;
+use uuid::Uuid;
 
 const CF_NAME: &str = "cf_checkpoint_batch_store_date";
 pub struct CheckBatchStoreDate {
@@ -107,7 +110,11 @@ impl CheckpointTopology for CheckBatchStoreDate {
     )?)
   }
 
-  fn get_checkpoints_for_goods(&self, store: Store, goods: Goods, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError> {
+  fn get_checkpoints_for_one_goods(&self, store: Store, goods: Goods, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError> {
+    unimplemented!()
+  }
+
+  fn get_checkpoints_for_many_goods(&self, date: DateTime<Utc>, goods: &Vec<Goods>) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods, RandomState>), WHError> {
     unimplemented!()
   }
 }

@@ -21,11 +21,11 @@ use service::Services;
 const COUNTERPARTY: [&str; 1] = ["counterparty"];
 const STORAGE: [&str; 1] = ["storage"];
 const RECEIVE_DOCUMENT: [&str; 1] = ["warehouse/receive/document"];
-const ISSUE_DOCUMENT: [&str; 1] = ["warehouse/issue/document"];
+const INVENTORY_DOCUMENT: [&str; 1] = ["warehouse/inventory/document"];
+const DISPATCH_DOCUMENT: [&str; 1] = ["warehouse/dispatch/document"];
 const UOM: [&str; 1] = ["uom"];
-const MATERIAL: [&str; 1] = ["material"];
+const GOODS: [&str; 1] = ["goods"];
 const CURRENCY: [&str; 1] = ["currency"];
-const WAREHOUSE_RECEIVE: [&str; 2] = ["warehouse", "receive"];
 
 struct Quantity {
   number: Decimal,
@@ -110,34 +110,37 @@ pub(crate) fn receive_csv_to_json(
 
     let doc_ctx = if ctx.get(1) == Some(&"receive") {
       RECEIVE_DOCUMENT.to_vec()
+    } else if ctx.get(1) == Some(&"inventory") {
+      INVENTORY_DOCUMENT.to_vec()
     } else {
-      ISSUE_DOCUMENT.to_vec()
+      DISPATCH_DOCUMENT.to_vec()
     };
 
     let document = json(app, object! {number: number}, doc_ctx, &|| {
       object! {
           date: date.clone(),
-          counterparty: counterparty["_uuid"].clone(),
-          storage: storage["_uuid"].clone(),
+          counterparty: counterparty["_id"].clone(),
+          storage: storage["_id"].clone(),
           number: number,
       }
     })?;
 
     let unit = &record[3];
-    let uom = json(app, object! {uom: unit}, UOM.to_vec(), &|| object! { uom: unit })?;
+    let uom = json(app, object! {name: unit}, UOM.to_vec(), &|| object! { name: unit })?;
 
     let vendor_code = &record[2];
-    let item = json(app, object! { vendor_code: vendor_code }, MATERIAL.to_vec(), &|| {
+    let item = json(app, object! { vendor_code: vendor_code }, GOODS.to_vec(), &|| {
       object! {
           name: &record[1],
           vendor_code: vendor_code,
-          uom: uom["_uuid"].clone(),
-          counterparty: counterparty["_uuid"].clone(),
+          uom: uom["_id"].clone(),
+          counterparty: counterparty["_id"].clone(),
       }
     })?;
 
     // cell at the warehouse
-    let cell: std::option::Option<String> = None;
+    // let cell: std::option::Option<String> = None;
+    let cell = "test";
 
     let price: Decimal = 0.into();
 
@@ -147,22 +150,23 @@ pub(crate) fn receive_csv_to_json(
 
     let currency = memories_create(app, object! {name: "rub"}, CURRENCY.to_vec())?;
 
-    let document_from = match doc_from {
-      Some(id) => memories_find(app, object! {number: id}, RECEIVE_DOCUMENT.to_vec())?,
-      None => Vec::<JsonValue>::new(),
-    };
+    // let document_from = match doc_from {
+    //   // Some(id) => memories_find(app, object! {_id: id}, RECEIVE_DOCUMENT.to_vec())?,
+    //   Some(id) => object! {_id: id},
+    //   None => Vec::<JsonValue>::new(),
+    // };
 
     let data = object! {
-        document: document["_uuid"].clone(),
-        item: item["_uuid"].clone(),
-        document_from: match document_from.get(0) {
-            Some(o) => o.clone(),
+        document: document["_id"].clone(),
+        goods: item["_id"].clone(),
+        document_from: match doc_from {
+            Some(id) => object! {_id: id},
             None => JsonValue::Null,
         },
         storage: cell,
-        qty: object! { number: number.to_json(), uom: uom["_uuid"].clone() },
+        qty: object! { number: number.to_json(), uom: uom["_id"].clone() },
         price: price.to_json(),
-        cost: object! { number: Decimal::default().to_json(), currency: currency["_uuid"].clone() },
+        cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
     };
 
     let res = memories_create(app, data, ctx.clone())?;

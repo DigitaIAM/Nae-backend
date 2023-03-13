@@ -11,6 +11,8 @@ use super::{
   error::WHError,
 };
 use crate::elements::{Batch, Goods};
+use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct Db {
@@ -92,7 +94,7 @@ impl Db {
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError> {
     for checkpoint_topology in self.checkpoint_topologies.iter() {
-      match checkpoint_topology.get_checkpoints_for_goods(store, goods, date) {
+      match checkpoint_topology.get_checkpoints_for_one_goods(store, goods, date) {
         Ok(result) => return Ok(result),
         Err(e) => {
           if e.message() == "Not supported".to_string() {
@@ -139,6 +141,30 @@ impl Db {
       }
     }
 
-    Err(WHError::new("not implemented"))
+    Err(WHError::new("fn get_report not implemented"))
+  }
+
+  pub fn get_balance(
+    &self,
+    date: DateTime<Utc>,
+    goods: &Vec<Goods>
+  ) -> Result<HashMap<Uuid, BalanceForGoods>, WHError> {
+    let (mut from_date, mut checkpoints)= (Utc::now(), HashMap::new());
+
+    for checkpoint_topology in self.checkpoint_topologies.iter() {
+      match checkpoint_topology.get_checkpoints_for_many_goods(date, goods) {
+        Ok(res) => { from_date = res.0; checkpoints = res.1 },
+        Err(_) => {}, // ignore
+      }
+    };
+
+    for ordered_topology in self.ordered_topologies.iter() {
+      match ordered_topology.get_balances(from_date,date, goods, checkpoints.clone()) {
+        Ok(res) => return Ok(res),
+        Err(_) => {}, // ignore
+      }
+    }
+
+    Err(WHError::new("fn get_balance not implemented"))
   }
 }

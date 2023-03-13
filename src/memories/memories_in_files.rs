@@ -18,11 +18,14 @@ use service::{Service, Services};
 use service::error::Error;
 use crate::storage::SOrganizations;
 use service::utils::json::{JsonMerge, JsonParams};
-use store::elements::ToJson;
+use store::elements::{ToJson};
 use crate::ws::error_general;
 use crate::{
   auth, commutator::Application, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
 };
+use store::GetWarehouse;
+use chrono::Utc;
+use store::balance::BalanceForGoods;
 // warehouse: { receiving, Put-away, transfer,  }
 // production: { manufacturing }
 
@@ -143,6 +146,33 @@ impl Service for MemoriesInFiles {
           .sum();
 
         order["produced"] = json::object! { "piece": sum.to_json(), "box": boxes.to_string() };
+      }
+    }
+
+    // workaround: goods balance
+    if &ctx == &vec!["goods"] {
+      let warehouse = self.app.warehouse().database;
+
+      let today = Utc::now();
+
+      // let list_of_goods = list.iter().map(|goods| goods["_uuid"].uuid_or_none()).filter(|id| id.is_some()).map(|id| id.unwrap()).collect();
+
+      let mut list_of_goods: Vec<Uuid> = Vec::new();
+      for goods in &list {
+        if let Some(uuid) = goods["_uuid"].uuid_or_none() {
+          list_of_goods.push(uuid);
+        }
+      }
+
+      let balances: HashMap<Uuid, BalanceForGoods> = warehouse.get_balance(today, &list_of_goods).map_err(|e| Error::GeneralError(e.message()))?;
+
+      for mut goods in &mut list {
+        if let Some(uuid) = goods["_uuid"].uuid_or_none() {
+
+          if let Some(balance) = balances.get(&uuid) {
+            goods["_balance"] = balance.to_json();
+          }
+        }
       }
     }
 

@@ -12,7 +12,7 @@ use rocksdb::{BoundColumnFamily, IteratorMode, ReadOptions, DB};
 use uuid::Uuid;
 use service::utils::time::timestamp_to_time;
 use std::convert::TryFrom;
-// use std::alloc::Global;
+use std::collections::HashMap;
 
 const CF_NAME: &str = "cf_checkpoint_date_store_batch";
 
@@ -123,7 +123,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
     )?)
   }
 
-  fn get_checkpoints_for_goods(&self, store: Store, goods: Goods, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError> {
+  fn get_checkpoints_for_one_goods(&self, store: Store, goods: Goods, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError> {
     let mut balances = Vec::new();
 
     let current_date = first_day_current_month(date);
@@ -171,6 +171,57 @@ impl CheckpointTopology for CheckDateStoreBatch {
     }
 
     Ok(balances)
+  }
+
+  fn get_checkpoints_for_many_goods(&self, date: DateTime<Utc>, goods: &Vec<Goods>) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
+    // let mut balances: HashMap<Uuid, BalanceForGoods> = goods.into_iter().map(|key| (key, BalanceForGoods::default())).collect();
+
+    let mut balances = HashMap::new();
+
+    goods.into_iter().map(|key: &Goods| balances.insert(key.clone(), BalanceForGoods::default()));
+
+    let current_date = first_day_current_month(date);
+
+    let latest_checkpoint_date = self.get_latest_checkpoint_date()?;
+
+    let actual_date = if current_date > latest_checkpoint_date { latest_checkpoint_date } else { current_date };
+
+    let ts = u64::try_from(actual_date.timestamp()).unwrap_or_default();
+
+    let from: Vec<u8> = ts
+        .to_be_bytes()
+        .iter()
+        .chain(UUID_NIL.as_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .chain(u64::MIN.to_be_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
+    let till: Vec<u8> = ts
+        .to_be_bytes()
+        .iter()
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(u64::MAX.to_be_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
+
+    let mut opts = ReadOptions::default();
+    opts.set_iterate_range(from..till);
+
+    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+
+    while let Some(res) = iter.next() {
+      let (k, v) = res?;
+      let b: BalanceForGoods = serde_json::from_slice(&v)?;
+
+      let (_, _, g, _) = CheckDateStoreBatch::key_to_data(k.to_vec())?;
+
+      balances.entry(g).and_modify(|bal| *bal += b);
+    }
+
+    Ok((actual_date, balances))
   }
 
 

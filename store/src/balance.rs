@@ -68,6 +68,13 @@ impl Add<BalanceDelta> for BalanceForGoods {
   }
 }
 
+impl AddAssign for BalanceForGoods {
+  fn add_assign(&mut self, rhs: Self) {
+    self.qty += rhs.qty;
+    self.cost += rhs.cost;
+  }
+}
+
 // impl SubAssign<BalanceDelta> for BalanceForGoods {
 //   fn sub_assign(&mut self, rhs: BalanceDelta) {
 //     self.qty -= rhs.qty;

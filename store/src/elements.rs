@@ -129,10 +129,17 @@ pub trait OrderedTopology {
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError>;
 
-  fn get_ops_for_goods(
+  fn get_ops_for_one_goods(
     &self,
     store: Store,
     goods: Goods,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError>;
+
+  fn get_ops_for_many_goods(
+    &self,
+    goods: &Vec<Goods>,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError>;
@@ -412,6 +419,33 @@ pub trait OrderedTopology {
       Err(WHError::new("unexpected structure"))
     }
   }
+
+  fn get_balances(
+    &self,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+    goods: &Vec<Goods>,
+    checkpoints: HashMap<Uuid, BalanceForGoods>
+  ) -> Result<HashMap<Uuid, BalanceForGoods>, WHError> {
+
+    let mut result = checkpoints.clone();
+
+    // get operations between checkpoint date and requested date
+    let ops = self.get_ops_for_many_goods(goods, from_date, till_date)?;
+
+    for op in ops {
+      result.entry(op.goods)
+          .and_modify(|bal| *bal += &op.op)
+          .or_insert(
+            match &op.op {
+              InternalOperation::Receive(q, c) => { BalanceForGoods {qty: q.clone(), cost: c.clone()} }
+              InternalOperation::Issue(q, c, _) => { BalanceForGoods {qty: -q.clone(), cost: -c.clone()} }
+            }
+          );
+    }
+
+    Ok(result)
+  }
 }
 
 pub trait CheckpointTopology {
@@ -426,12 +460,14 @@ pub trait CheckpointTopology {
   fn key_latest_checkpoint_date(&self) -> Vec<u8>;
   fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError>;
   fn set_latest_checkpoint_date(&self, date: DateTime<Utc>) -> Result<(), WHError>;
-  fn get_checkpoints_for_goods(
+  fn get_checkpoints_for_one_goods(
     &self,
     store: Store,
     goods: Goods,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError>;
+
+  fn get_checkpoints_for_many_goods(&self, date: DateTime<Utc>, goods: &Vec<Goods>) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError>;
 
   fn checkpoint_update(&self, ops: Vec<OpMutation>) -> Result<(), WHError> {
     for op in ops {
@@ -1564,17 +1600,20 @@ fn json_to_ops(
   let oid = app.service("companies").find(object! {limit: 1, skip: 0})?;
   // log::debug!("OID: {:?}", oid["data"][0]["_id"]);
 
-  let result = app.service("memories").find(object!{oid: oid["data"][0]["_id"].as_str(), ctx: vec![doc_ctx.as_str()], filter: object! {_uuid: data["document"].clone()}})?;
+  // let document = app.service("memories").find(object!{oid: oid["data"][0]["_id"].as_str(), ctx: vec![doc_ctx.as_str()], filter: object! {_uuid: data["document"].clone()}})?;
+  //
+  // let documents: Vec<JsonValue> = document["data"].members().map(|o| o.clone()).collect();
+  //
+  // let document = match documents.len() {
+  //   // 0 => Err(WHError::new("No such document fn json_to_ops")),
+  //   0 => return Ok(ops),
+  //   1 => documents[0].clone(),
+  //   // _ => Err(WHError::new("Two or more documents fn json_to_ops")),
+  //   _ => return Ok(ops),
+  // };
 
-  let documents: Vec<JsonValue> = result["data"].members().map(|o| o.clone()).collect();
-
-  let document = match documents.len() {
-    // 0 => Err(WHError::new("No such document fn json_to_ops")),
-    0 => return Ok(ops),
-    1 => documents[0].clone(),
-    // _ => Err(WHError::new("Two or more documents fn json_to_ops")),
-    _ => return Ok(ops),
-  };
+  let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec![doc_ctx.as_str()] };
+  let document = app.service("memories").get(data["document"].string(), params)?;
 
   log::debug!("DOCUMENT: {:?}", document.dump());
 
@@ -1588,7 +1627,10 @@ fn json_to_ops(
     None
   };
 
-  let goods = match data["item"].uuid_or_none() {
+  let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["goods"] };
+  let item = app.service("memories").get(data["goods"].string(), params)?;
+
+  let goods = match item["_uuid"].uuid_or_none() {
     Some(uuid) => uuid,
     None => return Ok(ops),
   };
@@ -1596,10 +1638,10 @@ fn json_to_ops(
   // log::debug!("before op");
 
   let op = match type_of_operation.as_str() {
-    "receive" => {
+    "receive" | "inventory" => {
       InternalOperation::Receive(data["qty"]["number"].number(), data["cost"]["number"].number())
     },
-    "transfer" | "issue" => {
+    "transfer" | "dispatch" => {
       let (cost, mode) = if let Some(cost) = data["cost"]["number"].number_or_none() {
         (cost, Mode::Manual)
       } else {
@@ -1624,7 +1666,11 @@ fn json_to_ops(
     Batch { id: document["_uuid"].uuid()?, date }
   } else {
     match &data["document_from"] {
-      JsonValue::Object(d) => Batch { id: d["_uuid"].uuid()?, date: d["date"].date()? },
+      JsonValue::Object(d) => {
+        let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["warehouse/receive/document"] };
+        let doc_from = app.service("memories").get(d["_id"].string(), params)?;
+        Batch { id: doc_from["_uuid"].uuid()?, date: doc_from["date"].date()? }
+      },
       _ => Batch { id: UUID_NIL, date },
     }
   };
@@ -1643,7 +1689,11 @@ fn json_to_ops(
   let op = Op {
     id: tid,
     date,
-    store: document["storage"].uuid()?,
+    store: {
+      let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["storage"] };
+      let storage = app.service("memories").get(document["storage"].string(), params)?;
+      storage["_uuid"].uuid()?
+    },
     transfer: transfer.clone(),
     goods,
     batch,
@@ -1666,7 +1716,7 @@ fn json_to_ops(
 
     let op = match type_of_operation.as_str() {
       "receive" => InternalOperation::Receive(line["qty"].number(), line["cost"].number()),
-      "transfer" | "issue" => {
+      "transfer" | "dispatch" => {
         let (cost, mode) = if let Some(cost) = line["cost"].number_or_none() {
           (cost, Mode::Manual)
         } else {
