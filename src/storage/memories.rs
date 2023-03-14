@@ -12,6 +12,9 @@ use rust_decimal::Decimal;
 use std::path::PathBuf;
 use std::str::FromStr;
 use service::Services;
+use std::sync::Mutex;
+
+static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
 pub(crate) struct SMemories {
   pub(crate) oid: ID,
@@ -29,6 +32,8 @@ fn save_data(
   time: DateTime<Utc>,
   data: JsonValue,
 ) -> Result<JsonValue, Error> {
+  let lock = LOCK.lock().unwrap();
+
   // if data["_id"] != id {
   //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data["_id"])));
   // }
@@ -59,11 +64,7 @@ fn save_data(
 
   println!("loaded before {before:?}");
 
-  let data = if ctx.get(0) != Some(&"warehouse".to_string()) {
-    data
-  } else {
-    receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?
-  };
+  let data = receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?;
 
   println!("saving");
   save(&path_current, data.dump())?;
@@ -126,23 +127,49 @@ impl SMemories {
   pub(crate) fn create(
     &self,
     app: &Application,
-    time: DateTime<Utc>,
     mut data: JsonValue,
   ) -> Result<JsonValue, Error> {
-    let id = format!("{}/{}", self.ctx.join("/"), time_to_string(time));
-    println!("id: {id}");
+    let (id, time, folder) = {
+      let lock = LOCK.lock().unwrap();
 
-    // context/2023/01/2023-01-06T12:43:15Z/
-    let mut folder = self.folder(&id);
+      let mut count = 0;
+      let mut time = chrono::Utc::now();
+      loop {
+        count += 1;
+        if count > 1_000_000 {
+          return Err(Error::IOError(format!("fail to allocate free id: {}", time_to_string(time))));
+        }
+        let id = format!("{}/{}", self.ctx.join("/"), time_to_string(time));
+        println!("id: {id}");
 
-    println!("creating folder {folder:?}");
+        // context/2023/01/2023-01-06T12:43:15Z/
+        let mut folder = self.folder(&id);
 
-    std::fs::create_dir_all(&folder).map_err(|e| {
-      Error::IOError(format!("can't create folder {}: {}", folder.to_string_lossy(), e))
-    })?;
+        println!("creating folder {folder:?}");
+
+        std::fs::create_dir_all(&folder).map_err(|e| {
+          Error::IOError(format!("can't create folder {}: {}", folder.to_string_lossy(), e))
+        })?;
+
+        let time_str = time_to_string(time);
+
+        let file_name = format!("{time_str}.json");
+        let mut path_current = folder.clone();
+        path_current.push(&file_name);
+
+        if path_current.exists() {
+          time = time + chrono::Duration::milliseconds(1);
+          continue;
+        }
+
+        // create because of lock releasing
+        save(&path_current, "".into())?;
+
+        break (id, time, folder);
+      }
+    };
 
     data["_id"] = id.clone().into();
-
     data["_uuid"] = uuid::Uuid::new_v4().to_string().into();
 
     save_data(app, &folder, &self.ctx, &id, time, data)

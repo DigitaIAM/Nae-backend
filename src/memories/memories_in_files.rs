@@ -201,7 +201,7 @@ impl Service for MemoriesInFiles {
 
     let memories = self.orgs.get(&oid).memories(ctx);
 
-    memories.create(&self.app, chrono::Utc::now(), data)
+    memories.create(&self.app, data)
   }
 
   fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {

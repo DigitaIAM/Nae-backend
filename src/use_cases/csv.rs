@@ -19,10 +19,10 @@ use service::error::Error;
 use service::Services;
 
 const COUNTERPARTY: [&str; 1] = ["counterparty"];
-const STORAGE: [&str; 1] = ["storage"];
-const RECEIVE_DOCUMENT: [&str; 1] = ["warehouse/receive/document"];
-const INVENTORY_DOCUMENT: [&str; 1] = ["warehouse/inventory/document"];
-const DISPATCH_DOCUMENT: [&str; 1] = ["warehouse/dispatch/document"];
+const STORAGE: [&str; 2] = ["warehouse","storage"];
+const RECEIVE_DOCUMENT: [&str; 3] = ["warehouse","receive","document"];
+const INVENTORY_DOCUMENT: [&str; 3] = ["warehouse", "inventory", "document"];
+const DISPATCH_DOCUMENT: [&str; 3] = ["warehouse", "dispatch", "document"];
 const UOM: [&str; 1] = ["uom"];
 const GOODS: [&str; 1] = ["goods"];
 const CURRENCY: [&str; 1] = ["currency"];
@@ -140,7 +140,6 @@ pub(crate) fn receive_csv_to_json(
 
     // cell at the warehouse
     // let cell: std::option::Option<String> = None;
-    let cell = "test";
 
     let price: Decimal = 0.into();
 
@@ -150,20 +149,10 @@ pub(crate) fn receive_csv_to_json(
 
     let currency = memories_create(app, object! {name: "rub"}, CURRENCY.to_vec())?;
 
-    // let document_from = match doc_from {
-    //   // Some(id) => memories_find(app, object! {_id: id}, RECEIVE_DOCUMENT.to_vec())?,
-    //   Some(id) => object! {_id: id},
-    //   None => Vec::<JsonValue>::new(),
-    // };
-
     let data = object! {
         document: document["_id"].clone(),
         goods: item["_id"].clone(),
-        document_from: match doc_from {
-            Some(id) => object! {_id: id},
-            None => JsonValue::Null,
-        },
-        storage: cell,
+        // storage: cell,
         qty: object! { number: number.to_json(), uom: uom["_id"].clone() },
         price: price.to_json(),
         cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },

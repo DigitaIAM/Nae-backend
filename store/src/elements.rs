@@ -81,8 +81,9 @@ pub struct Batch {
 
 impl Batch {
   fn new() -> Batch {
-    Batch { id: Default::default(), date: Default::default() }
+    Batch { id: Uuid::new_v4(), date: DateTime::<Utc>::MAX_UTC }
   }
+
 
   pub fn is_empty(&self) -> bool {
     self.id == UUID_NIL
@@ -204,7 +205,7 @@ pub trait OrderedTopology {
 
       let mut batches = vec![];
 
-      if op.is_issue() && op.batch.is_empty() {
+      if op.is_issue() && op.batch.is_empty() && !op.is_dependent {
         // calculate balance
         let before_balance: Vec<(Batch, BalanceForGoods)> =
           self.goods_balance_before(&op, balances.clone())?;
@@ -226,10 +227,12 @@ pub trait OrderedTopology {
             new.is_dependent = true;
             new.batch = batch;
             new.op = InternalOperation::Issue(balance.qty, balance.cost, Mode::Auto);
-            println!("NEW_OP: {:?}", new);
+            println!("NEW_OP partly: qty {qty} balance {balance:?} op {new:?}");
             ops.push(new);
 
             qty -= balance.qty;
+
+            println!("NEW_OP: qty {:?}", qty);
           } else {
             batches.push(batch.clone());
 
@@ -237,6 +240,7 @@ pub trait OrderedTopology {
             new.is_dependent = true;
             new.batch = batch;
             new.op = InternalOperation::Issue(qty, qty * (balance.cost / balance.qty), Mode::Auto);
+            println!("NEW_OP full: qty {qty} balance {balance:?} op {new:?}");
             ops.push(new);
 
             qty -= qty;
@@ -247,10 +251,12 @@ pub trait OrderedTopology {
           }
         }
 
+        println!("qty left {qty}");
+
         // todo!("update op with qty");
         op.op = match op.op {
           InternalOperation::Receive(_, _) => unreachable!(),
-          InternalOperation::Issue(q, c, m) => InternalOperation::Issue(qty, qty * (c / q), m),
+          InternalOperation::Issue(q, c, m) => InternalOperation::Issue(qty, qty * (c / q), m), // TODO make sure that q is not ZERO
         };
 
         op.batches = batches.clone();
@@ -590,6 +596,7 @@ pub enum Mode {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum InternalOperation {
+  // TODO Inventory(Qty, Cost), // actual qty, calculated qty; calculated qty +/- delta = actual qty (delta qty, delta cost)
   Receive(Qty, Cost),
   Issue(Qty, Cost, Mode),
 }
@@ -1512,9 +1519,9 @@ pub(crate) fn new_get_aggregations(
 pub fn receive_data(
   app: &(impl GetWarehouse + Services),
   time: DateTime<Utc>,
-  mut data: JsonValue,
+  data: JsonValue,
   ctx: &Vec<String>,
-  mut before: JsonValue,
+  before: JsonValue,
 ) -> Result<JsonValue, WHError> {
   // TODO if structure of input Json is invalid, should return it without changes and save it to memories anyway
   // If my data was corrupted, should rewrite it and do the operations
@@ -1523,19 +1530,23 @@ pub fn receive_data(
   log::debug!("AFTER: {:?}", data.dump());
 
   let old_data = data.clone();
+  let mut new_data = data.clone();
+  let mut new_before = before.clone();
 
-  let mut before = match json_to_ops(app, &mut before, time.clone(), ctx) {
+  let mut before = match json_to_ops(app, &mut new_before, time.clone(), ctx) {
     Ok(res) => res,
     Err(e) => {
-      println!("WHERROR: {}", e.message());
+      println!("_WHERROR_ BEFORE: {}", e.message());
+      println!("{}", data.dump());
       return Ok(old_data);
     },
   };
 
-  let mut after = match json_to_ops(app, &mut data, time, ctx) {
+  let mut after = match json_to_ops(app, &mut new_data, time, ctx) {
     Ok(res) => res,
     Err(e) => {
-      println!("WHERROR: {}", e.message());
+      println!("_WHERROR_ AFTER: {}", e.message());
+      println!("{}", data.dump());
       return Ok(old_data);
     },
   };
@@ -1568,7 +1579,7 @@ pub fn receive_data(
   if ops.is_empty() {
     Ok(old_data)
   } else {
-    Ok(data)
+    Ok(new_data)
   }
 }
 
@@ -1586,7 +1597,7 @@ fn json_to_ops(
     return Ok(ops);
   }
 
-  if ctx.get(0) != Some(&"warehouse".to_string()) {
+  if ctx.get(0) != Some(&"warehouse".to_string()) || ctx.len() != 2 {
     return Ok(ops);
   }
 
@@ -1595,29 +1606,23 @@ fn json_to_ops(
     _ => return Ok(ops),
   };
 
-  let doc_ctx = format!("warehouse/{}/document", type_of_operation);
+  let doc_ctx = vec!["warehouse", &type_of_operation, "document"];
 
   let oid = app.service("companies").find(object! {limit: 1, skip: 0})?;
   // log::debug!("OID: {:?}", oid["data"][0]["_id"]);
 
-  // let document = app.service("memories").find(object!{oid: oid["data"][0]["_id"].as_str(), ctx: vec![doc_ctx.as_str()], filter: object! {_uuid: data["document"].clone()}})?;
-  //
-  // let documents: Vec<JsonValue> = document["data"].members().map(|o| o.clone()).collect();
-  //
-  // let document = match documents.len() {
-  //   // 0 => Err(WHError::new("No such document fn json_to_ops")),
-  //   0 => return Ok(ops),
-  //   1 => documents[0].clone(),
-  //   // _ => Err(WHError::new("Two or more documents fn json_to_ops")),
-  //   _ => return Ok(ops),
-  // };
-
-  let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec![doc_ctx.as_str()] };
-  let document = app.service("memories").get(data["document"].string(), params)?;
+  let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: doc_ctx };
+  let document = match app.service("memories").get(data["document"].string(), params) {
+    Ok(d) => d,
+    Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+  };
 
   log::debug!("DOCUMENT: {:?}", document.dump());
 
-  let date = document["date"].date()?;
+  let date = match document["date"].date() {
+    Ok(d) => d,
+    Err(_) => return Ok(ops),
+  };
   let transfer = if type_of_operation == "transfer" {
     match data["transfer"].uuid_or_none() {
       Some(uuid) => Some(uuid),
@@ -1627,8 +1632,13 @@ fn json_to_ops(
     None
   };
 
+  println!("transfer: {transfer:?}");
+
   let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["goods"] };
-  let item = app.service("memories").get(data["goods"].string(), params)?;
+  let item = match app.service("memories").get(data["goods"].string(), params) {
+    Ok(d) => d,
+    Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+  };
 
   let goods = match item["_uuid"].uuid_or_none() {
     Some(uuid) => uuid,
@@ -1664,12 +1674,15 @@ fn json_to_ops(
 
   let batch = if type_of_operation == "receive" {
     Batch { id: document["_uuid"].uuid()?, date }
+  } else if type_of_operation == "inventory" {
+    // TODO try to read batch from document
+    Batch { id: document["_uuid"].uuid()?, date }
   } else {
-    match &data["document_from"] {
+    match &data["batch"] {
       JsonValue::Object(d) => {
-        let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["warehouse/receive/document"] };
-        let doc_from = app.service("memories").get(d["_id"].string(), params)?;
-        Batch { id: doc_from["_uuid"].uuid()?, date: doc_from["date"].date()? }
+        // let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["warehouse", "receive", "document"] };
+        // let doc_from = app.service("memories").get(d["_id"].string(), params)?;
+        Batch { id: data["batch"]["_uuid"].uuid()?, date: data["batch"]["date"].date()? }
       },
       _ => Batch { id: UUID_NIL, date },
     }
@@ -1690,7 +1703,7 @@ fn json_to_ops(
     id: tid,
     date,
     store: {
-      let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["storage"] };
+      let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["warehouse", "storage"] };
       let storage = app.service("memories").get(document["storage"].string(), params)?;
       storage["_uuid"].uuid()?
     },
@@ -1701,6 +1714,7 @@ fn json_to_ops(
     is_dependent: data["is_dependent"].boolean(),
     batches: batches.clone(),
   };
+
   ops.insert(tid.to_string(), op);
 
   // this cycle left just for tests, not in test it will not work
@@ -1738,6 +1752,9 @@ fn json_to_ops(
     };
 
     let batch = if type_of_operation == "receive" {
+      Batch { id: tid, date }
+    } else if type_of_operation == "inventory" {
+      // TODO try to read batch from document
       Batch { id: tid, date }
     } else {
       match &line["batch"] {
