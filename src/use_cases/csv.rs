@@ -134,7 +134,6 @@ pub(crate) fn receive_csv_to_json(
           name: &record[1],
           vendor_code: vendor_code,
           uom: uom["_id"].clone(),
-          counterparty: counterparty["_id"].clone(),
       }
     })?;
 
@@ -147,7 +146,7 @@ pub(crate) fn receive_csv_to_json(
 
     let number = float_number.parse::<Decimal>().unwrap();
 
-    let currency = memories_create(app, object! {name: "rub"}, CURRENCY.to_vec())?;
+    let currency = json(app, object! {name: "uzd"}, CURRENCY.to_vec(), &|| { object! {name: "uzd"} })?;
 
     let data = object! {
         document: document["_id"].clone(),

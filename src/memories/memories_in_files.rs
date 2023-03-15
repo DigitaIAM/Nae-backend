@@ -78,6 +78,11 @@ impl Service for MemoriesInFiles {
         for (goods, gb) in sb {
           for (batch, bb) in gb {
 
+            // workaround until get_balance_for_all remove zero balances
+            if bb.is_zero() {
+              continue;
+            }
+
             let bytes: Vec<u8> = store.as_bytes().into_iter()
                 .zip(goods.as_bytes().into_iter().zip(batch.id.as_bytes().into_iter()))
                 .map(|(a,(b,c))| a ^ b ^ c)
@@ -87,7 +92,7 @@ impl Service for MemoriesInFiles {
 
             list.push(json::object! {
               _id: id.to_json(),
-              store: store.to_json(),
+              storage: store.to_json(),
               goods: goods.to_json(),
               batch: batch.to_json(),
               qty: json::object! { number: bb.qty.to_json() },

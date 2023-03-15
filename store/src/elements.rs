@@ -96,11 +96,22 @@ impl Batch {
       Err(WHError::new("fn from_json for Batch failed"))
     }
   }
+
+  fn to_barcode(&self) -> String {
+    let date = self.date.to_string();
+    let mut id: String = self.id.to_string().chars().filter(|c| *c >= '0' && *c <= '9').collect();
+    while id.len() < 5 {
+      id.push('0');
+    }
+    format!("2{}{}{}{}", &date[2..4], &date[5..7], &date[8..10], &id[0..5])
+  }
 }
 
 impl ToJson for Batch {
   fn to_json(&self) -> JsonValue {
+    let barcode = self.to_barcode();
     object! {
+      barcode: barcode.to_json(),
       id: self.id.to_json(),
       date: self.date.to_json()
     }
@@ -478,6 +489,8 @@ pub trait OrderedTopology {
           .and_modify(|bal| *bal += &op.op)
           .or_insert_with(|| BalanceForGoods::default() + op.op);
     }
+
+    // TODO remove zero balances
 
     Ok(result)
   }
