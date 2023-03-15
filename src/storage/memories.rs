@@ -13,6 +13,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use service::Services;
 use std::sync::Mutex;
+use uuid::Uuid;
+use std::fs;
 
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
@@ -20,15 +22,19 @@ pub(crate) struct SMemories {
   pub(crate) oid: ID,
   pub(crate) ctx: Vec<String>,
 
+  pub(crate) top_folder: PathBuf,
+
   // example: warehouse/receive/
   pub(crate) folder: PathBuf,
 }
 
 fn save_data(
   app: &Application,
+  top_folder: &PathBuf,
   folder: &PathBuf,
   ctx: &Vec<String>,
   id: &String,
+  uuid: Option<Uuid>,
   time: DateTime<Utc>,
   data: JsonValue,
 ) -> Result<JsonValue, Error> {
@@ -69,11 +75,30 @@ fn save_data(
   println!("saving");
   save(&path_current, data.dump())?;
 
-  println!("remove symlink_file ${path_latest:?}");
   symlink::remove_symlink_file(&path_latest);
-  println!("create symlink_file ${file_name:?}");
   symlink::symlink_file(&file_name, &path_latest)?;
-  println!("done");
+
+  if let Some(uuid) = uuid {
+    let str = uuid.to_string();
+    let mut path_folder = top_folder.clone();
+    path_folder.push("uuid");
+    path_folder.push(&str[0..4]);
+
+    std::fs::create_dir_all(&path_folder).map_err(|e| {
+      Error::IOError(format!("can't create folder {}: {}", path_folder.to_string_lossy(), e))
+    })?;
+
+    let mut path_uuid = path_folder.clone();
+    path_uuid.push(str);
+
+    if let Some(folder) = pathdiff::diff_paths(folder.canonicalize()?, path_folder.canonicalize()?) {
+      if !path_uuid.exists() {
+        symlink::symlink_dir(&folder, &path_uuid)?;
+      }
+    } else {
+      todo!("raise error")
+    }
+  }
 
   Ok(data)
 }
@@ -169,10 +194,12 @@ impl SMemories {
       }
     };
 
-    data["_id"] = id.clone().into();
-    data["_uuid"] = uuid::Uuid::new_v4().to_string().into();
+    let uuid = Uuid::new_v4();
 
-    save_data(app, &folder, &self.ctx, &id, time, data)
+    data["_id"] = id.clone().into();
+    data["_uuid"] = uuid.to_string().into();
+
+    save_data(app, &self.top_folder, &folder, &self.ctx, &id, Some(uuid), time, data)
   }
 
   pub(crate) fn update(
@@ -182,22 +209,41 @@ impl SMemories {
     data: Data,
   ) -> Result<JsonValue, Error> {
     let time = Utc::now();
-    save_data(app, &self.folder(&id), &self.ctx, &id, time, data)
+    save_data(app, &self.top_folder, &self.folder(&id), &self.ctx, &id, None, time, data)
   }
 
-  pub(crate) fn get(&self, id: &String) -> SDoc {
-    // remove prefix (context)
-    let id = self.remove_prefix(id);
+  // TODO move to ???
+  pub(crate) fn get(&self, id: &String) -> Option<SDoc> {
+    let id = if id.contains("/") {
+      // remove prefix (context)
+      self.remove_prefix(id)
+    } else {
+      let mut path = self.top_folder.clone();
+      path.push("uuid");
+      path.push(&id[0..4]);
+      path.push(id);
+
+      let path = match fs::read_link(path) {
+        Ok(r) => r,
+        Err(_) => return None,
+      };
+
+      let mut id = path.to_string_lossy().to_string();
+      while &id.as_str()[0..3] == "../" {
+        id = id[3..].to_string();
+      }
+
+      // remove prefix (context)
+      self.remove_prefix(&id)
+    };
 
     let year = &id[..4];
     let month = &id[5..7];
 
-    println!("get id {id} year {year} month {month}");
-
     let mut path = self.folder.clone();
     path.push(format!("{:0>4}/{:0>2}/{}/latest.json", year, month, id));
 
-    SDoc { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path }
+    Some(SDoc { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path })
   }
 
   pub(crate) fn list(&self, reverse: Option<bool>) -> std::io::Result<Vec<SDoc>> {

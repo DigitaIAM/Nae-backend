@@ -93,15 +93,17 @@ impl SOrganization {
   }
 
   pub(crate) fn memories(&self, ctx: Vec<String>) -> SMemories {
-    let mut folder = self.folder.clone();
-    folder.push("memories");
+    let mut topFolder = self.folder.clone();
+    topFolder.push("memories");
+
+    let mut folder = topFolder.clone();
     ctx.iter().for_each(|name| folder.push(name.as_str()));
 
     // workaround because of first request fail with none existing folder
     // TODO remove it from here
     std::fs::create_dir_all(&folder);
 
-    SMemories { oid: self.id.clone(), ctx, folder }
+    SMemories { oid: self.id.clone(), ctx, top_folder: topFolder, folder }
   }
 
   pub(crate) fn department(&self, id: ID) -> SDepartment {

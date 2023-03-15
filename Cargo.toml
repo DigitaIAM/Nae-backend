@@ -17,8 +17,10 @@ service = { path = "./service" }
 store = { path = "./store" }
 derives = { path = "./derives" }
 lazy_static = "1.4.0"
+
 walkdir = "2.3.2"
 symlink = "0.1.0"
+pathdiff = "0.2.1"
 
 linked_hash_set = "0.1.4"
 #bigdecimal = "0.3.0"

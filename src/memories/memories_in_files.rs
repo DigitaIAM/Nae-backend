@@ -241,8 +241,11 @@ impl Service for MemoriesInFiles {
       return Err(Error::GeneralError(format!("id `{id}` not valid")));
     }
 
-    let memories = self.orgs.get(&oid).memories(ctx).get(&id);
-    memories.json()
+    if let Some(memories) = self.orgs.get(&oid).memories(ctx).get(&id) {
+      memories.json()
+    } else {
+      Err(Error::GeneralError(format!("id `{id}` not found")))
+    }
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
@@ -284,7 +287,7 @@ impl Service for MemoriesInFiles {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
-      let doc = memories.get(&id);
+      let doc = memories.get(&id).ok_or(Error::GeneralError(format!("id '{id}' not found").into()))?;
       let mut obj = doc.json()?;
 
       let mut patch = data.clone();
