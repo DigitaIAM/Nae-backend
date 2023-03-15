@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, NaiveDateTime};
 use rocksdb::DB;
 
 use super::{
@@ -149,17 +149,56 @@ impl Db {
     date: DateTime<Utc>,
     goods: &Vec<Goods>
   ) -> Result<HashMap<Uuid, BalanceForGoods>, WHError> {
-    let (mut from_date, mut checkpoints)= (Utc::now(), HashMap::new());
-
-    for checkpoint_topology in self.checkpoint_topologies.iter() {
-      match checkpoint_topology.get_checkpoints_for_many_goods(date, goods) {
-        Ok(res) => { from_date = res.0; checkpoints = res.1 },
-        Err(_) => {}, // ignore
+    let mut it = self.checkpoint_topologies.iter();
+    let (from_date, checkpoints) = loop {
+      if let Some(checkpoint_topology) = it.next() {
+        match checkpoint_topology.get_checkpoints_for_many_goods(date, goods) {
+          Ok(result) => {
+            break result;
+          },
+          Err(e) => {
+            // ignore only "not implemented"
+            println!("{e:?}");
+          },
+        }
+      } else {
+        break (DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp_millis(0).unwrap(), Utc), HashMap::new());
       }
     };
 
     for ordered_topology in self.ordered_topologies.iter() {
       match ordered_topology.get_balances(from_date,date, goods, checkpoints.clone()) {
+        Ok(res) => return Ok(res),
+        Err(_) => {}, // ignore
+      }
+    }
+
+    Err(WHError::new("fn get_balance not implemented"))
+  }
+
+  pub fn get_balance_for_all(
+    &self,
+    date: DateTime<Utc>,
+  ) -> Result<HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>, WHError> {
+    let mut it = self.checkpoint_topologies.iter();
+    let (from_date, checkpoints) = loop {
+      if let Some(checkpoint_topology) = it.next() {
+        match checkpoint_topology.get_checkpoints_for_all(date) {
+          Ok(result) => {
+            break result;
+          },
+          Err(e) => {
+            // ignore only "not implemented"
+            println!("{e:?}");
+          },
+        }
+      } else {
+        break (DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp_millis(0).unwrap(), Utc), HashMap::new());
+      }
+    };
+
+    for ordered_topology in self.ordered_topologies.iter() {
+      match ordered_topology.get_balances_for_all(from_date, date, checkpoints.clone()) {
         Ok(res) => return Ok(res),
         Err(_) => {}, // ignore
       }

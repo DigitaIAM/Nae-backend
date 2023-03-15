@@ -156,9 +156,8 @@ impl OrderedTopology for DateTypeStoreBatchId {
     ColumnFamilyDescriptor::new(DateTypeStoreBatchId::cf_name(), opts)
   }
 
-  fn get_ops(
+  fn get_ops_for_all(
     &self,
-    storage: Store,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
@@ -187,6 +186,54 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(UUID_MAX.as_bytes().iter())
       .map(|b| *b)
       .collect();
+
+    let mut options = ReadOptions::default();
+    options.set_iterate_range(from..till);
+
+    let mut res = Vec::new();
+
+    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
+      let (_, value) = item?;
+
+      let (op, b) = self.from_bytes(&value)?;
+
+      res.push(op);
+    }
+
+    Ok(res)
+  }
+
+  fn get_ops(
+    &self,
+    storage: Store,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    let from_date = from_date.timestamp() as u64;
+    let from: Vec<u8> = from_date
+        .to_be_bytes()
+        .iter()
+        .chain(0_u8.to_be_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .chain(u64::MIN.to_be_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
+
+    let till_date = till_date.timestamp() as u64;
+    let till: Vec<u8> = till_date
+        .to_be_bytes()
+        .iter()
+        .chain(u8::MAX.to_be_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(u64::MAX.to_be_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
 
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);

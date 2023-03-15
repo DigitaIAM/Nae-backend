@@ -73,7 +73,7 @@ impl ToJson for String {
   }
 }
 
-#[derive(Eq, Ord, PartialOrd, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Hash, Eq, Ord, PartialOrd, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Batch {
   pub id: Uuid,
   pub date: DateTime<Utc>,
@@ -130,6 +130,12 @@ pub trait OrderedTopology {
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError>;
 
+  fn get_ops_for_all(
+    &self,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError>;
+
   fn get_ops_for_one_goods(
     &self,
     store: Store,
@@ -152,8 +158,6 @@ pub trait OrderedTopology {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError>;
-
-  // fn data_update(&self, op: &OpMutation) -> Result<(), WHError>;
 
   fn key(&self, op: &Op) -> Vec<u8>;
 
@@ -452,6 +456,31 @@ pub trait OrderedTopology {
 
     Ok(result)
   }
+
+  fn get_balances_for_all(
+    &self,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+    checkpoints: HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>
+  ) -> Result<HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>, WHError> {
+
+    let mut result = checkpoints;
+
+    // get operations between checkpoint date and requested date
+    let ops = self.get_ops_for_all(from_date, till_date)?;
+
+    for op in ops {
+      result.entry(op.store)
+          .or_insert_with(|| HashMap::new())
+          .entry(op.goods)
+          .or_insert_with(|| HashMap::new())
+          .entry(op.batch)
+          .and_modify(|bal| *bal += &op.op)
+          .or_insert_with(|| BalanceForGoods::default() + op.op);
+    }
+
+    Ok(result)
+  }
 }
 
 pub trait CheckpointTopology {
@@ -472,6 +501,8 @@ pub trait CheckpointTopology {
     goods: Goods,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError>;
+
+  fn get_checkpoints_for_all(&self, date: DateTime<Utc>) -> Result<(DateTime<Utc>, HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>), WHError>;
 
   fn get_checkpoints_for_many_goods(&self, date: DateTime<Utc>, goods: &Vec<Goods>) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError>;
 

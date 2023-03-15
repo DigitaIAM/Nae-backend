@@ -3,13 +3,12 @@ use std::sync::Arc;
 use super::{
   balance::BalanceForGoods,
   elements::{dt, first_day_next_month, Balance, CheckpointTopology, Op,
-   OpMutation, Store, UUID_NIL},
+   OpMutation, Store, Goods, Batch, UUID_NIL},
   db::Db,
   error::WHError,
 };
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, DB};
-use crate::elements::Goods;
 use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -114,7 +113,11 @@ impl CheckpointTopology for CheckBatchStoreDate {
     unimplemented!()
   }
 
-  fn get_checkpoints_for_many_goods(&self, date: DateTime<Utc>, goods: &Vec<Goods>) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods, RandomState>), WHError> {
+  fn get_checkpoints_for_many_goods(&self, date: DateTime<Utc>, goods: &Vec<Goods>) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
+    unimplemented!()
+  }
+
+  fn get_checkpoints_for_all(&self, date: DateTime<Utc>) -> Result<(DateTime<Utc>, HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>), WHError> {
     unimplemented!()
   }
 }

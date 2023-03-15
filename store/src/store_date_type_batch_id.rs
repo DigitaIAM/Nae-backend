@@ -203,6 +203,14 @@ impl OrderedTopology for StoreDateTypeBatchId {
     Ok(res)
   }
 
+  fn get_ops_for_all(
+    &self,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("not implemented"))
+  }
+
   fn get_ops_for_one_goods(
     &self,
     store: Store,

@@ -174,11 +174,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
   }
 
   fn get_checkpoints_for_many_goods(&self, date: DateTime<Utc>, goods: &Vec<Goods>) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
-    // let mut balances: HashMap<Uuid, BalanceForGoods> = goods.into_iter().map(|key| (key, BalanceForGoods::default())).collect();
-
-    let mut balances = HashMap::new();
-
-    goods.into_iter().map(|key: &Goods| balances.insert(key.clone(), BalanceForGoods::default()));
+    let mut balances: HashMap<Uuid, BalanceForGoods> = goods.into_iter().map(|key| (key.clone(), BalanceForGoods::default())).collect();
 
     let current_date = first_day_current_month(date);
 
@@ -224,6 +220,55 @@ impl CheckpointTopology for CheckDateStoreBatch {
     Ok((actual_date, balances))
   }
 
+  fn get_checkpoints_for_all(&self, date: DateTime<Utc>) -> Result<(DateTime<Utc>, HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>), WHError> {
+    let start_of_current_month_date = first_day_current_month(date);
+
+    let latest_checkpoint_date = self.get_latest_checkpoint_date()?;
+
+    let checkpoint_date = if start_of_current_month_date > latest_checkpoint_date { latest_checkpoint_date } else { start_of_current_month_date };
+
+    let ts = u64::try_from(checkpoint_date.timestamp()).unwrap_or_default();
+
+    let from: Vec<u8> = ts
+        .to_be_bytes()
+        .iter()
+        .chain(UUID_NIL.as_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .chain(u64::MIN.to_be_bytes().iter())
+        .chain(UUID_NIL.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
+    let till: Vec<u8> = ts
+        .to_be_bytes()
+        .iter()
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .chain(u64::MAX.to_be_bytes().iter())
+        .chain(UUID_MAX.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
+
+    let mut opts = ReadOptions::default();
+    opts.set_iterate_range(from..till);
+
+    let mut result = HashMap::with_capacity(10_000);
+
+    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+    while let Some(res) = iter.next() {
+      let (k, v) = res?;
+      let stock: BalanceForGoods = serde_json::from_slice(&v)?;
+
+      let (_, store, goods, batch) = CheckDateStoreBatch::key_to_data(k.to_vec())?;
+
+      result.entry(store)
+          .or_insert_with(|| HashMap::new())
+          .entry(goods)
+          .or_insert_with(|| HashMap::new())
+          .insert(batch, stock);
+    }
+
+    Ok((checkpoint_date, result))
+  }
 
   fn get_checkpoints_before_date(
     &self,

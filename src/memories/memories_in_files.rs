@@ -18,7 +18,7 @@ use service::{Service, Services};
 use service::error::Error;
 use crate::storage::SOrganizations;
 use service::utils::json::{JsonMerge, JsonParams};
-use store::elements::{ToJson};
+use store::elements::ToJson;
 use crate::ws::error_general;
 use crate::{
   auth, commutator::Application, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
@@ -55,6 +55,56 @@ impl Service for MemoriesInFiles {
     let skip = self.skip(&params);
 
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
+
+    // workaround
+    if ctx == vec!["warehouse", "stock"] {
+      if skip != 0 {
+        let list = vec![];
+        let total = list.len();
+
+        return Ok(json::object! {
+        data: JsonValue::Array(list),
+        total: total,
+        "$skip": skip,
+      })
+      }
+      let warehouse = self.app.warehouse().database;
+
+      let balances = warehouse.get_balance_for_all(Utc::now())
+          .map_err(|e| Error::GeneralError(e.message()))?;
+
+      let mut list = vec![];
+      for (store, sb) in balances {
+        for (goods, gb) in sb {
+          for (batch, bb) in gb {
+
+            let bytes: Vec<u8> = store.as_bytes().into_iter()
+                .zip(goods.as_bytes().into_iter().zip(batch.id.as_bytes().into_iter()))
+                .map(|(a,(b,c))| a ^ b ^ c)
+                .collect();
+
+            let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
+
+            list.push(json::object! {
+              _id: id.to_json(),
+              store: store.to_json(),
+              goods: goods.to_json(),
+              batch: batch.to_json(),
+              qty: json::object! { number: bb.qty.to_json() },
+              cost: json::object! { number: bb.cost.to_json() },
+            })
+          }
+        }
+      }
+
+      let total = list.len();
+
+      return Ok(json::object! {
+        data: JsonValue::Array(list),
+        total: total,
+        "$skip": skip,
+      })
+    }
 
     let memories = self.orgs.get(&oid).memories(ctx.clone());
     let list = memories.list(Some(reverse))?;
