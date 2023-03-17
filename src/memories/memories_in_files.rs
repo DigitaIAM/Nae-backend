@@ -48,6 +48,7 @@ impl Service for MemoriesInFiles {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
+
     let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 

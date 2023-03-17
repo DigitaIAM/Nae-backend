@@ -55,11 +55,20 @@ pub fn id(name: &str, params: &Params) -> std::result::Result<ID, Error> {
 }
 
 pub fn uuid(name: &str, params: &Params) -> std::result::Result<uuid::Uuid, Error> {
-  if let Some(id) = params[name].as_str() {
-    uuid::Uuid::parse_str(id).map_err(|e| Error::GeneralError(e.to_string()))
+  if params.is_array() {
+    if let Some(id) = params[0][name].as_str() {
+      uuid::Uuid::parse_str(id).map_err(|e| Error::GeneralError(e.to_string()))
+    } else {
+      Err(Error::GeneralError(format!("uuid `{name}` not found")))
+    }
   } else {
-    Err(Error::GeneralError(format!("uuid `{name}` not found")))
+    if let Some(id) = params[name].as_str() {
+      uuid::Uuid::parse_str(id).map_err(|e| Error::GeneralError(e.to_string()))
+    } else {
+      Err(Error::GeneralError(format!("uuid `{name}` not found")))
+    }
   }
+
 }
 
 pub fn oid(params: &Params) -> std::result::Result<ID, Error> {

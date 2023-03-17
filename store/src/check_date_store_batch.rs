@@ -173,6 +173,46 @@ impl CheckpointTopology for CheckDateStoreBatch {
     Ok(balances)
   }
 
+  fn get_checkpoint_for_goods_and_batch(
+    &self,
+    store: Store,
+    goods: Goods,
+    batch: &Batch,
+    date: DateTime<Utc>
+  ) -> Result<Option<Balance>, WHError> {
+
+    let current_date = first_day_current_month(date);
+
+    let latest_checkpoint_date = self.get_latest_checkpoint_date()?;
+
+    let ts = if current_date > latest_checkpoint_date {
+      u64::try_from(latest_checkpoint_date.timestamp()).unwrap_or_default()
+    } else {
+      u64::try_from(current_date.timestamp()).unwrap_or_default()
+    };
+
+    let ts_batch = u64::try_from(batch.date.timestamp()).unwrap_or_default();
+
+    let key: Vec<u8> = ts
+        .to_be_bytes()
+        .iter()
+        .chain(store.as_bytes().iter())
+        .chain(goods.as_bytes().iter())
+        .chain(ts_batch.to_be_bytes().iter())
+        .chain(batch.id.as_bytes().iter())
+        .map(|b| *b)
+        .collect();
+
+    if let Some(v) = self.db.get(key)? {
+
+      let b: BalanceForGoods = serde_json::from_slice(&v)?;
+
+      Ok(Some(Balance { date, store, goods, batch: batch.clone(), number: b }))
+    } else {
+     Ok(None)
+    }
+  }
+
   fn get_checkpoints_for_many_goods(&self, date: DateTime<Utc>, goods: &Vec<Goods>) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
     let mut balances: HashMap<Uuid, BalanceForGoods> = goods.into_iter().map(|key| (key.clone(), BalanceForGoods::default())).collect();
 

@@ -108,6 +108,28 @@ impl Db {
     Err(WHError::new("can't get checkpoint before date"))
   }
 
+  pub fn get_checkpoint_for_goods_and_batch(
+    &self,
+    store: Store,
+    goods: Goods,
+    batch: &Batch,
+    date: DateTime<Utc>,
+  ) -> Result<Option<Balance>, WHError> {
+    for checkpoint_topology in self.checkpoint_topologies.iter() {
+      match checkpoint_topology.get_checkpoint_for_goods_and_batch(store, goods, batch, date) {
+        Ok(result) => return Ok(result),
+        Err(e) => {
+          if e.message() == "Not supported".to_string() {
+            continue;
+          } else {
+            return Err(e);
+          }
+        },
+      }
+    }
+    Err(WHError::new("can't get checkpoint before date"))
+  }
+
   pub fn get_checkpoints_before_date(
     &self,
     store: Store,
@@ -128,14 +150,32 @@ impl Db {
     Err(WHError::new("can't get checkpoint before date"))
   }
 
-  pub fn get_report(
+  pub fn get_report_for_goods(
+    &self,
+    storage: Store,
+    goods: Goods,
+    batch: &Batch,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Report, WHError> {
+    for ordered_topology in self.ordered_topologies.iter() {
+      match ordered_topology.get_report_for_goods(&self, storage, goods, batch, from_date, till_date) {
+        Ok(report) => return Ok(report),
+        Err(_) => {}, // ignore
+      }
+    }
+
+    Err(WHError::new("fn get_report not implemented"))
+  }
+
+  pub fn get_report_for_storage(
     &self,
     storage: Store,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
     for ordered_topology in self.ordered_topologies.iter() {
-      match ordered_topology.get_report(&self, storage, from_date, till_date) {
+      match ordered_topology.get_report_for_storage(&self, storage, from_date, till_date) {
         Ok(report) => return Ok(report),
         Err(_) => {}, // ignore
       }

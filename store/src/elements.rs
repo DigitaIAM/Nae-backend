@@ -155,6 +155,15 @@ pub trait OrderedTopology {
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError>;
 
+  fn get_ops_for_one_goods_and_batch(
+    &self,
+    store: Store,
+    goods: Goods,
+    batch: &Batch,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError>;
+
   fn get_ops_for_many_goods(
     &self,
     goods: &Vec<Goods>,
@@ -162,7 +171,17 @@ pub trait OrderedTopology {
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError>;
 
-  fn get_report(
+  fn get_report_for_goods(
+    &self,
+    db: &Db,
+    storage: Store,
+    goods: Goods,
+    batch: &Batch,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Report, WHError>;
+
+  fn get_report_for_storage(
     &self,
     db: &Db,
     storage: Store,
@@ -514,6 +533,14 @@ pub trait CheckpointTopology {
     goods: Goods,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError>;
+
+  fn get_checkpoint_for_goods_and_batch(
+    &self,
+    store: Store,
+    goods: Goods,
+    batch: &Batch,
+    date: DateTime<Utc>,
+  ) -> Result<Option<Balance>, WHError>;
 
   fn get_checkpoints_for_all(&self, date: DateTime<Utc>) -> Result<(DateTime<Utc>, HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>), WHError>;
 
@@ -1708,19 +1735,19 @@ fn json_to_ops(
 
   log::debug!("after op {op:?}");
 
-  let tid = if let Some(tid) = data["_tid"].uuid_or_none() {
+  let tid = if let Some(tid) = data["_uuid"].uuid_or_none() {
     tid
   } else {
     let tid = Uuid::new_v4();
-    data["_tid"] = JsonValue::String(tid.to_string());
+    data["_uuid"] = JsonValue::String(tid.to_string());
     tid
   };
 
   let batch = if type_of_operation == "receive" {
-    Batch { id: document["_uuid"].uuid()?, date }
+    Batch { id: tid, date }
   } else if type_of_operation == "inventory" {
     // TODO try to read batch from document
-    Batch { id: document["_uuid"].uuid()?, date }
+    Batch { id: tid, date }
   } else {
     match &data["batch"] {
       JsonValue::Object(d) => {

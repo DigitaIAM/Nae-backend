@@ -116,7 +116,7 @@ pub(crate) fn receive_csv_to_json(
       DISPATCH_DOCUMENT.to_vec()
     };
 
-    let document = json(app, object! {number: number}, doc_ctx, &|| {
+    let document = json(app, object! {number: number, date: date.clone()}, doc_ctx, &|| {
       object! {
           date: date.clone(),
           counterparty: counterparty["_id"].clone(),

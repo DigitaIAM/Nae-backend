@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use json::object::Object;
 use json::JsonValue;
 use std::sync::{Arc, RwLock};
+use store::elements::Batch;
 
 pub struct Inventory {
   app: Application,
@@ -35,15 +36,29 @@ impl Service for Inventory {
     // let limit = self.limit(&params);
     // let skip = self.skip(&params);
 
+    println!("FN_FIND_PARAMS: {params:#?}");
+
     let storage = crate::services::uuid("storage", &params)?;
+
+    let goods = crate::services::uuid("goods", &params)?;
+
+    let batch_id = crate::services::uuid("batch_id", &params)?;
+
+    let batch_date: Result<DateTime<Utc>, Error> = if let Some(date) = params["batch_date"].as_str() {
+      Ok(DateTime::parse_from_rfc3339(date)?.into())
+    } else {
+      Err(service::error::Error::GeneralError(String::from("No batch_date in params for fn find")))
+    };
+
+    let batch = Batch { id: batch_id, date: batch_date? };
     
     let dates = if let Some(dates) = self.date_range(&params)? {
       dates
     } else {
       return Err(Error::GeneralError("dates not defined".into()));
     };
-    
-    let report = match self.app.warehouse.database.get_report(storage, dates.0, dates.1) {
+
+    let report = match self.app.warehouse.database.get_report_for_goods(storage, goods, &batch, dates.0, dates.1) {
       Ok(report) => report.to_json(),
       Err(error) => return Err(Error::GeneralError(error.message())),
     };
