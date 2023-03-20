@@ -214,8 +214,17 @@ impl SMemories {
 
   // TODO move to ???
   pub(crate) fn get(&self, id: &String) -> Option<SDoc> {
-    let id = if id.contains("/") {
-      id.clone()
+    if id.contains("/") {
+      // remove prefix (context)
+      let id = self.remove_prefix(id);
+
+      let year = &id[..4];
+      let month = &id[5..7];
+
+      let mut path = self.folder.clone();
+      path.push(format!("{:0>4}/{:0>2}/{}/latest.json", year, month, id));
+
+      Some(SDoc { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path })
     } else {
       let mut path = self.top_folder.clone();
       path.push("uuid");
@@ -232,13 +241,12 @@ impl SMemories {
         id = id[3..].to_string();
       }
 
-      id
-    };
+      let mut path = self.top_folder.clone();
+      path.push(format!("{}/latest.json", id));
 
-    let mut path = self.top_folder.clone();
-    path.push(format!("{}/latest.json", id));
-
-    Some(SDoc { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path })
+      // TODO: take ctx from id
+      Some(SDoc { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path })
+    }
   }
 
   pub(crate) fn list(&self, reverse: Option<bool>) -> std::io::Result<Vec<SDoc>> {
