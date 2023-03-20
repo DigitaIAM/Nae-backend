@@ -1,17 +1,23 @@
 use crate::animo::error::DBError;
-use service::error::Error;
 use crate::services::{string_to_id, Data, Params};
-use service::{Service, Services};
-use store::{elements::{Report, ToJson}, error::WHError};
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, storage::SOrganizations, animo::memory::{ChangeTransformation, Memory, Transformation, TransformationKey, Value, ID},
+  animo::memory::{ChangeTransformation, Memory, Transformation, TransformationKey, Value, ID},
+  auth,
+  commutator::Application,
+  storage::SOrganizations,
 };
 use chrono::{DateTime, Utc};
 use json::object::Object;
 use json::JsonValue;
+use service::error::Error;
+use service::{Service, Services};
 use std::sync::{Arc, RwLock};
 use store::elements::Batch;
+use store::{
+  elements::{Report, ToJson},
+  error::WHError,
+};
 
 pub struct Inventory {
   app: Application,
@@ -30,38 +36,45 @@ impl Service for Inventory {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    
     let oid = crate::services::oid(&params)?;
-    
+
     // let limit = self.limit(&params);
     // let skip = self.skip(&params);
 
-    println!("FN_FIND_PARAMS: {params:#?}");
+    println!("FN_FIND_PARAMS: {:#?}", params[0]["filter"]);
 
-    let storage = crate::services::uuid("storage", &params)?;
+    let storage = crate::services::uuid("storage", &params[0]["filter"])?;
 
-    let goods = crate::services::uuid("goods", &params)?;
+    let goods = crate::services::uuid("goods", &params[0]["filter"])?;
 
-    let batch_id = crate::services::uuid("batch_id", &params)?;
+    let batch_id = crate::services::uuid("batch_id", &params[0]["filter"])?;
 
-    let batch_date: Result<DateTime<Utc>, Error> = if let Some(date) = params["batch_date"].as_str() {
-      Ok(DateTime::parse_from_rfc3339(date)?.into())
-    } else {
-      Err(service::error::Error::GeneralError(String::from("No batch_date in params for fn find")))
-    };
+    let batch_date: Result<DateTime<Utc>, Error> =
+      if let Some(date) = params[0]["filter"]["batch_date"].as_str() {
+        Ok(DateTime::parse_from_rfc3339(date)?.into())
+      } else {
+        Err(service::error::Error::GeneralError(String::from("No batch_date in params for fn find")))
+      };
 
     let batch = Batch { id: batch_id, date: batch_date? };
-    
-    let dates = if let Some(dates) = self.date_range(&params)? {
+
+    let dates = if let Some(dates) = self.date_range(&params[0]["filter"])? {
       dates
     } else {
       return Err(Error::GeneralError("dates not defined".into()));
     };
 
-    let report = match self.app.warehouse.database.get_report_for_goods(storage, goods, &batch, dates.0, dates.1) {
+    let report = match self
+      .app
+      .warehouse
+      .database
+      .get_report_for_goods(storage, goods, &batch, dates.0, dates.1)
+    {
       Ok(report) => report.to_json(),
       Err(error) => return Err(Error::GeneralError(error.message())),
     };
+
+    println!("REPORT = {report:?}");
 
     Ok(json::object! {
       data: JsonValue::Array(vec![report]),
