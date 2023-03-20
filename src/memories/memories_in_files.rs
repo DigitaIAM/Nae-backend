@@ -84,6 +84,7 @@ impl Service for MemoriesInFiles {
               continue;
             }
 
+            // TODO: add date into this id
             let bytes: Vec<u8> = store.as_bytes().into_iter()
                 .zip(goods.as_bytes().into_iter().zip(batch.id.as_bytes().into_iter()))
                 .map(|(a,(b,c))| a ^ b ^ c)

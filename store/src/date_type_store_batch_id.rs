@@ -20,6 +20,7 @@ use crate::elements::Goods;
 use std::convert::TryFrom;
 use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
+use crate::elements::get_aggregations_for_one_goods;
 
 const CF_NAME: &str = "cf_date_type_store_batch_id";
 pub struct DateTypeStoreBatchId {
@@ -438,7 +439,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     batch: &Batch,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
-  ) -> Result<Report, WHError> {
+  ) -> Result<JsonValue, WHError> {
 
     let mut balances = Vec::new();
 
@@ -446,12 +447,16 @@ impl OrderedTopology for DateTypeStoreBatchId {
       balances.push(balance);
     }
 
-    let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
+    let ops = self.get_ops_for_one_goods_and_batch(storage, goods, batch, first_day_current_month(from_date), till_date)?;
 
-    let items = new_get_aggregations(balances, ops, from_date);
+    // let items = new_get_aggregations(balances, ops, from_date);
 
-    Ok(Report { from_date, till_date, items })
+    let items = get_aggregations_for_one_goods(balances, ops, from_date, till_date)?;
+
+    // Ok(Report { from_date, till_date, items })
+    Ok(items)
   }
+
 
   fn get_report_for_storage(
     &self,

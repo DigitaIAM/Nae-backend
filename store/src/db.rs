@@ -13,6 +13,7 @@ use super::{
 use crate::elements::{Batch, Goods};
 use std::collections::HashMap;
 use uuid::Uuid;
+use json::JsonValue;
 
 #[derive(Clone)]
 pub struct Db {
@@ -157,7 +158,7 @@ impl Db {
     batch: &Batch,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
-  ) -> Result<Report, WHError> {
+  ) -> Result<JsonValue, WHError> {
     for ordered_topology in self.ordered_topologies.iter() {
       match ordered_topology.get_report_for_goods(&self, storage, goods, batch, from_date, till_date) {
         Ok(report) => return Ok(report),

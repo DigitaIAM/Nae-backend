@@ -39,9 +39,17 @@ impl Service for Inventory {
     let oid = crate::services::oid(&params)?;
 
     // let limit = self.limit(&params);
-    // let skip = self.skip(&params);
+    let skip = self.skip(&params);
 
-    println!("FN_FIND_PARAMS: {:#?}", params[0]["filter"]);
+    if skip != 0 {
+      return     Ok(json::object! {
+      data: json::array![],
+      total: 0,
+      "$skip": skip,
+    });
+    }
+
+    // println!("FN_FIND_PARAMS: {:#?}", params[0]["filter"]);
 
     let storage = crate::services::uuid("storage", &params[0]["filter"])?;
 
@@ -70,14 +78,14 @@ impl Service for Inventory {
       .database
       .get_report_for_goods(storage, goods, &batch, dates.0, dates.1)
     {
-      Ok(report) => report.to_json(),
+      Ok(report) => report,
       Err(error) => return Err(Error::GeneralError(error.message())),
     };
 
     println!("REPORT = {report:?}");
 
     Ok(json::object! {
-      data: JsonValue::Array(vec![report]),
+      data: report,
       total: 1,
       "$skip": 0,
     })

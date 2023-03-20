@@ -12,12 +12,13 @@ use super::{
 use crate::elements::Goods;
 use crate::elements::{Batch, UUID_MAX, UUID_NIL};
 use chrono::{DateTime, Utc};
-use json::array;
+use json::{array, JsonValue};
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 use rust_decimal::Decimal;
 use std::collections::hash_map::RandomState;
 use uuid::Uuid;
 use std::collections::HashMap;
+use crate::elements::get_aggregations_for_one_goods;
 
 const CF_NAME: &str = "cf_store_date_type_batch_id";
 
@@ -380,8 +381,8 @@ impl OrderedTopology for StoreDateTypeBatchId {
     goods: Goods,
     batch: &Batch,
     from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>
-  ) -> Result<Report, WHError> {
+    till_date: DateTime<Utc>,
+  ) -> Result<JsonValue, WHError> {
 
     let mut balances = Vec::new();
 
@@ -391,10 +392,9 @@ impl OrderedTopology for StoreDateTypeBatchId {
 
     let ops = self.get_ops_for_one_goods_and_batch(storage, goods, batch, first_day_current_month(from_date), till_date)?;
 
-    let items = new_get_aggregations(balances, ops, from_date);
+    let items = get_aggregations_for_one_goods(balances, ops, from_date, till_date)?;
 
-    Ok(Report { from_date, till_date, items })
-    // Err(WHError::new("test"))
+    Ok(items)
   }
 
   fn get_report_for_storage(

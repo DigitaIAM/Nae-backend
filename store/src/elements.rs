@@ -179,7 +179,7 @@ pub trait OrderedTopology {
     batch: &Batch,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
-  ) -> Result<Report, WHError>;
+  ) -> Result<JsonValue, WHError>;
 
   fn get_report_for_storage(
     &self,
@@ -787,6 +787,16 @@ impl AddAssign<&OpMutation> for Balance {
 }
 
 impl Balance {
+  fn zero_balance() -> Self {
+    Balance {
+      date: Default::default(),
+      store: Default::default(),
+      goods: Default::default(),
+      batch: Batch { id: Default::default(), date: Default::default() },
+      number: Default::default()
+    }
+  }
+
   fn key_batch_store_date(&self) -> Vec<u8> {
     let dt = self.date.timestamp() as u64;
     let key = self
@@ -864,6 +874,20 @@ pub struct Op {
 }
 
 impl Op {
+  pub(crate) fn qty(&self) -> Decimal {
+    match self.op {
+      InternalOperation::Receive(q, _) => q,
+      InternalOperation::Issue(q, _, _) => q
+    }
+  }
+
+  pub(crate) fn cost(&self) -> Decimal {
+    match self.op {
+      InternalOperation::Receive(_, c) => c,
+      InternalOperation::Issue(_, c, _) => c
+    }
+  }
+
   pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
     let op = &data["op"];
 
@@ -1528,6 +1552,74 @@ fn time_to_naive_string(time: DateTime<Utc>) -> String {
   res
 }
 
+pub(crate) fn get_aggregations_for_one_goods(
+  balances: Vec<Balance>,
+  operations: Vec<Op>,
+  start_date: DateTime<Utc>,
+  end_date: DateTime<Utc>,
+) -> Result<JsonValue, WHError> {
+
+  let mut result: Vec<JsonValue> = vec![];
+
+  let balance = match balances.len() {
+    0 => Balance::zero_balance(),
+    1 => balances[0].clone(),
+    _ => unreachable!("Two or more balances for one goods and batch")
+  };
+
+  result.push(
+    object! {
+      date: time_to_naive_string(start_date),
+      type: JsonValue::String("open_balance".to_string()),
+      _id: Uuid::new_v4().to_json(),
+      qty: balance.number.qty.to_json(),
+      cost: balance.number.cost.to_json(),
+    }
+  );
+
+
+  let mut open_balance = balance.number.clone();
+
+  let mut close_balance = BalanceForGoods::default();
+
+  let mut op_iter = operations.iter();
+
+  while let Some(op) = op_iter.next() {
+    if op.date < start_date {
+      open_balance += op.to_delta();
+    } else {
+      close_balance += op.to_delta();
+    }
+    result.push(
+      object! {
+          date: op.date.to_json(),
+          type: if op.is_issue() { JsonValue::String("issue".to_string()) } else { JsonValue::String("receive".to_string()) },
+          _id: op.id.to_json(),
+          qty: op.qty().to_json(),
+          cost: op.cost().to_json(),
+        }
+    );
+  }
+
+  result[0]["qty"] = open_balance.qty.to_json();
+  result[0]["cost"] = open_balance.cost.to_json();
+
+  close_balance.qty += open_balance.qty;
+  close_balance.cost += open_balance.cost;
+
+  result.push(
+    object! {
+          date: time_to_naive_string(end_date),
+          type: JsonValue::String("close_balance".to_string()),
+          _id: Uuid::new_v4().to_json(),
+          qty: close_balance.qty.to_json(),
+          cost: close_balance.cost.to_json(),
+        }
+  );
+
+  Ok(JsonValue::Array(result))
+}
+
 pub(crate) fn new_get_aggregations(
   balances: Vec<Balance>,
   operations: Vec<Op>,
@@ -1535,12 +1627,12 @@ pub(crate) fn new_get_aggregations(
 ) -> (AgregationStore, Vec<AgregationStoreGoods>) {
   let key = |store: &Store, goods: &Goods, batch: &Batch| -> Vec<u8> {
     [].iter()
-      .chain(store.as_bytes().iter())
-      .chain(goods.as_bytes().iter())
-      .chain((batch.date.timestamp() as u64).to_be_bytes().iter())
-      .chain(batch.id.as_bytes().iter())
-      .map(|b| *b)
-      .collect()
+        .chain(store.as_bytes().iter())
+        .chain(goods.as_bytes().iter())
+        .chain((batch.date.timestamp() as u64).to_be_bytes().iter())
+        .chain(batch.id.as_bytes().iter())
+        .map(|b| *b)
+        .collect()
   };
 
   let key_for = |op: &Op| -> Vec<u8> { key(&op.store, &op.goods, &op.batch) };
@@ -1567,9 +1659,9 @@ pub(crate) fn new_get_aggregations(
   for op in operations {
     if op.date < start_date {
       aggregations
-        .entry(key_for(&op))
-        .or_insert(AgregationStoreGoods::default())
-        .add_to_open_balance(&op);
+          .entry(key_for(&op))
+          .or_insert(AgregationStoreGoods::default())
+          .add_to_open_balance(&op);
     } else {
       *aggregations.entry(key_for(&op)).or_insert(AgregationStoreGoods::default()) += &op;
     }
