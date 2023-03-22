@@ -67,8 +67,9 @@ impl Service for MemoriesInFiles {
         data: JsonValue::Array(list),
         total: total,
         "$skip": skip,
-      })
+        })
       }
+
       let warehouse = self.app.warehouse().database;
 
       let balances = warehouse.get_balance_for_all(Utc::now())

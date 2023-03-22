@@ -49,46 +49,77 @@ impl Service for Inventory {
     });
     }
 
-    // println!("FN_FIND_PARAMS: {:#?}", params[0]["filter"]);
+    // println!("FN_FIND_PARAMS: {:#?}", params);
 
-    let storage = crate::services::uuid("storage", &params[0]["filter"])?;
+    if params.is_array() {
+      let params = params[0]["filter"].clone();
 
-    let goods = crate::services::uuid("goods", &params[0]["filter"])?;
+      let storage = crate::services::uuid("storage", &params)?;
 
-    let batch_id = crate::services::uuid("batch_id", &params[0]["filter"])?;
+      let goods = crate::services::uuid("goods", &params)?;
 
-    let batch_date: Result<DateTime<Utc>, Error> =
-      if let Some(date) = params[0]["filter"]["batch_date"].as_str() {
-        Ok(DateTime::parse_from_rfc3339(date)?.into())
+      let batch_id = crate::services::uuid("batch_id", &params)?;
+
+      let batch_date: Result<DateTime<Utc>, Error> =
+          if let Some(date) = &params["batch_date"].as_str() {
+            Ok(DateTime::parse_from_rfc3339(date)?.into())
+          } else {
+            Err(service::error::Error::GeneralError(String::from("No batch_date in params for fn find")))
+          };
+
+      let batch = Batch { id: batch_id, date: batch_date? };
+
+      let dates = if let Some(dates) = self.date_range(&params)? {
+        dates
       } else {
-        Err(service::error::Error::GeneralError(String::from("No batch_date in params for fn find")))
+        return Err(Error::GeneralError("dates not defined".into()));
       };
 
-    let batch = Batch { id: batch_id, date: batch_date? };
+      let report = match self
+          .app
+          .warehouse
+          .database
+          .get_report_for_goods(storage, goods, &batch, dates.0, dates.1)
+      {
+        Ok(report) => report,
+        Err(error) => return Err(Error::GeneralError(error.message())),
+      };
 
-    let dates = if let Some(dates) = self.date_range(&params[0]["filter"])? {
-      dates
-    } else {
-      return Err(Error::GeneralError("dates not defined".into()));
-    };
+      println!("REPORT = {report:?}");
 
-    let report = match self
-      .app
-      .warehouse
-      .database
-      .get_report_for_goods(storage, goods, &batch, dates.0, dates.1)
-    {
-      Ok(report) => report,
-      Err(error) => return Err(Error::GeneralError(error.message())),
-    };
-
-    println!("REPORT = {report:?}");
-
-    Ok(json::object! {
+      Ok(json::object! {
       data: report,
       total: 1,
       "$skip": 0,
-    })
+      })
+
+    } else {
+      let storage = crate::services::uuid("storage", &params)?;
+
+      let dates = if let Some(dates) = self.date_range(&params)? {
+        dates
+      } else {
+        return Err(Error::GeneralError("dates not defined".into()));
+      };
+
+      let report = match self
+          .app
+          .warehouse
+          .database
+          .get_report_for_storage(storage, dates.0, dates.1)
+      {
+        Ok(report) => report.to_json(),
+        Err(error) => return Err(Error::GeneralError(error.message())),
+      };
+
+      // println!("REPORT = {report:?}");
+
+      Ok(json::object! {
+      data: report,
+      total: 1,
+      "$skip": 0,
+      })
+    }
   }
 
   fn get(&self, id: String, params: Params) -> crate::services::Result {

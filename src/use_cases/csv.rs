@@ -51,6 +51,8 @@ pub(crate) fn report(
   let storage =
     json(app, object! { name: storage }, STORAGE.to_vec(), &|| object! { name: storage }).unwrap();
 
+  println!("STORAGE: {:?}", storage["_uuid"]);
+
   let result = app.service("inventory").find(object!{ctx: ctx, oid: oid.to_base64(), storage: storage["_uuid"].clone(), dates: {"from": from_date, "till": till_date}}).unwrap();
 
   println!("report: {:#?}", result);

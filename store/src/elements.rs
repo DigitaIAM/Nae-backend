@@ -563,21 +563,24 @@ pub trait CheckpointTopology {
         }
       }
 
-      while check_point_date < last_checkpoint_date {
+      loop {
+
         check_point_date = first_day_next_month(tmp_date);
 
         let key = self.key(&op.to_op(), check_point_date);
 
         let mut balance = self.get_balance(&key)?;
-
+        println!("BALANCE IN FN_CHECKPOINT_UPDATE: {balance:?}");
         balance += op.to_delta();
-
+        println!("CORRECTED BALANCE IN FN_CHECKPOINT_UPDATE: {balance:?}");
         if balance.is_zero() {
           self.del_balance(&key)?;
         } else {
           self.set_balance(&key, balance)?;
         }
         tmp_date = check_point_date;
+
+        if check_point_date >= last_checkpoint_date { break; }
       }
 
       self.set_latest_checkpoint_date(check_point_date)?;

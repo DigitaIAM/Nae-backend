@@ -61,7 +61,7 @@ impl Db {
 
   pub fn record_ops(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
     for op in ops {
-      let balances: Vec<Balance> = if op.is_issue() && op.batch.is_empty() {
+      let checkpoints: Vec<Balance> = if op.is_issue() && op.batch.is_empty() {
         self.get_checkpoints_for_goods(op.store, op.goods, op.date)?
       } else {
         Vec::new()
@@ -70,7 +70,7 @@ impl Db {
       let mut new_ops = vec![];
 
       for ordered_topology in self.ordered_topologies.iter() {
-        new_ops = ordered_topology.data_update(op, balances.clone())?;
+        new_ops = ordered_topology.data_update(op, checkpoints.clone())?;
       }
 
       println!("NEW_OPS IN FN_RECORD_OPS: {:?}", new_ops);
@@ -237,6 +237,8 @@ impl Db {
         break (DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp_millis(0).unwrap(), Utc), HashMap::new());
       }
     };
+
+    println!("CHECKPOINTS: {checkpoints:?}");
 
     for ordered_topology in self.ordered_topologies.iter() {
       match ordered_topology.get_balances_for_all(from_date, date, checkpoints.clone()) {
