@@ -18,6 +18,7 @@ use store::{
   elements::{Report, ToJson},
   error::WHError,
 };
+use service::utils::json::JsonParams;
 
 pub struct Inventory {
   app: Application,
@@ -54,11 +55,11 @@ impl Service for Inventory {
     if params.is_array() {
       let params = params[0]["filter"].clone();
 
-      let storage = crate::services::uuid("storage", &params)?;
+      let storage = self.params(&params)["storage"].uuid()?;
 
-      let goods = crate::services::uuid("goods", &params)?;
+      let goods = self.params(&params)["goods"].uuid()?;
 
-      let batch_id = crate::services::uuid("batch_id", &params)?;
+      let batch_id = self.params(&params)["batch_id"].uuid()?;
 
       let batch_date: Result<DateTime<Utc>, Error> =
           if let Some(date) = &params["batch_date"].as_str() {
@@ -94,7 +95,7 @@ impl Service for Inventory {
       })
 
     } else {
-      let storage = crate::services::uuid("storage", &params)?;
+      let storage = self.params(&params)["storage"].uuid()?;
 
       let dates = if let Some(dates) = self.date_range(&params)? {
         dates
