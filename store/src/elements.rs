@@ -196,30 +196,33 @@ pub trait OrderedTopology {
     op: &OpMutation,
     balances: Vec<Balance>,
   ) -> Result<Vec<OpMutation>, WHError> {
-    if op.before.is_none() {
-      if let Ok(None) = self.get(&op.to_op()) {
-        self.mutate_op(op, balances)
-      } else {
-        let err = WHError::new("Wrong 'before' state, expected something");
-        log::debug!("ERROR: {err:?}");
-        return Err(err);
-      }
-    } else {
-      if let Ok(Some((o, balance))) = self.get(&op.to_op()) {
-        // let (o, balance) = self.from_bytes(&bytes)?;
-        if Some(o.op) == op.before {
-          self.mutate_op(op, balances)
-        } else {
-          let err = WHError::new("Wrong 'before' state in operation: {o.op:?}");
-          log::debug!("ERROR: {err:?}");
-          return Err(err);
-        }
-      } else {
-        let err = WHError::new("There is no such operation in db");
-        log::debug!("ERROR: {err:?}");
-        return Err(err);
-      }
-    }
+    self.mutate_op(op, balances)
+
+    // TODO review logic after enable transaction
+    // if op.before.is_none() {
+    //   if let Ok(None) = self.get(&op.to_op()) {
+    //     self.mutate_op(op, balances)
+    //   } else {
+    //     let err = WHError::new("Wrong 'before' state, expected something");
+    //     log::debug!("ERROR: {err:?}");
+    //     return Err(err);
+    //   }
+    // } else {
+    //   if let Ok(Some((o, balance))) = self.get(&op.to_op()) {
+    //     // let (o, balance) = self.from_bytes(&bytes)?;
+    //     if Some(o.op) == op.before {
+    //       self.mutate_op(op, balances)
+    //     } else {
+    //       let err = WHError::new("Wrong 'before' state in operation: {o.op:?}");
+    //       log::debug!("ERROR: {err:?}");
+    //       return Err(err);
+    //     }
+    //   } else {
+    //     let err = WHError::new("There is no such operation in db");
+    //     log::debug!("ERROR: {err:?}");
+    //     return Err(err);
+    //   }
+    // }
   }
 
   fn mutate_op(
@@ -1202,7 +1205,7 @@ impl OpMutation {
         InternalOperation::Receive(_, _) => false,
         InternalOperation::Issue(_, _, _) => true,
       },
-      None => unreachable!(),
+      None => false,
     }
   }
 }
@@ -1725,7 +1728,12 @@ pub fn receive_data(
 
   while let Some(ref b) = before.next() {
     if let Some(a) = after.remove_entry(&b.0) {
-      ops.push(OpMutation::new_from_ops(Some(b.1.clone()), Some(a.1)));
+      if a.1.store == b.1.store && a.1.goods == b.1.goods && a.1.batch == b.1.batch && a.1.date == b.1.date && a.1.transfer == b.1.transfer {
+        ops.push(OpMutation::new_from_ops(Some(b.1.clone()), Some(a.1)));
+      } else {
+        ops.push(OpMutation::new_from_ops(Some(b.1.clone()), None));
+        ops.push(OpMutation::new_from_ops(None, Some(a.1)));
+      }
     } else {
       ops.push(OpMutation::new_from_ops(Some(b.1.clone()), None));
     }
@@ -1814,15 +1822,29 @@ fn json_to_ops(
 
   let op = match type_of_operation.as_str() {
     "receive" | "inventory" => {
-      InternalOperation::Receive(data["qty"]["number"].number(), data["cost"]["number"].number())
+      let qty = data["qty"]["number"].number_or_none();
+      let cost = data["cost"]["number"].number_or_none();
+
+      if qty.is_none() && cost.is_none() {
+        return Ok(ops);
+      } else {
+        InternalOperation::Receive(qty.unwrap_or_default(), cost.unwrap_or_default())
+      }
     },
     "transfer" | "dispatch" => {
-      let (cost, mode) = if let Some(cost) = data["cost"]["number"].number_or_none() {
-        (cost, Mode::Manual)
+      let qty = data["qty"]["number"].number_or_none();
+      let cost = data["cost"]["number"].number_or_none();
+
+      if qty.is_none() && cost.is_none() {
+        return Ok(ops);
       } else {
-        (0.into(), Mode::Auto)
-      };
-      InternalOperation::Issue(data["qty"]["number"].number(), cost, mode)
+        let (cost, mode) = if let Some(cost) = cost {
+          (cost, Mode::Manual)
+        } else {
+          (0.into(), Mode::Auto)
+        };
+        InternalOperation::Issue(qty.unwrap_or_default(), cost, mode)
+      }
     },
     _ => return Ok(ops),
   };
@@ -1881,82 +1903,6 @@ fn json_to_ops(
   };
 
   ops.insert(tid.to_string(), op);
-
-  // this cycle left just for tests, not in test it will not work
-  for line in data["goods"].members_mut() {
-    log::debug!("line {:?}", line);
-
-    let goods = match line["goods"].uuid_or_none() {
-      Some(uuid) => uuid,
-      None => continue,
-    };
-
-    // log::debug!("before op");
-
-    let op = match type_of_operation.as_str() {
-      "receive" => InternalOperation::Receive(line["qty"].number(), line["cost"].number()),
-      "transfer" | "dispatch" => {
-        let (cost, mode) = if let Some(cost) = line["cost"].number_or_none() {
-          (cost, Mode::Manual)
-        } else {
-          (0.into(), Mode::Auto)
-        };
-        InternalOperation::Issue(line["qty"].number(), cost, mode)
-      },
-      _ => continue,
-    };
-
-    log::debug!("after op {op:?}");
-
-    let tid = if let Some(tid) = line["_tid"].uuid_or_none() {
-      tid
-    } else {
-      let tid = Uuid::new_v4();
-      line["_tid"] = JsonValue::String(tid.to_string());
-      tid
-    };
-
-    let batch = if type_of_operation == "receive" {
-      Batch { id: tid, date }
-    } else if type_of_operation == "inventory" {
-      // TODO try to read batch from document
-      Batch { id: tid, date }
-    } else {
-      match &line["batch"] {
-        JsonValue::Object(b) => {
-          // log::debug!("b[id] = {}", b["id"]);
-          // log::debug!("b[date] = {}", b["date"]);
-          let id = match b["id"].uuid_or_none() {
-            Some(uuid) => uuid,
-            None => {
-              // log::debug!("uuid_or_none RETURNED NONE");
-              continue;
-            },
-          };
-
-          let date = match b["date"].datetime() {
-            Ok(dt) => dt,
-            Err(_) => continue,
-          };
-          Batch { id, date }
-        },
-        _ => continue,
-      }
-    };
-
-    let op = Op {
-      id: tid,
-      date,
-      store: document["storage"].uuid()?,
-      transfer,
-      goods,
-      batch,
-      op,
-      is_dependent: line["is_dependent"].boolean(),
-      batches: batches.clone(),
-    };
-    ops.insert(tid.to_string(), op);
-  }
 
   Ok(ops)
 }
