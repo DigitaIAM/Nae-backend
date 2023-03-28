@@ -305,10 +305,10 @@ pub trait OrderedTopology {
         let current_balance =
           if let Some((o, b)) = self.get(&op)? { b } else { BalanceForGoods::default() };
 
-        log::debug!("before_balance: {before_balance:?}");
-        log::debug!("calculated_op: {calculated_op:?}");
-        log::debug!("current_balance: {current_balance:?}");
-        log::debug!("new_balance: {new_balance:?}");
+        log::debug!("_before_balance: {before_balance:?}");
+        log::debug!("_calculated_op: {calculated_op:?}");
+        log::debug!("_current_balance: {current_balance:?}");
+        log::debug!("_new_balance: {new_balance:?}");
 
         // store update op with balance or delete
         if calculated_op.is_zero() && batches.is_empty() {
@@ -320,7 +320,7 @@ pub trait OrderedTopology {
             id: calculated_op.id,
             date: calculated_op.date,
             store: calculated_op.store,
-            transfer: calculated_op.transfer,
+            transfer: calculated_op.store_into,
             goods: calculated_op.goods,
             batch: calculated_op.batch.clone(),
             before: None,
@@ -332,6 +332,7 @@ pub trait OrderedTopology {
 
         // if next op have dependant add it to ops
         if let Some(dep) = calculated_op.dependent() {
+          log::debug!("_new dependent: {dep:?}");
           ops.push(dep);
         }
       } else {
@@ -357,7 +358,7 @@ pub trait OrderedTopology {
             id: calculated_op.id,
             date: calculated_op.date,
             store: calculated_op.store,
-            transfer: calculated_op.transfer,
+            transfer: calculated_op.store_into,
             goods: calculated_op.goods,
             batch: calculated_op.batch.clone(),
             before: None,
@@ -369,6 +370,7 @@ pub trait OrderedTopology {
 
         // if next op have dependant add it to ops
         if let Some(dep) = calculated_op.dependent() {
+          log::debug!("new dependent: {dep:?}");
           ops.push(dep);
         }
 
@@ -386,6 +388,7 @@ pub trait OrderedTopology {
 
             // if next op have dependant add it to ops
             if let Some(dep) = calc_op.dependent() {
+              log::debug!("update dependent: {dep:?}");
               ops.push(dep);
             }
 
@@ -420,7 +423,7 @@ pub trait OrderedTopology {
             store: op.store,
             goods: op.goods,
             batch: op.batch.clone(),
-            transfer: op.transfer,
+            store_into: op.store_into,
             op: InternalOperation::Issue(q.clone(), cost.clone(), m.clone()),
             is_dependent: op.is_dependent,
             batches: op.batches.clone(),
@@ -673,8 +676,8 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum InternalOperation {
   // TODO Inventory(Qty, Cost), // actual qty, calculated qty; calculated qty +/- delta = actual qty (delta qty, delta cost)
-  Receive(Qty, Cost),
-  Issue(Qty, Cost, Mode),
+  Receive(Qty, Cost), // FROM // TODO Option<Store>
+  Issue(Qty, Cost, Mode), // INTO // TODO Option<Store>
 }
 
 impl ToJson for InternalOperation {
@@ -861,7 +864,7 @@ pub struct Op {
   pub goods: Goods,
   pub batch: Batch,
 
-  pub transfer: Option<Store>, // TODO: to_store: Option<Store>
+  pub store_into: Option<Store>, // TODO: to_store: Option<Store>
 
   // TODO operation_store = Receive > to_store, Issue > from_store
   // TODO contra_store = Receive > from_store, Issue > from_store
@@ -922,7 +925,7 @@ impl Op {
       store: data["store"].uuid()?,
       goods: data["goods"].uuid()?,
       batch: Batch { id: data["batch"]["id"].uuid()?, date: data["batch"]["date"].datetime()? },
-      transfer: data["transfer"].uuid_or_none(),
+      store_into: data["transfer"].uuid_or_none(),
       op: operation,
       is_dependent: data["is_dependent"].boolean(),
       batches,
@@ -948,17 +951,18 @@ impl Op {
   }
 
   fn dependent(&self) -> Option<Op> {
-    if self.is_dependent {
-      None
-    } else if let Some(transfer) = self.transfer {
+    // if self.is_dependent {
+    //   None
+    // } else
+    if let Some(store_into) = self.store_into {
       match &self.op {
         InternalOperation::Issue(q, c, m) => Some(Op {
           id: self.id,
           date: self.date,
-          store: transfer,
+          store: store_into,
           goods: self.goods,
           batch: self.batch.clone(),
-          transfer: Some(self.store),
+          store_into: Some(self.store),
           op: InternalOperation::Receive(q.clone(), c.clone()),
           is_dependent: true,
           batches: vec![],
@@ -993,7 +997,7 @@ impl ToJson for Op {
       store: self.store.to_json(),
       goods: self.goods.to_json(),
       batch: self.batch.to_json(),
-      transfer: match self.transfer {
+      transfer: match self.store_into {
         Some(t) => t.to_json(),
         None => JsonValue::Null,
       },
@@ -1096,7 +1100,7 @@ impl OpMutation {
         store: self.store.clone(),
         goods: self.goods.clone(),
         batch: self.batch.clone(),
-        transfer: self.transfer.clone(),
+        store_into: self.transfer.clone(),
         op: op.clone(),
         is_dependent: self.is_dependent,
         batches: self.batches.clone(),
@@ -1108,7 +1112,7 @@ impl OpMutation {
         store: self.store.clone(),
         goods: self.goods.clone(),
         batch: self.batch.clone(),
-        transfer: self.transfer.clone(),
+        store_into: self.transfer.clone(),
         op: if let Some(b) = self.before.clone() {
           b
         } else {
@@ -1133,7 +1137,7 @@ impl OpMutation {
         id: a.id,
         date: a.date,
         store: a.store,
-        transfer: a.transfer,
+        transfer: a.store_into,
         goods: a.goods,
         batch: a.batch.clone(),
         before: Some(b.op.clone()),
@@ -1146,7 +1150,7 @@ impl OpMutation {
         id: b.id,
         date: b.date,
         store: b.store,
-        transfer: b.transfer,
+        transfer: b.store_into,
         goods: b.goods,
         batch: b.batch.clone(),
         before: Some(b.op.clone()),
@@ -1159,7 +1163,7 @@ impl OpMutation {
         id: a.id,
         date: a.date,
         store: a.store,
-        transfer: a.transfer,
+        transfer: a.store_into,
         goods: a.goods,
         batch: a.batch.clone(),
         before: None,
@@ -1728,7 +1732,7 @@ pub fn receive_data(
 
   while let Some(ref b) = before.next() {
     if let Some(a) = after.remove_entry(&b.0) {
-      if a.1.store == b.1.store && a.1.goods == b.1.goods && a.1.batch == b.1.batch && a.1.date == b.1.date && a.1.transfer == b.1.transfer {
+      if a.1.store == b.1.store && a.1.goods == b.1.goods && a.1.batch == b.1.batch && a.1.date == b.1.date && a.1.store_into == b.1.store_into {
         ops.push(OpMutation::new_from_ops(Some(b.1.clone()), Some(a.1)));
       } else {
         ops.push(OpMutation::new_from_ops(Some(b.1.clone()), None));
@@ -1747,11 +1751,10 @@ pub fn receive_data(
 
   log::debug!("OPS: {:?}", ops);
 
-  app.warehouse().mutate(&ops)?;
-
   if ops.is_empty() {
     Ok(old_data)
   } else {
+    app.warehouse().mutate(&ops)?;
     Ok(new_data)
   }
 }
@@ -1784,7 +1787,9 @@ fn json_to_ops(
   let oid = app.service("companies").find(object! {limit: 1, skip: 0})?;
   // log::debug!("OID: {:?}", oid["data"][0]["_id"]);
 
-  let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: doc_ctx };
+  let oid = oid["data"][0]["_id"].as_str().unwrap_or_default();
+
+  let params = object! {oid: oid, ctx: doc_ctx };
   let document = match app.service("memories").get(data["document"].string(), params) {
     Ok(d) => d,
     Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
@@ -1796,18 +1801,27 @@ fn json_to_ops(
     Ok(d) => d,
     Err(_) => return Ok(ops),
   };
-  let transfer = if type_of_operation == "transfer" {
-    match data["transfer"].uuid_or_none() {
-      Some(uuid) => Some(uuid),
-      None => return Ok(ops),
-    }
+  let (store_from, store_into) = if type_of_operation == "transfer" {
+    let store_from = match resolve_store(app, oid, &document, "from") {
+      Ok(uuid) => uuid,
+      Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+    };
+    let store_into = match resolve_store(app, oid, &document, "into") {
+      Ok(uuid) => uuid,
+      Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+    };
+    (store_from, Some(store_into))
   } else {
-    None
+    let store_from = match resolve_store(app, oid, &document, "storage") {
+      Ok(uuid) => uuid,
+      Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+    };
+    (store_from, None)
   };
 
-  println!("transfer: {transfer:?}");
+  println!("store_from: {store_from:?} store_into: {store_into:?}");
 
-  let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["goods"] };
+  let params = object! {oid: oid, ctx: vec!["goods"] };
   let item = match app.service("memories").get(data["goods"].string(), params) {
     Ok(d) => d,
     Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
@@ -1889,12 +1903,8 @@ fn json_to_ops(
   let op = Op {
     id: tid,
     date,
-    store: {
-      let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["warehouse", "storage"] };
-      let storage = app.service("memories").get(document["storage"].string(), params)?;
-      storage["_uuid"].uuid()?
-    },
-    transfer: transfer.clone(),
+    store: store_from,
+    store_into: store_into,
     goods,
     batch,
     op,
@@ -1905,4 +1915,15 @@ fn json_to_ops(
   ops.insert(tid.to_string(), op);
 
   Ok(ops)
+}
+
+fn resolve_store(app: &impl Services, oid: &str, document: &JsonValue, name: &str) -> Result<Uuid, service::error::Error> {
+  let store_id = document[name].string();
+
+  println!("store_id {store_id:?}");
+
+  let params = object! {oid: oid, ctx: vec!["warehouse", "storage"] };
+  let storage = app.service("memories").get(store_id, params)?;
+  println!("storage {:?}", storage.dump());
+  storage["_uuid"].uuid()
 }

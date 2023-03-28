@@ -64,9 +64,9 @@ impl Service for MemoriesInFiles {
         let total = list.len();
 
         return Ok(json::object! {
-        data: JsonValue::Array(list),
-        total: total,
-        "$skip": skip,
+          data: JsonValue::Array(list),
+          total: total,
+          "$skip": skip,
         })
       }
 

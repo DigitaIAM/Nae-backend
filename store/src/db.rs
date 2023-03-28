@@ -71,6 +71,7 @@ impl Db {
       let mut new_ops = vec![];
 
       for ordered_topology in self.ordered_topologies.iter() {
+        log::debug!("processing topology:");
         new_ops = ordered_topology.data_update(op, checkpoints.clone())?;
       }
 

@@ -36,7 +36,7 @@ fn save_data(
   id: &String,
   uuid: Option<Uuid>,
   time: DateTime<Utc>,
-  data: JsonValue,
+  mut data: JsonValue,
 ) -> Result<JsonValue, Error> {
   let lock = LOCK.lock().unwrap();
 
@@ -64,7 +64,12 @@ fn save_data(
   println!("loading before {path_latest:?}");
 
   let before = match load(&path_latest) {
-    Ok(x) => x,
+    Ok(b) => {
+      //WORKAROUND: make sure that id & uuid stay same
+      data["_id"] = b["_id"].clone();
+      data["_uuid"] = b["_uuid"].clone();
+      b
+    },
     Err(_) => JsonValue::Null,
   };
 

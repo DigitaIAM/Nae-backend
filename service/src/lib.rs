@@ -19,7 +19,7 @@ use utils::time::DateRange;
 
 #[macro_use] extern crate quick_error;
 
-pub(crate) type Result = std::result::Result<JsonValue, Error>;
+pub type Result = std::result::Result<JsonValue, Error>;
 pub(crate) type Data = JsonValue;
 pub(crate) type Params = JsonValue;
 
