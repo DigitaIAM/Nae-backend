@@ -109,7 +109,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
   fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError> {
     if let Some(bytes) = self.db.get_cf(&self.cf()?, self.key_latest_checkpoint_date())? {
       let date = serde_json::from_slice(&bytes)?;
-      Ok(DateTime::parse_from_rfc3339(date)?.into())
+      Ok(DateTime::parse_from_rfc3339(date)?.into()) // TODO store/read timestamp in binary format
     } else {
       dt("1970-01-01")
     }

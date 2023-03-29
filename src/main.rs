@@ -105,7 +105,7 @@ async fn server(
   let address = "localhost"; // "127.0.0.1"
   let port = 3030;
 
-  log::info!("starting up {address:?}:{port}");
+  log::info!("starting up {address}:{port}");
 
   HttpServer::new(move || {
     // let auth = HttpAuthentication::bearer(auth::validator);

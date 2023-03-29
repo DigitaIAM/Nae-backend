@@ -50,7 +50,7 @@ pub trait Service: Send + Sync {
   fn parse_date(&self, str: &str) -> std::result::Result<DateTime<Utc>, Error> {
     match NaiveDate::parse_from_str(str, "%Y-%m-%d") {
       Ok(d) => Ok(DateTime::<Utc>::from_utc(NaiveDateTime::new(d, NaiveTime::default()), Utc)),
-      Err(e) => Err(Error::GeneralError(e.to_string())),
+      Err(e) => Err(Error::GeneralError(format!("invalid date '{str}'"))),
     }
   }
 
@@ -76,14 +76,6 @@ pub trait Service: Send + Sync {
   }
 
   fn date_range(&self, params: &Params) -> std::result::Result<Option<DateRange>, Error> {
-    let params = {
-      if params.is_array() {
-        &params[0]
-      } else {
-        params
-      }
-    };
-
     let dates = &params["dates"];
 
     if let Some(date) = dates["from"].as_str() {

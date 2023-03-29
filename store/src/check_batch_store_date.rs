@@ -94,7 +94,7 @@ impl CheckpointTopology for CheckBatchStoreDate {
     {
       let date =
         serde_json::from_slice(&bytes).map_err(|_| WHError::new("get serde_json::from_slice"))?;
-      Ok(DateTime::parse_from_rfc3339(date)?.into())
+      Ok(DateTime::parse_from_rfc3339(date)?.into()) // TODO store/read timestapm in binary format
     } else {
       // Ok(DateTime::<Utc>::default())
       dt("1970-01-01")

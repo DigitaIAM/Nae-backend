@@ -29,7 +29,7 @@ use super::{
   db::Db,
   store_date_type_batch_id::StoreDateTypeBatchId,
 };
-use service::utils::time::time_to_string;
+use service::utils::time::{time_to_string, date_to_string};
 
 use crate::GetWarehouse;
 use service::Services;
@@ -57,7 +57,7 @@ impl ToJson for Uuid {
 
 impl ToJson for DateTime<Utc> {
   fn to_json(&self) -> JsonValue {
-    JsonValue::String(time_to_string(*self))
+    JsonValue::String(date_to_string(*self))
   }
 }
 
@@ -91,7 +91,7 @@ impl Batch {
 
   fn from_json(json: &JsonValue) -> Result<Self, WHError> {
     if json.is_object() {
-      Ok(Batch { id: json["id"].uuid()?, date: json["date"].date()? })
+      Ok(Batch { id: json["id"].uuid()?, date: json["date"].date_with_check()? })
     } else {
       Err(WHError::new("fn from_json for Batch failed"))
     }
@@ -913,7 +913,7 @@ impl Op {
     match &data["batches"] {
       JsonValue::Array(array) => {
         for batch in array {
-          batches.push(Batch { id: batch["id"].uuid()?, date: batch["date"].date()? });
+          batches.push(Batch { id: batch["id"].uuid()?, date: batch["date"].date_with_check()? });
         }
       },
       _ => (),
@@ -921,10 +921,10 @@ impl Op {
 
     let op = Op {
       id: data["id"].uuid()?,
-      date: data["date"].datetime()?,
+      date: data["date"].date_with_check()?,
       store: data["store"].uuid()?,
       goods: data["goods"].uuid()?,
-      batch: Batch { id: data["batch"]["id"].uuid()?, date: data["batch"]["date"].datetime()? },
+      batch: Batch { id: data["batch"]["id"].uuid()?, date: data["batch"]["date"].date_with_check()? },
       store_into: data["transfer"].uuid_or_none(),
       op: operation,
       is_dependent: data["is_dependent"].boolean(),
@@ -1797,7 +1797,7 @@ fn json_to_ops(
 
   log::debug!("DOCUMENT: {:?}", document.dump());
 
-  let date = match document["date"].date() {
+  let date = match document["date"].date_with_check() {
     Ok(d) => d,
     Err(_) => return Ok(ops),
   };
@@ -1883,7 +1883,7 @@ fn json_to_ops(
       JsonValue::Object(d) => {
         // let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["warehouse", "receive", "document"] };
         // let doc_from = app.service("memories").get(d["_id"].string(), params)?;
-        Batch { id: data["batch"]["_uuid"].uuid()?, date: data["batch"]["date"].date()? }
+        Batch { id: data["batch"]["_uuid"].uuid()?, date: data["batch"]["date"].date_with_check()? }
       },
       _ => Batch { id: UUID_NIL, date },
     }
@@ -1894,7 +1894,7 @@ fn json_to_ops(
   match &data["batches"] {
     JsonValue::Array(array) => {
       for batch in array {
-        batches.push(Batch { id: batch["id"].uuid()?, date: batch["date"].date()? });
+        batches.push(Batch { id: batch["id"].uuid()?, date: batch["date"].date_with_check()? });
       }
     },
     _ => (),

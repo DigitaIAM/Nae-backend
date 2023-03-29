@@ -19,6 +19,7 @@ use store::{
   error::WHError,
 };
 use service::utils::json::JsonParams;
+use service::utils::time::string_to_time;
 
 pub struct Inventory {
   app: Application,
@@ -53,24 +54,22 @@ impl Service for Inventory {
     // println!("FN_FIND_PARAMS: {:#?}", params);
 
     if params.is_array() {
-      let params = params[0]["filter"].clone();
+      let params = self.params(&params);
 
-      let storage = self.params(&params)["storage"].uuid()?;
+      let filter = params["filter"].clone();
 
-      let goods = self.params(&params)["goods"].uuid()?;
+      let storage = filter["storage"].uuid()?;
+      let goods = filter["goods"].uuid()?;
 
-      let batch_id = self.params(&params)["batch_id"].uuid()?;
+      let batch_id = filter["batch_id"].uuid()?;
 
-      let batch_date: Result<DateTime<Utc>, Error> =
-          if let Some(date) = &params["batch_date"].as_str() {
-            Ok(DateTime::parse_from_rfc3339(date)?.into())
-          } else {
-            Err(service::error::Error::GeneralError(String::from("No batch_date in params for fn find")))
-          };
+      println!("1");
+      let batch_date: DateTime<Utc> = filter["batch_date"].date_with_check()?;
 
-      let batch = Batch { id: batch_id, date: batch_date? };
+      let batch = Batch { id: batch_id, date: batch_date };
 
-      let dates = if let Some(dates) = self.date_range(&params)? {
+      println!("2");
+      let dates = if let Some(dates) = self.date_range(&filter)? {
         dates
       } else {
         return Err(Error::GeneralError("dates not defined".into()));
@@ -86,18 +85,20 @@ impl Service for Inventory {
         Err(error) => return Err(Error::GeneralError(error.message())),
       };
 
-      println!("REPORT = {report:?}");
+      // println!("REPORT = {report:?}");
 
       Ok(json::object! {
-      data: report,
-      total: 1,
-      "$skip": 0,
+        data: report,
+        total: 1,
+        "$skip": 0,
       })
 
     } else {
-      let storage = self.params(&params)["storage"].uuid()?;
+      let params = self.params(&params);
 
-      let dates = if let Some(dates) = self.date_range(&params)? {
+      let storage = params["storage"].uuid()?;
+
+      let dates = if let Some(dates) = self.date_range(params)? {
         dates
       } else {
         return Err(Error::GeneralError("dates not defined".into()));

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, SecondsFormat, Utc, NaiveDateTime};
+use chrono::{DateTime, Duration, SecondsFormat, Utc, NaiveDateTime, Datelike};
 use std::mem;
 use std::time::SystemTime;
 use crate::error::Error;
@@ -40,11 +40,16 @@ pub fn timestamp_to_time(ts: u64) -> Result<DateTime<Utc>, Error> {
 pub fn string_to_time<S: AsRef<str>>(data: S) -> Result<DateTime<Utc>, Error> {
   DateTime::parse_from_rfc3339(data.as_ref())
     .map(|ts| ts.into())
-    .map_err(|e| Error::GeneralError(e.to_string()))
+    .map_err(|e| Error::GeneralError(format!("incorrect data-time {}", data.as_ref())))
 }
 
 pub fn time_to_string(time: DateTime<Utc>) -> String {
   time.to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+pub fn date_to_string(date: DateTime<Utc>) -> String {
+  format!("{:0>4}-{:0>2}-{:0>2}", date.year(), date.month(), date.day())
+  // time.to_rfc3339_opts(SecondsFormat::Millis, true)[0..10].to_string()
 }
 
 pub fn now_in_seconds() -> u64 {
