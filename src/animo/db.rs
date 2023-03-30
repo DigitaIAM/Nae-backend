@@ -2,7 +2,12 @@ use crate::animo::error::DBError;
 use crate::animo::memory::*;
 use crate::animo::{OpsManager, Txn};
 use crate::text_search::TextSearch;
-use crate::{animo::{Animo, Memory, Topology}, settings::Settings, warehouse::store_aggregation_topology::WHStoreAggregationTopology, warehouse::store_topology::WHStoreTopology};
+use crate::{
+  animo::{Animo, Memory, Topology},
+  settings::Settings,
+  warehouse::store_aggregation_topology::WHStoreAggregationTopology,
+  warehouse::store_topology::WHStoreTopology,
+};
 use rkyv::AlignedVec;
 use rocksdb::{
   BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch,

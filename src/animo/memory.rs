@@ -1,7 +1,7 @@
 use bytecheck::CheckBytes;
 use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
 
-use base64::DecodeError;
+use base64::{DecodeError, Engine};
 use std::array::TryFromSliceError;
 use std::cmp::Ordering;
 use std::fmt::Formatter;
@@ -12,11 +12,11 @@ use crate::animo::db::{FromBytes, ToBytes};
 use crate::animo::error::DBError;
 use crate::animo::Time;
 use crate::settings::Settings;
+use crate::warehouse::primitives::Decimal;
 use blake2::{Blake2s256, Digest};
 use json::JsonValue;
 use json::JsonValue::Number;
 use std::convert::TryFrom;
-use crate::warehouse::primitives::Decimal;
 
 type Hasher = Blake2s256;
 pub(crate) const ID_BYTES: usize = 32;
@@ -403,22 +403,19 @@ impl ID {
     }
   }
 
-  pub(crate) fn from_base64(input: &[u8]) -> Result<ID, DBError> {
-    match base64::decode_config(input, base64::URL_SAFE_NO_PAD) {
+  pub(crate) fn from_base64<T: AsRef<[u8]>>(input: T) -> Result<ID, DBError> {
+    match base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(input) {
       Ok(bs) => ID::new(bs.as_slice()),
       Err(msg) => Err(DBError::from(msg.to_string())),
     }
   }
 
   pub fn to_base64(&self) -> String {
-    base64::encode_config(self.0, base64::URL_SAFE_NO_PAD)
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(self.0)
   }
 
   pub(crate) fn to_clear(&self) -> String {
-    base64::encode_config(self.0, base64::URL_SAFE_NO_PAD)
-      .replace("_", "")
-      .replace("-", "")[..12]
-      .to_string()
+    self.to_base64().replace("_", "").replace("-", "")[..12].to_string()
   }
 
   // TODO make `const`
