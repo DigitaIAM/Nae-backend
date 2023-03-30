@@ -102,7 +102,7 @@ pub(crate) fn receive_csv_to_json(
       &|| object! { name: counterparty_name },
     )?;
 
-    let storage_name = "склад"; // &record[7];
+    let storage_name = &record[7];
     let storage = json(
       app,
       object! { name: storage_name },

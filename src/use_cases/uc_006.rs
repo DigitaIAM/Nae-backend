@@ -16,7 +16,7 @@ pub(crate) fn report(app: &Application) {
   crate::use_cases::csv::report(
     app,
     "Midas-Plastics",
-    "Склад Midas Plastics",
+    "склад",
     "2023-01-05",
     "2023-01-07",
   );

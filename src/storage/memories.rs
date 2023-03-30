@@ -77,24 +77,25 @@ fn save_data(
   let data =
     receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?;
 
-  println!("saving");
+  let uuid = data["_uuid"].as_str();
+
   save(&path_current, data.dump())?;
 
   symlink::remove_symlink_file(&path_latest);
   symlink::symlink_file(&file_name, &path_latest)?;
 
   if let Some(uuid) = uuid {
-    let str = uuid.to_string();
+    // let str = uuid.to_string();
     let mut path_folder = top_folder.clone();
     path_folder.push("uuid");
-    path_folder.push(&str[0..4]);
+    path_folder.push(&uuid[0..4]);
 
     std::fs::create_dir_all(&path_folder).map_err(|e| {
       Error::IOError(format!("can't create folder {}: {}", path_folder.to_string_lossy(), e))
     })?;
 
     let mut path_uuid = path_folder.clone();
-    path_uuid.push(str);
+    path_uuid.push(uuid);
 
     if let Some(folder) = pathdiff::diff_paths(folder.canonicalize()?, path_folder.canonicalize()?) {
       if !path_uuid.exists() {

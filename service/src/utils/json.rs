@@ -65,13 +65,17 @@ impl JsonParams for JsonValue {
   }
 
   fn number(&self) -> Decimal {
-    Decimal::from_str(&self.to_string()).unwrap_or_default()
+    self.number_or_none().unwrap_or_default()
   }
 
   fn number_or_none(&self) -> Option<Decimal> {
     if let Some(number) = self.as_number() {
-      let number = number.to_string();
-      match Decimal::from_str(&self.to_string()) {
+      match Decimal::from_str(&number.to_string()) {
+        Ok(number) => Some(number),
+        Err(_) => None,
+      }
+    } else if let Some(number) = self.as_str() {
+      match Decimal::from_str(number) {
         Ok(number) => Some(number),
         Err(_) => None,
       }
