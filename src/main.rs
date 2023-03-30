@@ -3,20 +3,20 @@ extern crate core;
 
 #[macro_use]
 extern crate quick_error;
-extern crate json;
-extern crate store;
 extern crate actix;
-extern crate jsonwebtoken;
-extern crate rust_decimal;
-extern crate tracing;
-extern crate rkyv;
-extern crate dbase;
-extern crate reqwest;
-extern crate csv;
-extern crate uuid;
 extern crate actix_web;
-extern crate service;
 extern crate chrono;
+extern crate csv;
+extern crate dbase;
+extern crate json;
+extern crate jsonwebtoken;
+extern crate reqwest;
+extern crate rkyv;
+extern crate rust_decimal;
+extern crate service;
+extern crate store;
+extern crate tracing;
+extern crate uuid;
 
 use crate::commutator::{Application, Commutator};
 use actix::{Actor, Addr};
@@ -73,7 +73,6 @@ use crate::hr::services::departments::Departments;
 use crate::hr::services::shifts::Shifts;
 use crate::memories::MemoriesInFiles;
 use crate::services::People;
-use service::Services;
 use crate::settings::Settings;
 use crate::storage::SOrganizations;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
@@ -81,19 +80,20 @@ use crate::warehouse::store_topology::WHStoreTopology;
 use animo::db::AnimoDB;
 use animo::memory::Memory;
 use inventory::service::Inventory;
+use service::Services;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "basic")]
 struct Opt {
+  #[structopt(short = "c", long = "case", default_value = "001")]
+  case: String,
+
   /// Run mode
   #[structopt(short, long, default_value = "server")]
   mode: String,
 
-  #[structopt(short = "c", long = "case", default_value = "001")]
-  case: String,
-
   /// Data folder
-  #[structopt(short, long, parse(from_os_str))]
+  #[structopt(short, long, default_value = "./data", parse(from_os_str))]
   data: PathBuf,
 }
 
