@@ -1,20 +1,19 @@
 use crate::animo::memory::ID;
 use crate::commutator::Application;
 use crate::services::Data;
-use service::error::Error;
 use crate::storage::{json, load, save};
-use store::elements::{dt, receive_data, Batch, NumberForGoods, OpMutation};
-use service::utils::{json::JsonParams,
-                     time::time_to_string};
 use chrono::{DateTime, Utc};
-use json::{JsonValue, object};
+use json::{object, JsonValue};
 use rust_decimal::Decimal;
+use service::error::Error;
+use service::utils::{json::JsonParams, time::time_to_string};
+use service::Services;
+use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
-use service::Services;
 use std::sync::Mutex;
+use store::elements::{dt, receive_data, Batch, NumberForGoods, OpMutation};
 use uuid::Uuid;
-use std::fs;
 
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
@@ -61,7 +60,7 @@ fn save_data(
   // data = { _id: "", date: "2023-01-11", storage: "uuid", goods: [{goods: "", uom: "", qty: 0, price: 0, cost: 0, _tid: ""}, ...]}
   // cost = qty * price
 
-  println!("loading before {path_latest:?}");
+  // println!("loading before {path_latest:?}");
 
   let before = match load(&path_latest) {
     Ok(b) => {
@@ -73,9 +72,10 @@ fn save_data(
     Err(_) => JsonValue::Null,
   };
 
-  println!("loaded before {before:?}");
+  // println!("loaded before {before:?}");
 
-  let data = receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?;
+  let data =
+    receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?;
 
   println!("saving");
   save(&path_current, data.dump())?;
@@ -108,20 +108,28 @@ fn save_data(
   Ok(data)
 }
 
-pub fn memories_find(app: &Application, filter: JsonValue, ctx: Vec<&str>) -> Result<Vec<JsonValue>, Error> {
-  let oid = ID::from("Midas-Plastics");
-  let result = app.service("memories").find(object!{oid: oid.to_base64(), ctx: ctx, filter: filter})?;
+// TODO remove from here
+pub fn memories_find(
+  app: &Application,
+  filter: JsonValue,
+  ctx: Vec<&str>,
+) -> Result<Vec<JsonValue>, Error> {
+  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
+  let result = app.service("memories").find(object! {oid: oid, ctx: ctx, filter: filter})?;
 
-  Ok(result["data"].members().map(|o|o.clone()).collect())
+  Ok(result["data"].members().map(|o| o.clone()).collect())
 }
 
-pub fn memories_create(app: &Application, data: JsonValue, ctx: Vec<&str>) -> Result<JsonValue, Error> {
-  let oid = ID::from("Midas-Plastics");
-
-  let result = app.service("memories").create(data, object!{oid: oid.to_base64(), ctx: ctx })?;
+// TODO remove from here
+pub fn memories_create(
+  app: &Application,
+  data: JsonValue,
+  ctx: Vec<&str>,
+) -> Result<JsonValue, Error> {
+  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
+  let result = app.service("memories").create(data, object! {oid: oid, ctx: ctx })?;
 
   // println!("create_result: {result:?}");
-
   Ok(result)
 }
 
@@ -154,11 +162,7 @@ impl SMemories {
     folder
   }
 
-  pub(crate) fn create(
-    &self,
-    app: &Application,
-    mut data: JsonValue,
-  ) -> Result<JsonValue, Error> {
+  pub(crate) fn create(&self, app: &Application, mut data: JsonValue) -> Result<JsonValue, Error> {
     let (id, time, folder) = {
       let lock = LOCK.lock().unwrap();
 

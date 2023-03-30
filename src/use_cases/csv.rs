@@ -19,8 +19,8 @@ use service::error::Error;
 use service::Services;
 
 const COUNTERPARTY: [&str; 1] = ["counterparty"];
-const STORAGE: [&str; 2] = ["warehouse","storage"];
-const RECEIVE_DOCUMENT: [&str; 3] = ["warehouse","receive","document"];
+const STORAGE: [&str; 2] = ["warehouse", "storage"];
+const RECEIVE_DOCUMENT: [&str; 3] = ["warehouse", "receive", "document"];
 const INVENTORY_DOCUMENT: [&str; 3] = ["warehouse", "inventory", "document"];
 const DISPATCH_DOCUMENT: [&str; 3] = ["warehouse", "dispatch", "document"];
 const UOM: [&str; 1] = ["uom"];
@@ -102,7 +102,7 @@ pub(crate) fn receive_csv_to_json(
       &|| object! { name: counterparty_name },
     )?;
 
-    let storage_name = &record[7];
+    let storage_name = "склад"; // &record[7];
     let storage = json(
       app,
       object! { name: storage_name },
@@ -148,7 +148,9 @@ pub(crate) fn receive_csv_to_json(
 
     let number = float_number.parse::<Decimal>().unwrap();
 
-    let currency = json(app, object! {name: "uzd"}, CURRENCY.to_vec(), &|| { object! {name: "uzd"} })?;
+    let currency = json(app, object! {name: "uzd"}, CURRENCY.to_vec(), &|| {
+      object! {name: "uzd"}
+    })?;
 
     let data = object! {
         document: document["_id"].clone(),
