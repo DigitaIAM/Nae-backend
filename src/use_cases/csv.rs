@@ -18,6 +18,7 @@ const COUNTERPARTY: [&str; 1] = ["counterparty"];
 const STORAGE: [&str; 2] = ["warehouse", "storage"];
 const RECEIVE_DOCUMENT: [&str; 3] = ["warehouse", "receive", "document"];
 const INVENTORY_DOCUMENT: [&str; 3] = ["warehouse", "inventory", "document"];
+const TRANSFER_DOCUMENT: [&str; 3] = ["warehouse", "transfer", "document"];
 const DISPATCH_DOCUMENT: [&str; 3] = ["warehouse", "dispatch", "document"];
 const UOM: [&str; 1] = ["uom"];
 const GOODS: [&str; 1] = ["goods"];
@@ -110,18 +111,30 @@ pub(crate) fn receive_csv_to_json(
       RECEIVE_DOCUMENT.to_vec()
     } else if ctx.get(1) == Some(&"inventory") {
       INVENTORY_DOCUMENT.to_vec()
+    } else if ctx.get(1) == Some(&"transfer") {
+      TRANSFER_DOCUMENT.to_vec()
     } else {
       DISPATCH_DOCUMENT.to_vec()
     };
 
-    let document = json(app, object! {number: number, date: date.clone()}, doc_ctx, &|| {
-      object! {
-          date: date.clone(),
-          counterparty: counterparty["_id"].clone(),
-          storage: storage["_id"].clone(),
-          number: number,
-      }
-    })?;
+    let document =
+      json(app, object! {number: number, date: date.clone()}, doc_ctx.clone(), &|| {
+        if &doc_ctx == &TRANSFER_DOCUMENT.to_vec() {
+          object! {
+            date: date.clone(),
+            from: counterparty["_id"].clone(),
+            into: storage["_id"].clone(),
+            number: number,
+          }
+        } else {
+          object! {
+            date: date.clone(),
+            counterparty: counterparty["_id"].clone(),
+            storage: storage["_id"].clone(),
+            number: number,
+          }
+        }
+      })?;
 
     let unit = &record[3];
     let uom = json(app, object! {name: unit}, UOM.to_vec(), &|| object! { name: unit })?;

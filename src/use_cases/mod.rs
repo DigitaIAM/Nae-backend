@@ -5,13 +5,14 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use crate::animo::db::AnimoDB;
 
+pub(crate) mod csv;
 pub(crate) mod uc_001;
 pub(crate) mod uc_002;
 pub(crate) mod uc_003;
 pub mod uc_005;
 pub mod uc_006;
 pub mod uc_007;
-pub(crate) mod csv;
+pub mod uc_008;
 // pub(crate) mod uc_004;
 
 const MAX_WRITES: usize = 17;
