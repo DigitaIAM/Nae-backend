@@ -33,12 +33,12 @@ pub struct Events {
   app: Application,
   path: Arc<String>,
 
-  orgs: Workspaces,
+  ws: Workspaces,
 }
 
 impl Events {
-  pub(crate) fn new(app: Application, path: &str, orgs: Workspaces) -> Arc<dyn Service> {
-    Arc::new(Events { app, path: Arc::new(path.to_string()), orgs })
+  pub(crate) fn new(app: Application, path: &str, ws: Workspaces) -> Arc<dyn Service> {
+    Arc::new(Events { app, path: Arc::new(path.to_string()), ws })
   }
 }
 
@@ -58,7 +58,7 @@ impl Service for Events {
 
     let mut list: Vec<SEvent> = vec![];
 
-    let cams = self.orgs.get(&oid).cameras();
+    let cams = self.ws.get(&oid).cameras();
     for cam in cams {
       let events = cam.events_month(date);
       list.extend(events);
@@ -83,7 +83,7 @@ impl Service for Events {
 
     let ts = string_to_time(id.clone())?;
 
-    self.orgs.get(&oid).camera(&cid).event(&id, &ts).load()
+    self.ws.get(&oid).camera(&cid).event(&id, &ts).load()
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
@@ -106,7 +106,7 @@ impl Service for Events {
     let mut obj = data.clone();
     obj["_id"] = JsonValue::String(id.clone());
 
-    self.orgs.get(&oid).camera(&cid).event(&id, &time).create()?.save(obj.dump())?;
+    self.ws.get(&oid).camera(&cid).event(&id, &time).create()?.save(obj.dump())?;
 
     Ok(obj)
   }

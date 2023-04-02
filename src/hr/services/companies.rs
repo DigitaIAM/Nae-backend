@@ -28,12 +28,12 @@ pub(crate) struct Companies {
   app: Application,
   name: String,
 
-  orgs: Workspaces,
+  ws: Workspaces,
 }
 
 impl Companies {
-  pub(crate) fn new(app: Application, orgs: Workspaces) -> Arc<dyn Service> {
-    Arc::new(Companies { app, name: "companies".to_string(), orgs })
+  pub(crate) fn new(app: Application, ws: Workspaces) -> Arc<dyn Service> {
+    Arc::new(Companies { app, name: "companies".to_string(), ws })
   }
 }
 
@@ -46,7 +46,7 @@ impl Service for Companies {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let list = self.orgs.list()?;
+    let list = self.ws.list()?;
     let total = list.len();
 
     let list = list.into_iter().skip(skip).take(total).map(|o| o.json()).collect();
@@ -60,7 +60,7 @@ impl Service for Companies {
 
   fn get(&self, id: String, params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
-    self.orgs.get(&id).load()
+    self.ws.get(&id).load()
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
@@ -72,7 +72,7 @@ impl Service for Companies {
       let mut obj = data.clone();
       obj["_id"] = JsonValue::String(id.to_base64());
 
-      self.orgs.create(id)?.save(obj.dump())?;
+      self.ws.create(id)?.save(obj.dump())?;
 
       Ok(obj)
     }
@@ -87,7 +87,7 @@ impl Service for Companies {
       let mut obj = data.clone();
       obj["_id"] = id.to_base64().into();
 
-      self.orgs.get(&id).save(obj.dump())?;
+      self.ws.get(&id).save(obj.dump())?;
 
       Ok(obj)
     }
@@ -99,7 +99,7 @@ impl Service for Companies {
     } else {
       let id = crate::services::string_to_id(id)?;
 
-      let storage = self.orgs.get(&id);
+      let storage = self.ws.get(&id);
 
       let mut obj = storage.load()?;
       for (n, v) in data.entries() {
@@ -117,6 +117,6 @@ impl Service for Companies {
   fn remove(&self, id: String, params: Params) -> crate::services::Result {
     let id = ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))?;
 
-    self.orgs.get(&id).delete()
+    self.ws.get(&id).delete()
   }
 }

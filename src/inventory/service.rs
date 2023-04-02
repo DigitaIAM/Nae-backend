@@ -1,25 +1,11 @@
-use crate::animo::error::DBError;
-use crate::services::{string_to_id, Data, Params};
-use crate::ws::error_general;
-use crate::{
-  animo::memory::{ChangeTransformation, Memory, Transformation, TransformationKey, Value, ID},
-  auth,
-  commutator::Application,
-  storage::Workspaces,
-};
+use crate::commutator::Application;
+use crate::services::{Data, Params};
 use chrono::{DateTime, Utc};
-use json::object::Object;
-use json::JsonValue;
 use service::error::Error;
 use service::utils::json::JsonParams;
-use service::utils::time::string_to_time;
-use service::{Service, Services};
-use std::sync::{Arc, RwLock};
-use store::elements::Batch;
-use store::{
-  elements::{Report, ToJson},
-  error::WHError,
-};
+use service::Service;
+use std::sync::Arc;
+use store::elements::{Batch, ToJson};
 
 pub struct Inventory {
   app: Application,
@@ -119,23 +105,23 @@ impl Service for Inventory {
     }
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

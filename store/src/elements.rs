@@ -1564,7 +1564,7 @@ impl ToJson for Report {
 }
 
 fn time_to_naive_string(time: DateTime<Utc>) -> String {
-  let mut res = time.clone().to_string();
+  let mut res = time.to_string();
   res.split_off(10);
   res
 }

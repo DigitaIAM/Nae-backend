@@ -1,19 +1,10 @@
-use std::io::{Read, Write};
-use std::path::Path;
+use std::io::Write;
 
-use crate::animo::error::DBError;
-use crate::{animo::db::AnimoDB, commutator::Application, animo::memory::ID};
-use actix_files::Files;
+use crate::{animo::memory::ID, commutator::Application};
 use actix_multipart::Multipart;
-use actix_web::http::header::{ContentDisposition, ContentType};
-use actix_web::{
-  get, middleware, post, put, web, App, Error, HttpRequest, HttpResponse, HttpServer,
-};
+use actix_web::{get, post, web, Error, HttpRequest, HttpResponse};
 use futures::TryStreamExt;
-use json::JsonValue;
-use mime::Mime;
 use qstring::QString;
-use uuid::Uuid;
 
 #[get("/picture")]
 pub(crate) async fn get_file(
@@ -57,16 +48,16 @@ pub(crate) async fn post_file(
     Err(e) => return Ok(HttpResponse::from_error(e)),
   };
 
-  let mut action = JsonValue::Null;
+  // let action = JsonValue::Null;
 
   // iterate over multipart stream
   while let Some(mut field) = payload.try_next().await? {
     // A multipart/form-data stream has to contain `content_disposition`
-    let content_disposition = field.content_disposition();
+    // let content_disposition = field.content_disposition();
 
-    let filename = content_disposition
-      .get_filename()
-      .map_or_else(|| Uuid::new_v4().to_string(), sanitize_filename::sanitize);
+    // let filename = content_disposition
+    //   .get_filename()
+    //   .map_or_else(|| Uuid::new_v4().to_string(), sanitize_filename::sanitize);
 
     let path = app.storage.as_ref().unwrap().get(&oid).person(&pid).picture().path();
 
@@ -76,7 +67,7 @@ pub(crate) async fn post_file(
     };
 
     match std::fs::create_dir_all(folder) {
-      Err(e) => return Ok(HttpResponse::InternalServerError().finish()),
+      Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
       Ok(_) => {},
     }
 

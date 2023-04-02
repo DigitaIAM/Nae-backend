@@ -1,11 +1,14 @@
-use crate::animo::error::DBError;
 use crate::services::{string_to_id, Data, Mutation, Params};
-use service::{Service, Services};
-use service::error::Error;
 use crate::ws::error_general;
-use crate::{auth, commutator::Application, animo::memory::{Memory, Transformation, TransformationKey, Value, ID}};
+use crate::{
+  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth,
+  commutator::Application,
+};
 use json::object::Object;
 use json::JsonValue;
+use service::error::Error;
+use service::{Service, Services};
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::{Arc, RwLock};

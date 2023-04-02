@@ -1,22 +1,13 @@
-use actix_web::error::ParseError::Status;
-use dbase::FieldConversionError;
-use json::object::Object;
 use json::JsonValue;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::Infallible;
+use std::collections::BTreeMap;
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::SystemTime;
-use tantivy::HasLen;
-use uuid::Uuid;
 
-use crate::animo::error::DBError;
 use crate::services::{Data, Params};
-use service::{Service, Services};
-use service::error::Error;
 use crate::ws::error_general;
-use crate::{auth, commutator::Application, animo::memory::Memory, animo::memory::Transformation, animo::memory::TransformationKey, animo::memory::Value, animo::memory::ID};
+use crate::{animo::memory::ID, commutator::Application};
+use service::error::Error;
+use service::Service;
 
 pub struct InFiles {
   app: Application,

@@ -38,12 +38,12 @@ pub struct MemoriesInFiles {
   app: Application,
   name: Arc<String>,
 
-  orgs: Workspaces,
+  ws: Workspaces,
 }
 
 impl MemoriesInFiles {
-  pub fn new(app: Application, name: &str, orgs: Workspaces) -> Arc<dyn Service> {
-    Arc::new(MemoriesInFiles { app, name: Arc::new(name.to_string()), orgs })
+  pub fn new(app: Application, name: &str, ws: Workspaces) -> Arc<dyn Service> {
+    Arc::new(MemoriesInFiles { app, name: Arc::new(name.to_string()), ws })
   }
 }
 
@@ -80,7 +80,7 @@ impl Service for MemoriesInFiles {
         .get_balance_for_all(Utc::now())
         .map_err(|e| Error::GeneralError(e.message()))?;
 
-      let org = self.orgs.get(&oid);
+      let org = self.ws.get(&oid);
 
       let mut list = vec![];
       for (store, sb) in balances {
@@ -122,7 +122,7 @@ impl Service for MemoriesInFiles {
       });
     }
 
-    let memories = self.orgs.get(&oid).memories(ctx.clone());
+    let memories = self.ws.get(&oid).memories(ctx.clone());
     let list = memories.list(Some(reverse))?;
 
     let search = &self.params(&params)["search"];
@@ -191,7 +191,7 @@ impl Service for MemoriesInFiles {
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
       let produced = self
-        .orgs
+        .ws
         .get(&oid)
         .memories(vec!["production".into(), "produce".into()])
         .list(None)?;
@@ -258,7 +258,7 @@ impl Service for MemoriesInFiles {
       return Err(Error::GeneralError(format!("id `{id}` not valid")));
     }
 
-    if let Some(memories) = self.orgs.get(&oid).memories(ctx).get(&id) {
+    if let Some(memories) = self.ws.get(&oid).memories(ctx).get(&id) {
       memories.json()
     } else {
       Err(Error::GeneralError(format!("id `{id}` not found")))
@@ -269,7 +269,7 @@ impl Service for MemoriesInFiles {
     let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
-    let memories = self.orgs.get(&oid).memories(ctx);
+    let memories = self.ws.get(&oid).memories(ctx);
 
     memories.create(&self.app, data)
   }
@@ -285,7 +285,7 @@ impl Service for MemoriesInFiles {
         return Err(Error::GeneralError(format!("id `{id}` not valid")));
       }
 
-      let memories = self.orgs.get(&oid).memories(ctx);
+      let memories = self.ws.get(&oid).memories(ctx);
 
       memories.update(&self.app, id, data)
     }
@@ -299,7 +299,7 @@ impl Service for MemoriesInFiles {
       return Err(Error::GeneralError(format!("id `{id}` not valid")));
     }
 
-    let memories = self.orgs.get(&oid).memories(ctx);
+    let memories = self.ws.get(&oid).memories(ctx);
 
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))

@@ -28,12 +28,12 @@ pub(crate) struct Shifts {
   app: Application,
   name: String,
 
-  orgs: Workspaces,
+  ws: Workspaces,
 }
 
 impl Shifts {
-  pub(crate) fn new(app: Application, orgs: Workspaces) -> Arc<dyn Service> {
-    Arc::new(Shifts { app, name: "shifts".to_string(), orgs })
+  pub(crate) fn new(app: Application, ws: Workspaces) -> Arc<dyn Service> {
+    Arc::new(Shifts { app, name: "shifts".to_string(), ws })
   }
 }
 
@@ -48,7 +48,7 @@ impl Service for Shifts {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let list = self.orgs.get(&oid).shifts(); //.list(skip, limit)?;
+    let list = self.ws.get(&oid).shifts(); //.list(skip, limit)?;
     let total = list.len();
 
     let list = list.into_iter().skip(skip).take(limit).map(|o| o.json()).collect();
@@ -64,7 +64,7 @@ impl Service for Shifts {
     let oid = crate::services::oid(&params)?;
 
     let id = crate::services::string_to_id(id)?;
-    self.orgs.get(&oid).shift(id).load()
+    self.ws.get(&oid).shift(id).load()
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
@@ -77,7 +77,7 @@ impl Service for Shifts {
       let mut obj = data.clone();
       obj["_id"] = JsonValue::String(id.to_base64());
 
-      self.orgs.get(&oid).shift(id).save(obj.dump())?;
+      self.ws.get(&oid).shift(id).save(obj.dump())?;
 
       Ok(obj)
     }
@@ -93,7 +93,7 @@ impl Service for Shifts {
       let mut obj = data.clone();
       obj["_id"] = id.to_base64().into();
 
-      self.orgs.get(&oid).shift(id).save(obj.dump())?;
+      self.ws.get(&oid).shift(id).save(obj.dump())?;
 
       Ok(obj)
     }
@@ -106,7 +106,7 @@ impl Service for Shifts {
     } else {
       let id = crate::services::string_to_id(id)?;
 
-      let storage = self.orgs.get(&oid).shift(id);
+      let storage = self.ws.get(&oid).shift(id);
 
       let mut obj = storage.load()?;
       for (n, v) in data.entries() {
@@ -125,6 +125,6 @@ impl Service for Shifts {
     let oid = crate::services::oid(&params)?;
     let id = string_to_id(id)?;
 
-    self.orgs.get(&oid).shift(id).delete()
+    self.ws.get(&oid).shift(id).delete()
   }
 }

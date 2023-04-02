@@ -1,17 +1,14 @@
 use bytecheck::CheckBytes;
 use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
 
-use base64::{DecodeError, Engine};
+use base64::Engine;
 use std::array::TryFromSliceError;
-use std::cmp::Ordering;
 use std::fmt::Formatter;
-use std::ops::{Add, Sub};
 use std::path::PathBuf;
 
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::animo::error::DBError;
 use crate::animo::Time;
-use crate::settings::Settings;
 use crate::warehouse::primitives::Decimal;
 use blake2::{Blake2s256, Digest};
 use json::JsonValue;

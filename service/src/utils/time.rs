@@ -1,7 +1,7 @@
-use chrono::{DateTime, Duration, SecondsFormat, Utc, NaiveDateTime, Datelike};
+use crate::error::Error;
+use chrono::{DateTime, Datelike, Duration, NaiveDateTime, SecondsFormat, Utc};
 use std::mem;
 use std::time::SystemTime;
-use crate::error::Error;
 
 pub struct DateRange(pub DateTime<Utc>, pub DateTime<Utc>);
 
@@ -34,13 +34,12 @@ pub fn timestamp_to_time(ts: u64) -> Result<DateTime<Utc>, Error> {
   } else {
     Err(Error::GeneralError("Incorrect timestamp".to_string()))
   }
-  
 }
 
 pub fn string_to_time<S: AsRef<str>>(data: S) -> Result<DateTime<Utc>, Error> {
   DateTime::parse_from_rfc3339(data.as_ref())
     .map(|ts| ts.into())
-    .map_err(|e| Error::GeneralError(format!("incorrect data-time {}", data.as_ref())))
+    .map_err(|_| Error::GeneralError(format!("incorrect data-time {}", data.as_ref())))
 }
 
 pub fn time_to_string(time: DateTime<Utc>) -> String {

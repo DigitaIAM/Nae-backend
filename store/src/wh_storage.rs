@@ -1,5 +1,4 @@
 use super::{
-  check_batch_store_date::CheckBatchStoreDate,
   check_date_store_batch::CheckDateStoreBatch,
   date_type_store_batch_id::DateTypeStoreBatchId,
   db::Db,
@@ -7,7 +6,6 @@ use super::{
   error::WHError,
   store_date_type_batch_id::StoreDateTypeBatchId,
 };
-use chrono::DateTime;
 use rocksdb::{ColumnFamilyDescriptor, Options, DB};
 use std::{path::Path, sync::Arc};
 

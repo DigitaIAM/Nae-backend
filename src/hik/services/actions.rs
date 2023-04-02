@@ -37,14 +37,14 @@ pub struct Actions {
   app: Application,
   path: Arc<String>,
 
-  orgs: Workspaces,
+  ws: Workspaces,
 
   actor: Addr<HttpClient>,
   tasks: Arc<RwLock<BTreeMap<ID, CommandMeta>>>,
 }
 
 impl Actions {
-  pub(crate) fn new(app: Application, path: &str, orgs: Workspaces) -> Arc<dyn Service> {
+  pub(crate) fn new(app: Application, path: &str, ws: Workspaces) -> Arc<dyn Service> {
     // let mut commands = BTreeMap::new();
     // commands.insert("list_devices", ListDevicesCommand {});
 
@@ -53,7 +53,7 @@ impl Actions {
 
     let actor = HttpClient::new(app.clone()).start();
 
-    Arc::new(Actions { app, path: Arc::new(path.to_string()), orgs, actor, tasks })
+    Arc::new(Actions { app, path: Arc::new(path.to_string()), ws, actor, tasks })
   }
 
   fn cleanup(&self) {
@@ -187,7 +187,7 @@ impl Service for Actions {
         let dev_index = camera.dev_index.clone();
         let name = person["name"].string();
 
-        let picture_path = self.orgs.get(&oid).person(&pid).picture().path();
+        let picture_path = self.ws.get(&oid).person(&pid).picture().path();
 
         let mgmt = DeviceMgmt::new(&camera);
         let request = mgmt

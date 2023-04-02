@@ -2,14 +2,11 @@ use std::sync::Arc;
 
 use super::{
   balance::BalanceForGoods,
-  elements::{dt, first_day_next_month, Balance, CheckpointTopology, Op,
-   OpMutation, Store, Goods, Batch, UUID_NIL},
-  db::Db,
+  elements::{dt, Balance, Batch, CheckpointTopology, Goods, Op, Store, UUID_NIL},
   error::WHError,
 };
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, DB};
-use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -44,7 +41,7 @@ impl CheckpointTopology for CheckBatchStoreDate {
       .collect()
   }
 
-  fn key_checkpoint(&self, balance: &Balance, date_of_checkpoint: DateTime<Utc>) -> Vec<u8> {
+  fn key_checkpoint(&self, _balance: &Balance, _date_of_checkpoint: DateTime<Utc>) -> Vec<u8> {
     todo!()
   }
 
@@ -69,8 +66,8 @@ impl CheckpointTopology for CheckBatchStoreDate {
 
   fn get_checkpoints_before_date(
     &self,
-    store: Store,
-    date: DateTime<Utc>,
+    _store: Store,
+    _date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError> {
     Err(WHError::new("Not supported"))
   }
@@ -109,19 +106,40 @@ impl CheckpointTopology for CheckBatchStoreDate {
     )?)
   }
 
-  fn get_checkpoints_for_one_goods(&self, store: Store, goods: Goods, date: DateTime<Utc>) -> Result<Vec<Balance>, WHError> {
+  fn get_checkpoints_for_one_goods(
+    &self,
+    _store: Store,
+    _goods: Goods,
+    _date: DateTime<Utc>,
+  ) -> Result<Vec<Balance>, WHError> {
     unimplemented!()
   }
 
-  fn get_checkpoints_for_many_goods(&self, date: DateTime<Utc>, goods: &Vec<Goods>) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
+  fn get_checkpoints_for_many_goods(
+    &self,
+    _date: DateTime<Utc>,
+    _goods: &Vec<Goods>,
+  ) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
     unimplemented!()
   }
 
-  fn get_checkpoints_for_all(&self, date: DateTime<Utc>) -> Result<(DateTime<Utc>, HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>), WHError> {
+  fn get_checkpoints_for_all(
+    &self,
+    _date: DateTime<Utc>,
+  ) -> Result<
+    (DateTime<Utc>, HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>),
+    WHError,
+  > {
     unimplemented!()
   }
 
-  fn get_checkpoint_for_goods_and_batch(&self, store: Store, goods: Goods, batch: &Batch, date: DateTime<Utc>) -> Result<Option<Balance>, WHError> {
+  fn get_checkpoint_for_goods_and_batch(
+    &self,
+    _store: Store,
+    _goods: Goods,
+    _batch: &Batch,
+    _date: DateTime<Utc>,
+  ) -> Result<Option<Balance>, WHError> {
     unimplemented!()
   }
 }

@@ -1,9 +1,7 @@
 use crate::animo::error::DBError;
-use crate::animo::memory::{ChangeTransformation, Context, TransformationKey, Value, ID};
-use service::utils::time::{now_in_millis, now_in_seconds};
-use crate::{animo::db::AnimoDB, commutator::Application, animo::memory::Memory, settings::Settings, animo::shared::DESC};
-use actix_web::dev::{Payload, ServiceRequest};
-use actix_web::{post, web, Error, FromRequest, HttpRequest, HttpResponse, Responder};
+use crate::animo::memory::{ChangeTransformation, TransformationKey, Value, ID};
+use crate::{animo::memory::Memory, animo::shared::DESC, commutator::Application};
+use actix_web::{post, web, Error, HttpResponse};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use chrono::Duration;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
@@ -11,8 +9,7 @@ use pbkdf2::{
   password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
   Pbkdf2,
 };
-use std::time::{SystemTime, UNIX_EPOCH};
-// use validator::{Validate, ValidationError};
+use service::utils::time::now_in_millis;
 
 const ALGORITHM: Algorithm = Algorithm::HS256;
 
@@ -266,8 +263,7 @@ pub(crate) async fn ping_post(
   auth: BearerAuth,
   app: web::Data<Application>,
 ) -> Result<HttpResponse, Error> {
-  let account =
-    Account::jwt(app.get_ref(), auth.token()).map_err(actix_web::error::ErrorUnauthorized)?;
+  let _ = Account::jwt(app.get_ref(), auth.token()).map_err(actix_web::error::ErrorUnauthorized)?;
 
   Ok(HttpResponse::Ok().json("pong"))
 }

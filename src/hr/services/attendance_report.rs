@@ -34,12 +34,12 @@ pub(crate) struct AttendanceReport {
   app: Application,
   name: String,
 
-  orgs: Workspaces,
+  ws: Workspaces,
 }
 
 impl AttendanceReport {
-  pub(crate) fn new(app: Application, orgs: Workspaces) -> Arc<dyn Service> {
-    Arc::new(AttendanceReport { app, name: "attendance-report".to_string(), orgs })
+  pub(crate) fn new(app: Application, ws: Workspaces) -> Arc<dyn Service> {
+    Arc::new(AttendanceReport { app, name: "attendance-report".to_string(), ws })
   }
 
   fn events(&self, camera: SCamera, date: DateTime<Utc>, events: &mut Vec<(String, JsonValue)>) {
@@ -109,7 +109,7 @@ impl Service for AttendanceReport {
 
     let oid = crate::services::oid(&params)?;
 
-    let people = self.orgs.get(&oid).people();
+    let people = self.ws.get(&oid).people();
 
     let people: Vec<(ID, JsonValue)> = {
       let mut it = people.iter().map(|p| (p.id, p.load().unwrap())).filter(|(_, p)| p.is_object());
@@ -168,7 +168,7 @@ impl Service for AttendanceReport {
 
     let mut events: Vec<(String, JsonValue)> = Vec::with_capacity(100_000);
 
-    for camera in self.orgs.get(&oid).cameras() {
+    for camera in self.ws.get(&oid).cameras() {
       self.events(camera, date, &mut events);
     }
 
@@ -271,7 +271,7 @@ impl Service for AttendanceReport {
     for (pid, state) in statuses.into_iter() {
       let intervals = state.intervals.into_iter().map(|o| o.to_json()).collect::<Vec<_>>();
 
-      let person = self.orgs.get(&oid).person(&pid).load()?;
+      let person = self.ws.get(&oid).person(&pid).load()?;
 
       let id = format!("{}_{}_{}", oid.to_base64(), pid.to_base64(), date.to_string());
 

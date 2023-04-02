@@ -1,14 +1,14 @@
-use std::{str::FromStr, sync::Arc};
-
 use super::{
   balance::BalanceForGoods,
   db::Db,
   elements::{
-    first_day_current_month, new_get_aggregations, Balance, InternalOperation, KeyValueStore, Op,
-    OpMutation, OrderedTopology, Report, Store,
+    first_day_current_month, new_get_aggregations, Balance, InternalOperation, Op, OpMutation,
+    OrderedTopology, Report, Store,
   },
   error::WHError,
 };
+
+use crate::elements::get_aggregations_for_one_goods;
 use crate::elements::Goods;
 use crate::elements::{Batch, UUID_MAX, UUID_NIL};
 use chrono::{DateTime, Utc};
@@ -16,9 +16,7 @@ use json::{array, JsonValue};
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 use rust_decimal::Decimal;
 use std::collections::hash_map::RandomState;
-use uuid::Uuid;
-use std::collections::HashMap;
-use crate::elements::get_aggregations_for_one_goods;
+use std::sync::Arc;
 
 const CF_NAME: &str = "cf_store_date_type_batch_id";
 
@@ -273,34 +271,34 @@ impl OrderedTopology for StoreDateTypeBatchId {
     goods: Goods,
     batch: &Batch,
     from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>
+    till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     let ts_batch = u64::try_from(batch.date.timestamp()).unwrap_or_default();
     let ts_from = u64::try_from(from_date.timestamp()).unwrap_or_default();
     let from: Vec<u8> = store
-        .as_bytes()
-        .iter()
-        .chain(ts_from.to_be_bytes().iter())
-        .chain(0_u8.to_be_bytes().iter())
-        // .chain(goods.as_bytes().iter())
-        .chain(UUID_NIL.as_bytes().iter())
-        .chain(u64::MIN.to_be_bytes().iter())
-        .chain(UUID_NIL.as_bytes().iter())
-        .map(|b| *b)
-        .collect();
+      .as_bytes()
+      .iter()
+      .chain(ts_from.to_be_bytes().iter())
+      .chain(0_u8.to_be_bytes().iter())
+      // .chain(goods.as_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(u64::MIN.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
 
     let ts_till = u64::try_from(till_date.timestamp()).unwrap_or_default();
     let till: Vec<u8> = store
-        .as_bytes()
-        .iter()
-        .chain(ts_till.to_be_bytes().iter())
-        .chain(u8::MAX.to_be_bytes().iter())
-        // .chain(goods.as_bytes().iter())
-        .chain(UUID_MAX.as_bytes().iter())
-        .chain(u64::MAX.to_be_bytes().iter())
-        .chain(UUID_MAX.as_bytes().iter())
-        .map(|b| *b)
-        .collect();
+      .as_bytes()
+      .iter()
+      .chain(ts_till.to_be_bytes().iter())
+      .chain(u8::MAX.to_be_bytes().iter())
+      // .chain(goods.as_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(u64::MAX.to_be_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
 
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
@@ -315,8 +313,9 @@ impl OrderedTopology for StoreDateTypeBatchId {
       let (k, value) = item?;
 
       if k[25..41] != expected_goods
-          || k[41..49] != expected_batch_date
-          || k[49..65] != expected_batch_id {
+        || k[41..49] != expected_batch_date
+        || k[49..65] != expected_batch_id
+      {
         continue;
       }
 
@@ -328,33 +327,44 @@ impl OrderedTopology for StoreDateTypeBatchId {
     Ok(res)
   }
 
-  fn get_ops_for_many_goods(&self, goods: &Vec<Goods>, from_date: DateTime<Utc>, till_date: DateTime<Utc>) -> Result<Vec<Op>, WHError> {
+  fn get_ops_for_many_goods(
+    &self,
+    goods: &Vec<Goods>,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
     // let goods: Vec<[u8; 16]> = goods.into_iter().as_slice().iter().map(|b| *b).collect();
 
     let mut byte_goods: Vec<Vec<u8>> = Vec::new();
-    goods.iter().map(|g: &Goods| byte_goods.push(g.as_bytes().iter().map(|b| *b).collect()));
+    goods
+      .iter()
+      .map(|g: &Goods| byte_goods.push(g.as_bytes().iter().map(|b| *b).collect()));
 
     let ts_from = u64::try_from(from_date.timestamp()).unwrap_or_default();
-    let from: Vec<u8> = UUID_NIL.as_bytes().iter() // store
-        .chain(ts_from.to_be_bytes().iter())
-        .chain(0_u8.to_be_bytes().iter())
-        .chain(UUID_NIL.as_bytes().iter())// goods
-        .chain(UUID_NIL.as_bytes().iter())
-        .chain(u64::MIN.to_be_bytes().iter())
-        .chain(UUID_NIL.as_bytes().iter())
-        .map(|b| *b)
-        .collect();
+    let from: Vec<u8> = UUID_NIL
+      .as_bytes()
+      .iter() // store
+      .chain(ts_from.to_be_bytes().iter())
+      .chain(0_u8.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter()) // goods
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(u64::MIN.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
 
     let ts_till = u64::try_from(till_date.timestamp()).unwrap_or_default();
-    let till: Vec<u8> = UUID_MAX.as_bytes().iter() // store
-        .chain(ts_till.to_be_bytes().iter())
-        .chain(u8::MAX.to_be_bytes().iter())
-        .chain(UUID_MAX.as_bytes().iter()) // goods
-        .chain(UUID_MAX.as_bytes().iter())
-        .chain(u64::MAX.to_be_bytes().iter())
-        .chain(UUID_MAX.as_bytes().iter())
-        .map(|b| *b)
-        .collect();
+    let till: Vec<u8> = UUID_MAX
+      .as_bytes()
+      .iter() // store
+      .chain(ts_till.to_be_bytes().iter())
+      .chain(u8::MAX.to_be_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter()) // goods
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(u64::MAX.to_be_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
 
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
@@ -368,7 +378,6 @@ impl OrderedTopology for StoreDateTypeBatchId {
         let (op, b) = self.from_bytes(&value)?;
         res.push(op);
       }
-
     }
 
     Ok(res)
@@ -383,14 +392,19 @@ impl OrderedTopology for StoreDateTypeBatchId {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<JsonValue, WHError> {
-
     let mut balances = Vec::new();
 
     if let Some(balance) = db.get_checkpoint_for_goods_and_batch(storage, goods, batch, from_date)? {
       balances.push(balance);
     }
 
-    let ops = self.get_ops_for_one_goods_and_batch(storage, goods, batch, first_day_current_month(from_date), till_date)?;
+    let ops = self.get_ops_for_one_goods_and_batch(
+      storage,
+      goods,
+      batch,
+      first_day_current_month(from_date),
+      till_date,
+    )?;
 
     let items = get_aggregations_for_one_goods(balances, ops, from_date, till_date)?;
 

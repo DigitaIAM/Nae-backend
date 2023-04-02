@@ -33,7 +33,7 @@ pub struct Cameras {
   app: Application,
   path: Arc<String>,
 
-  orgs: Workspaces,
+  ws: Workspaces,
 
   // organization id > camera id
   mapping: Arc<RwLock<BTreeMap<ID, Vec<ID>>>>, // TODO switch to ordered hash set
@@ -41,11 +41,11 @@ pub struct Cameras {
 }
 
 impl Cameras {
-  pub(crate) fn new(app: Application, path: &str, orgs: Workspaces) -> Arc<dyn Service> {
+  pub(crate) fn new(app: Application, path: &str, ws: Workspaces) -> Arc<dyn Service> {
     let mut mapping = BTreeMap::new();
     let mut objs = BTreeMap::new();
 
-    let list = match orgs.list() {
+    let list = match ws.list() {
       Ok(list) => list,
       Err(e) => {
         println!("Error on loading organizations: {e}");
@@ -89,7 +89,7 @@ impl Cameras {
     Arc::new(Cameras {
       app,
       path: Arc::new(path.to_string()),
-      orgs,
+      ws,
       mapping: Arc::new(RwLock::new(mapping)),
       objs: Arc::new(RwLock::new(objs)),
     })
@@ -99,7 +99,7 @@ impl Cameras {
     // let data = config.data().map_err(|e| crate::services::Error::IOError(e.to_string()))?;
     // cam.save(data)?;
 
-    let cam = self.orgs.get(&config.oid).camera(&config.id).create()?;
+    let cam = self.ws.get(&config.oid).camera(&config.id).create()?;
     let data = config.data().map_err(|e| service::error::Error::IOError(e.to_string()))?;
     cam.save(data)?;
     Ok(JsonValue::Null)
@@ -178,7 +178,7 @@ impl Service for Cameras {
 
     let id = ID::random();
 
-    let cam = self.orgs.get(&oid).camera(&id).create()?;
+    let cam = self.ws.get(&oid).camera(&id).create()?;
 
     let config = crate::hik::ConfigCamera {
       id,

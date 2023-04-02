@@ -1,33 +1,26 @@
-use crate::animo::error::DBError;
 use crate::services::{string_to_id, Data, Params};
-use crate::ws::error_general;
-use crate::{
-  animo::memory::ChangeTransformation, animo::memory::Memory, animo::memory::Transformation,
-  animo::memory::TransformationKey, animo::memory::Value, animo::memory::ID, auth,
-  commutator::Application, storage::Workspaces,
-};
-use json::object::Object;
+use crate::{animo::memory::ID, commutator::Application, storage::Workspaces};
 use json::JsonValue;
 use service::error::Error;
-use service::{Service, Services};
-use std::sync::{Arc, RwLock};
+use service::Service;
+use std::sync::Arc;
 
 lazy_static::lazy_static! {
     pub(crate) static ref PEOPLE: ID = ID::for_constant("people");
 }
 
-const PROPERTIES: [&str; 4] = ["organization", "first_name", "last_name", "email"];
+// const PROPERTIES: [&str; 4] = ["organization", "first_name", "last_name", "email"];
 
 pub(crate) struct People {
   app: Application,
   path: Arc<String>,
 
-  orgs: Workspaces,
+  ws: Workspaces,
 }
 
 impl People {
-  pub(crate) fn new(app: Application, orgs: Workspaces) -> Arc<dyn Service> {
-    Arc::new(People { app, path: Arc::new("people".to_string()), orgs })
+  pub(crate) fn new(app: Application, ws: Workspaces) -> Arc<dyn Service> {
+    Arc::new(People { app, path: Arc::new("people".to_string()), ws })
   }
 }
 
@@ -42,7 +35,7 @@ impl Service for People {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let list = self.orgs.get(&oid).people();
+    let list = self.ws.get(&oid).people();
 
     let (total, list) = if let Some(search) = params[0]["$search"].as_str() {
       let search = search.to_lowercase();
@@ -67,7 +60,7 @@ impl Service for People {
     let oid = crate::services::oid(&params)?;
 
     let id = crate::services::string_to_id(id)?;
-    self.orgs.get(&oid).person(&id).load()
+    self.ws.get(&oid).person(&id).load()
   }
 
   fn create(&self, data: Data, params: Params) -> crate::services::Result {
@@ -80,7 +73,7 @@ impl Service for People {
       let mut obj = data.clone();
       obj["_id"] = JsonValue::String(id.to_base64());
 
-      self.orgs.get(&oid).person(&id).save(obj.dump())?;
+      self.ws.get(&oid).person(&id).save(obj.dump())?;
 
       Ok(obj)
     }
@@ -96,7 +89,7 @@ impl Service for People {
       let mut obj = data.clone();
       obj["_id"] = id.to_base64().into();
 
-      self.orgs.get(&oid).person(&id).save(obj.dump())?;
+      self.ws.get(&oid).person(&id).save(obj.dump())?;
 
       Ok(obj)
     }
@@ -109,7 +102,7 @@ impl Service for People {
     } else {
       let id = crate::services::string_to_id(id)?;
 
-      let storage = self.orgs.get(&oid).person(&id);
+      let storage = self.ws.get(&oid).person(&id);
 
       let mut obj = storage.load()?;
       for (n, v) in data.entries() {
@@ -128,6 +121,6 @@ impl Service for People {
     let oid = crate::services::oid(&params)?;
     let id = string_to_id(id)?;
 
-    self.orgs.get(&oid).shift(id).delete()
+    self.ws.get(&oid).shift(id).delete()
   }
 }

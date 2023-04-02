@@ -1,9 +1,9 @@
+use crate::commutator::Application;
 use crate::services::{Data, Params};
-use service::{Service, Services};
-use service::error::Error;
-use crate::{commutator::Application, animo::memory::ID};
 use json::JsonValue;
-use std::sync::{Arc, RwLock};
+use service::error::Error;
+use service::{Service, Services};
+use std::sync::Arc;
 
 pub(crate) struct Authentication {
   app: Application,
@@ -21,11 +21,11 @@ impl Service for Authentication {
     &self.path
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
@@ -69,15 +69,15 @@ impl Service for Authentication {
     }
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }
