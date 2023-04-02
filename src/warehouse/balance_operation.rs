@@ -7,7 +7,7 @@ use crate::animo::memory::ID;
 use crate::animo::shared::*;
 use crate::animo::Operation;
 use crate::warehouse::balance::WHBalance;
-use crate::warehouse::primitives::{Money, MoneyOp, MoneyOps, Qty};
+use crate::warehouse::primitives::{Money, MoneyOp, Qty};
 
 // #[derive(Debug, Clone, Serialize, Deserialize)]
 #[derive(Clone, Archive, Deserialize, Serialize, Debug, PartialEq)]
@@ -50,7 +50,7 @@ impl ToBytes for BalanceOperation {
 }
 
 impl FromBytes<BalanceOperation> for BalanceOperation {
-  fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+  fn from_bytes(_bs: &[u8]) -> Result<Self, DBError> {
     todo!()
     // match rkyv::check_archived_root::<Self>(bs) {
     //     Ok(archived) => {

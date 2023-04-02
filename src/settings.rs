@@ -1,4 +1,4 @@
-use config::{Config, ConfigError, Environment, File};
+use config::{Config, ConfigError, File};
 use serde::Deserialize;
 use std::env;
 use std::path::PathBuf;

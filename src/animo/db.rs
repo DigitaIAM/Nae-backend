@@ -4,7 +4,6 @@ use crate::animo::{OpsManager, Txn};
 use crate::text_search::TextSearch;
 use crate::{
   animo::{Animo, Memory, Topology},
-  settings::Settings,
   warehouse::store_aggregation_topology::WHStoreAggregationTopology,
   warehouse::store_topology::WHStoreTopology,
 };
@@ -13,7 +12,7 @@ use rocksdb::{
   BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch,
   DB,
 };
-use std::mem;
+
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -182,7 +181,7 @@ impl Memory for AnimoDB {
 
     // TODO require snapshot with modification
     let s = self.snapshot();
-    let mut tx = Txn::new_with(&s, &mutations);
+    let tx = Txn::new_with(&s, &mutations);
 
     self.text_search.modification(&s, tx, &mutations)?;
 

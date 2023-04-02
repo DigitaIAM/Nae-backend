@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
+
+
 use dbase::{FieldValue, Record};
-use crate::*;
+
 use crate::animo::TimeInterval;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::animo::{db::AnimoDB, Time, memory::{Context, Value, ID, create}, shared::{DESC, SPECIFIC_OF, GOODS_RECEIVE, DATE, STORE, GOODS, QTY, COST, GOODS_ISSUE, CUSTOMER}};
@@ -159,7 +159,7 @@ pub(crate) fn import(db: &AnimoDB) {
 
         if head_added.insert(doc_id.clone()) {
             if let Some((store_id, supplier_id)) = head.get(&doc_id) {
-                let context = Context(vec![doc_id.clone().into()]);
+                let _context = Context(vec![doc_id.clone().into()]);
                 changes.extend(create(*DESC, doc_id.clone().into(), vec![
                     (*SPECIFIC_OF, Value::ID(*GOODS_RECEIVE)),
                     (*DATE, Value::DateTime(date.clone())),
@@ -176,7 +176,7 @@ pub(crate) fn import(db: &AnimoDB) {
         }
 
         if head_added.contains(&doc_id) {
-            let context = Context(vec![doc_id.clone().into(), ]);
+            let _context = Context(vec![doc_id.clone().into(), ]);
             changes.extend(create(*DESC, doc_id.clone().into(), vec![
               (line_id.clone().into(), vec![
                 (*GOODS, ID::from(goods_id.as_str()).into()),

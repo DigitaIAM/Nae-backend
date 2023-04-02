@@ -1,29 +1,28 @@
-use actix_web::error::ParseError::Status;
-use dbase::FieldConversionError;
-use json::object::Object;
-use json::JsonValue;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::Infallible;
-use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
-use std::time::SystemTime;
-use tantivy::HasLen;
-use uuid::Uuid;
 
-use crate::animo::error::DBError;
+
+
+use json::JsonValue;
+
+
+
+
+use std::sync::{Arc};
+
+use tantivy::HasLen;
+
+
+
 use crate::services::JsonData;
 use crate::services::{Data, Params};
-use crate::warehouse::turnover::Organization;
-use crate::ws::error_general;
+
+
 use crate::{
-  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
-  auth,
+  animo::memory::{ID},
   commutator::Application,
   storage::Workspaces,
 };
 use service::error::Error;
-use service::{Service, Services};
+use service::{Service};
 pub(crate) struct Departments {
   app: Application,
   name: String,
@@ -67,7 +66,7 @@ impl Service for Departments {
     self.ws.get(&oid).department(id).load()
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&data)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
@@ -83,7 +82,7 @@ impl Service for Departments {
     }
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&data)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))

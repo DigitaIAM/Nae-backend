@@ -1,14 +1,10 @@
-use actix_web::{
-  http::header::ContentType,
-  test::{call_and_read_body, TestRequest},
-  web,
-};
+
 use csv::{ReaderBuilder, Trim};
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
-use std::future::Future;
-use std::io;
-use uuid::Uuid;
+
+
+
 
 use store::elements::ToJson;
 
@@ -79,7 +75,7 @@ pub(crate) fn receive_csv_to_json(
   app: &Application,
   path: &str,
   ctx: Vec<&str>,
-  doc_from: Option<&str>,
+  _doc_from: Option<&str>,
 ) -> Result<(), Error> {
   let mut reader = ReaderBuilder::new().delimiter(b',').trim(Trim::All).from_path(path).unwrap();
 
@@ -161,7 +157,7 @@ pub(crate) fn receive_csv_to_json(
         cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
     };
 
-    let res = memories_create(app, data, ctx.clone())?;
+    let _res = memories_create(app, data, ctx.clone())?;
 
     // println!("data: {res:?}");
   }

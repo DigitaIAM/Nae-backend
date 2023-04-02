@@ -1,31 +1,30 @@
-use actix_web::error::ParseError::Status;
-use dbase::FieldConversionError;
-use json::object::Object;
+
+
+
 use json::JsonValue;
-use serde_json::ser::State;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::Infallible;
+
+use std::collections::{BTreeMap};
+
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
+
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::SystemTime;
 use tantivy::HasLen;
-use uuid::Uuid;
 
-use crate::animo::error::DBError;
+
+
 use crate::hik::camera::States;
-use crate::hik::error::Error;
-use crate::hik::{camera, Camera, ConfigCamera, StatusCamera};
+
+use crate::hik::{ConfigCamera, StatusCamera};
 use crate::services::{string_to_id, Data, Params};
 use crate::storage::{SCamera, Workspaces};
-use crate::warehouse::turnover::Organization;
-use crate::ws::error_general;
+
+
 use crate::{
-  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
-  auth,
+  animo::memory::{ID},
   commutator::Application,
 };
-use service::{Service, Services};
+use service::{Service};
 type ORG = crate::animo::memory::ID;
 type CAM = crate::animo::memory::ID;
 
@@ -146,7 +145,7 @@ impl Service for Cameras {
     })
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
     let objs = self.objs.read().unwrap();
@@ -156,7 +155,7 @@ impl Service for Cameras {
     }
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
     let oid = data["oid"].as_str().unwrap_or("").trim().to_string();
     let oid = string_to_id(oid)?;
 
@@ -169,7 +168,7 @@ impl Service for Cameras {
     let username = data["username"].as_str().unwrap_or("").trim().to_string();
     let password = data["password"].as_str().unwrap_or("").trim().to_string();
 
-    let enabled = data["enabled"].as_bool().unwrap_or(false);
+    let _enabled = data["enabled"].as_bool().unwrap_or(false);
 
     let port = match port.parse::<u16>() {
       Ok(n) => Some(n),
@@ -220,7 +219,7 @@ impl Service for Cameras {
     self.patch(id, data, params)
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
     println!("patch {:?}", data.dump());
@@ -293,7 +292,7 @@ impl Service for Cameras {
     }
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(service::error::Error::NotImplemented)
   }
 }

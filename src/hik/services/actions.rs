@@ -1,32 +1,31 @@
 use actix::{Actor, Addr};
-use actix_web::error::ParseError::Status;
-use chrono::{DateTime, Datelike, ParseResult, SecondsFormat, Utc};
-use dbase::FieldConversionError;
-use json::object::Object;
-use json::JsonValue;
-use reqwest::Client;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::Infallible;
-use std::fmt::{Display, Formatter};
-use std::io::Write;
-use std::path::Component;
-use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
-use std::time::{Duration, SystemTime};
-use tantivy::HasLen;
-use uuid::Uuid;
-use walkdir::WalkDir;
 
-use crate::animo::error::DBError;
-use crate::hik::actions::list_devices::{DeviceMgmt, GetRequest, HttpClient};
+
+
+
+use json::JsonValue;
+
+use std::collections::{BTreeMap};
+
+
+use std::io::Write;
+
+
+
+use std::sync::{Arc, RwLock};
+
+use tantivy::HasLen;
+
+
+
+
+use crate::hik::actions::list_devices::{DeviceMgmt, HttpClient};
 use crate::hik::actions::task::{CommandMeta, Stage};
-use crate::hik::{ConfigCamera, StatusCamera};
+
 use crate::services::{string_to_id, Data, Params};
-use crate::ws::error_general;
+
 use crate::{
-  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
-  auth,
+  animo::memory::{ID},
   commutator::Application,
   storage::Workspaces,
 };
@@ -76,13 +75,13 @@ impl Service for Actions {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let limit = self.limit(&params);
+    let _limit = self.limit(&params);
     let skip = self.skip(&params);
 
     let tasks = self.tasks.read().unwrap();
 
     let total = tasks.len();
-    let list = tasks.iter().skip(skip).take(total).map(|(id, meta)| meta.to_json()).collect();
+    let list = tasks.iter().skip(skip).take(total).map(|(_id, meta)| meta.to_json()).collect();
 
     Ok(json::object! {
       data: JsonValue::Array(list),
@@ -91,7 +90,7 @@ impl Service for Actions {
     })
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, id: String, _params: Params) -> crate::services::Result {
     let id = string_to_id(id)?;
 
     let tasks = self.tasks.read().unwrap();
@@ -101,7 +100,7 @@ impl Service for Actions {
     }
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
     self.cleanup();
 
     let command = data["command"].as_str().unwrap_or("").trim().to_string();
@@ -185,7 +184,7 @@ impl Service for Actions {
           .get(pid.to_base64(), json::object! { "oid": oid.to_base64() })?;
 
         let dev_index = camera.dev_index.clone();
-        let name = person["name"].string();
+        let _name = person["name"].string();
 
         let picture_path = self.ws.get(&oid).person(&pid).picture().path();
 
@@ -209,11 +208,11 @@ impl Service for Actions {
     }
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(service::error::Error::NotImplemented)
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
     if !data.is_object() {
       Err(service::error::Error::GeneralError("only object allowed".into()))
     } else {
@@ -249,7 +248,7 @@ impl Service for Actions {
     }
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(service::error::Error::NotImplemented)
   }
 }

@@ -44,7 +44,7 @@ pub(crate) fn write(
 
   if PARALLEL_PROCESSING {
     let handle = thread::spawn(move || {
-      let now = || -> u128 {
+      let _now = || -> u128 {
         SystemTime::now()
           .duration_since(UNIX_EPOCH)
           .expect("system time is likely incorrect")
@@ -58,7 +58,7 @@ pub(crate) fn write(
     BACKGROUND_TASKS.lock().unwrap().push(handle);
     wait_till(MAX_WRITES);
   } else {
-    let now = || -> u128 {
+    let _now = || -> u128 {
       SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time is likely incorrect")

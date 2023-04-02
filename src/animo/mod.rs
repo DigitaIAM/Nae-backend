@@ -19,7 +19,7 @@ pub(crate) use crate::animo::time::{Time, TimeInterval};
 use crate::animo::memory::*;
 use crate::animo::ops_manager::*;
 use crate::animo::shared::DESC;
-use crate::text_search::TextSearch;
+
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
 
@@ -501,7 +501,7 @@ impl Animo {
                 }
             }
             Topology::WarehouseStoreAggregation(top) => {
-                let mut set = self.op_to_topologies.entry(self.topologies[0].clone())
+                let set = self.op_to_topologies.entry(self.topologies[0].clone())
                     .or_insert(HashSet::new());
 
                 set.insert(Topology::WarehouseStoreAggregation(top.clone()));
@@ -516,7 +516,7 @@ impl Animo {
 impl Dispatcher for Animo {
     // push propagation of mutations
     fn on_mutation(&self, s: &Snapshot, mutations: &[ChangeTransformation]) -> Result<(), DBError> {
-        let mut count = 0;
+        let _count = 0;
         // calculate node_producers that affected by mutations
         let mut topologies: HashMap<Topology, HashSet<(Zone, Context)>> = HashMap::new();
         for mutation in mutations {

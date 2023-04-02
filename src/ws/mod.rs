@@ -1,7 +1,7 @@
 use json::JsonValue;
 
 mod start;
-pub(crate) use start::start_connection;
+
 
 mod messages;
 pub(crate) use messages::*;

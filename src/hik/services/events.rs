@@ -1,34 +1,32 @@
-use actix_web::error::ParseError::Status;
-use chrono::{DateTime, Datelike, ParseResult, SecondsFormat, Utc};
-use dbase::FieldConversionError;
-use json::object::Object;
-use json::JsonValue;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::Infallible;
-use std::fmt::{Display, Formatter};
-use std::io::Write;
-use std::path::Component;
-use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
-use std::time::SystemTime;
-use tantivy::HasLen;
-use uuid::Uuid;
-use walkdir::WalkDir;
 
-use crate::animo::error::DBError;
-use crate::services::{string_to_id, Data, Params};
+use chrono::{SecondsFormat, Utc};
+
+
+use json::JsonValue;
+
+
+
+
+
+
+
+use std::sync::{Arc};
+
+use tantivy::HasLen;
+
+
+
+
+use crate::services::{Data, Params};
 use crate::storage::SEvent;
-use crate::ws::error_general;
+
 use crate::{
-  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
-  auth,
   commutator::Application,
   storage::Workspaces,
 };
 use service::error::Error;
 use service::utils::time::string_to_time;
-use service::{Service, Services};
+use service::{Service};
 pub struct Events {
   app: Application,
   path: Arc<String>,
@@ -86,7 +84,7 @@ impl Service for Events {
     self.ws.get(&oid).camera(&cid).event(&id, &ts).load()
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
     let event = &data["event"];
     if event["major"].as_usize().unwrap_or(0) != 5 {
       return Err(Error::GeneralError("major is not equal to 5".into()));
@@ -111,15 +109,15 @@ impl Service for Events {
     Ok(obj)
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

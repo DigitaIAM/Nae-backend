@@ -2,7 +2,7 @@ use crate::animo::db::Snapshot;
 use crate::animo::error::{convert, DBError};
 use crate::animo::memory::{ChangeTransformation, Context, Value, ID};
 use crate::animo::shared::*;
-use crate::animo::{DeltaOp, OperationsTopology, Txn};
+use crate::animo::{Txn};
 use actix_web::web::BufMut;
 use std::collections::HashSet;
 use std::path::Path;
@@ -11,9 +11,7 @@ use tantivy::collector::TopDocs;
 use tantivy::query::{FuzzyTermQuery, QueryParser, RegexQuery};
 use tantivy::schema::{Field, STRING};
 use tantivy::{
-  doc,
-  schema::{Schema, INDEXED, STORED, TEXT},
-  Directory, DocAddress, Document, Index, IndexReader, IndexWriter, Score, Term,
+  schema::{Schema, STORED, TEXT}, DocAddress, Document, Index, IndexReader, IndexWriter, Score, Term,
 };
 
 pub struct TextSearch {
@@ -53,13 +51,13 @@ impl TextSearch {
     todo!()
   }
 
-  fn on_mutation(&self, tx: &mut Txn, changes: Vec<ChangeTransformation>) -> Result<(), DBError> {
+  fn on_mutation(&self, _tx: &mut Txn, _changes: Vec<ChangeTransformation>) -> Result<(), DBError> {
     todo!()
   }
 
   pub(crate) fn modification(
     &self,
-    s: &Snapshot,
+    _s: &Snapshot,
     tx: Txn,
     changes: &Vec<ChangeTransformation>,
   ) -> Result<(), DBError> {
@@ -68,7 +66,7 @@ impl TextSearch {
     for change in changes {
       if change.zone == *CAN_BUY_FROM {
         if change.context.0.len() > 2 {
-          let supplier = change.context.0[0];
+          let _supplier = change.context.0[0];
           let goods = change.context.0[1];
 
           to_index.insert(goods);

@@ -9,7 +9,7 @@ use crate::animo::memory::{ChangeTransformation, TransformationKey};
 use crate::commutator::Application;
 use service::Services;
 use crate::animo::memory::Memory;
-use qstring::QString;
+
 
 pub async fn not_implemented() -> impl Responder {
   HttpResponse::NotImplemented().json("")
@@ -43,7 +43,7 @@ pub(crate) async fn memory_modify(
 
 #[post("/api/docs")]
 pub async fn docs_create(
-  req: HttpRequest,
+  _req: HttpRequest,
   app: web::Data<Application>,
   data: web::Json<serde_json::Value>,
   params: web::Query<HashMap<String, String>>,
@@ -96,7 +96,7 @@ pub async fn docs_update(
 
 #[get("/api/docs/find")]
 pub async fn docs_find(
-  req: HttpRequest,
+  _req: HttpRequest,
   app: web::Data<Application>,
   params: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
@@ -120,7 +120,7 @@ pub async fn docs_find(
 
 #[get("/api/inventory")]
 pub async fn inventory_find(
-  req: HttpRequest,
+  _req: HttpRequest,
   app: web::Data<Application>,
   params: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {

@@ -1,34 +1,33 @@
-use actix_web::error::ParseError::Status;
-use chrono::{DateTime, Datelike, NaiveDate, ParseResult, SecondsFormat, TimeZone, Utc};
-use dbase::FieldConversionError;
-use json::object::Object;
-use json::JsonValue;
-use serde_json::json;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::Infallible;
-use std::io::Write;
-use std::ops::Sub;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
-use std::time::SystemTime;
-use tantivy::HasLen;
-use uuid::Uuid;
 
-use crate::animo::error::DBError;
-use crate::hik::ConfigCamera;
-use crate::services::{Data, JsonData, Params};
-use crate::storage::{SCamera, SEvent};
-use crate::warehouse::turnover::Organization;
-use crate::ws::error_general;
+use chrono::{DateTime, SecondsFormat, Utc};
+
+
+use json::JsonValue;
+
+use std::collections::{HashMap};
+
+
+use std::ops::Sub;
+
+use std::sync::{Arc};
+
+use tantivy::HasLen;
+
+
+
+
+use crate::services::{Data, Params};
+use crate::storage::{SCamera};
+
+
 use crate::{
-  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
-  auth,
+  animo::memory::{ID},
   commutator::Application,
   storage::Workspaces,
 };
 use service::error::Error;
-use service::utils::{json::JsonParams, time::DateRange};
-use service::{Service, Services};
+use service::utils::{json::JsonParams};
+use service::{Service};
 
 pub(crate) struct AttendanceReport {
   app: Application,
@@ -104,15 +103,15 @@ impl Service for AttendanceReport {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let limit = self.limit(&params);
-    let skip = self.skip(&params);
+    let _limit = self.limit(&params);
+    let _skip = self.skip(&params);
 
     let oid = crate::services::oid(&params)?;
 
     let people = self.ws.get(&oid).people();
 
     let people: Vec<(ID, JsonValue)> = {
-      let mut it = people.iter().map(|p| (p.id, p.load().unwrap())).filter(|(_, p)| p.is_object());
+      let it = people.iter().map(|p| (p.id, p.load().unwrap())).filter(|(_, p)| p.is_object());
 
       let division = self.params(&params)["division"].string();
       if division.is_empty() {
@@ -178,7 +177,7 @@ impl Service for AttendanceReport {
 
     // person > state
 
-    for (event_id, event) in events {
+    for (_event_id, event) in events {
       let event = &event["event"];
       let event_type = event["event_type"].string();
 
@@ -292,23 +291,23 @@ impl Service for AttendanceReport {
     })
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

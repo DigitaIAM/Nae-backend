@@ -1,11 +1,11 @@
 use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
 use bytecheck::CheckBytes;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::ops::{Add, Neg, Sub};
 use std::sync::Arc;
-use chrono::{Datelike, Timelike, TimeZone, Utc};
-use log::debug;
+
+
 
 use crate::animo::*;
 use crate::animo::error::DBError;
@@ -127,14 +127,14 @@ impl AggregationTopology for WHStoreAggregationTopology {
 
         let ts = std::time::Instant::now();
 
-        let mut max = 0;
+        let max = 0;
         for op in ops {
 
             let delta = StoreDelta::from(op);
 
             //tx.ops_manager().write_aggregation_delta(tx, delta)?;
 
-            let first_checkpoint = delta.checkpoint();
+            let _first_checkpoint = delta.checkpoint();
 
             let query = QueryWHCheckpoint::new(&delta.date);
 
@@ -163,7 +163,7 @@ impl AggregationTopology for WHStoreAggregationTopology {
 
                         // copy previous state of existence
                         for data in ops_manager.values_after_heavy(s, &query) {
-                            let (k,v): (_,WarehouseStock) = data;
+                            let (_k,v): (_,WarehouseStock) = data;
 
                             // println!("copy checkpoint {:?} {:?}", checkpoint, v);
 
@@ -263,7 +263,7 @@ impl WHStoreAggregationTopology {
 
         // subtract operations between [checkpoint_from, from)
         if checkpoint_from.ts() < interval.from.ts() {
-            for (store_id, mut named) in stores.iter_mut() {
+            for (store_id, named) in stores.iter_mut() {
                 let store_id = store_id.clone();
 
                 let ops_from = WHQueryStoreOperation::start(store_id, &checkpoint_from);
@@ -294,7 +294,7 @@ impl WHStoreAggregationTopology {
 
         // subtract operations between (till, checkpoint_till]
         if checkpoint_till.ts() > interval.till.ts() {
-            for (store_id, mut named) in stores.iter_mut() {
+            for (store_id, named) in stores.iter_mut() {
                 let store_id = store_id.clone();
 
                 let ops_from = WHQueryStoreOperation::start_exclude(store_id, &interval.till);
@@ -533,7 +533,7 @@ impl ToBytes for CheckpointDelta {
 }
 
 impl FromBytes<Self> for CheckpointDelta {
-    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+    fn from_bytes(_bs: &[u8]) -> Result<Self, DBError> {
         todo!()
     }
 }

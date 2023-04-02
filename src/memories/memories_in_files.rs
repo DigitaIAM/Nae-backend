@@ -1,32 +1,30 @@
 use super::*;
 
-use actix_web::error::ParseError::Status;
-use dbase::FieldConversionError;
-use json::object::Object;
+
+
+
 use json::JsonValue;
 use rust_decimal::Decimal;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::Infallible;
-use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
-use std::time::SystemTime;
+use std::collections::{HashMap};
+
+
+
+use std::sync::{Arc};
+
 use tantivy::HasLen;
 use uuid::Uuid;
 
-use crate::animo::error::DBError;
+
 use crate::services::{Data, Params};
 use crate::storage::Workspaces;
-use crate::ws::error_general;
+
 use crate::{
-  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
-  auth,
   commutator::Application,
 };
 use chrono::Utc;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
-use service::{Service, Services};
+use service::{Service};
 use store::balance::BalanceForGoods;
 use store::elements::ToJson;
 use store::GetWarehouse;
@@ -134,7 +132,7 @@ impl Service for MemoriesInFiles {
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
         .filter(|o| {
-          for (name, v) in o.entries() {
+          for (_name, v) in o.entries() {
             if let Some(str) = v.as_str() {
               if str.contains(search) {
                 return true;
@@ -195,7 +193,7 @@ impl Service for MemoriesInFiles {
         .get(&oid)
         .memories(vec!["production".into(), "produce".into()])
         .list(None)?;
-      for mut order in &mut list {
+      for order in &mut list {
         let filters = vec![("order", &order["_id"])];
 
         let mut boxes = 0_u32;
@@ -234,7 +232,7 @@ impl Service for MemoriesInFiles {
         .get_balance(today, &list_of_goods)
         .map_err(|e| Error::GeneralError(e.message()))?;
 
-      for mut goods in &mut list {
+      for goods in &mut list {
         if let Some(uuid) = goods["_uuid"].uuid_or_none() {
           if let Some(balance) = balances.get(&uuid) {
             goods["_balance"] = balance.to_json();
@@ -324,7 +322,7 @@ impl Service for MemoriesInFiles {
     }
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

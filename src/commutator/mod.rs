@@ -136,7 +136,7 @@ impl Application {
     self.events.send(event).unwrap()
   }
 
-  pub(crate) fn close(mut self) {
+  pub(crate) fn close(self) {
     // TODO self.db.close();
     self.stop.store(true, Ordering::SeqCst);
   }
@@ -182,7 +182,7 @@ impl Commutator {
 
     thread::spawn({
       let should_stop = stop.clone();
-      let mut c = com.clone();
+      let c = com.clone();
       move || {
         while !should_stop.load(Ordering::SeqCst) {
           match events.recv() {
@@ -292,7 +292,7 @@ fn id_data_params(mut data: JsonValue) -> Result<(String, JsonValue, JsonValue),
 impl Handler<ws::Event> for Commutator {
   type Result = ();
 
-  fn handle(&mut self, msg: ws::Event, ctx: &mut Self::Context) -> Self::Result {
+  fn handle(&mut self, msg: ws::Event, _ctx: &mut Self::Context) -> Self::Result {
     let service = self.app.service(msg.path.as_str());
     let response = match msg.command.as_str() {
       "find" => service.find(msg.data),
@@ -323,7 +323,7 @@ impl Handler<ws::Event> for Commutator {
 impl Handler<Connect> for Commutator {
   type Result = ();
 
-  fn handle(&mut self, msg: Connect, ctx: &mut Self::Context) -> Self::Result {
+  fn handle(&mut self, msg: Connect, _ctx: &mut Self::Context) -> Self::Result {
     {
       let mut sessions = self.sessions.write().unwrap();
       sessions.insert(msg.sid, msg.socket);
@@ -336,7 +336,7 @@ impl Handler<Connect> for Commutator {
 impl Handler<Disconnect> for Commutator {
   type Result = ();
 
-  fn handle(&mut self, msg: Disconnect, ctx: &mut Self::Context) -> Self::Result {
+  fn handle(&mut self, msg: Disconnect, _ctx: &mut Self::Context) -> Self::Result {
     let mut sessions = self.sessions.write().unwrap();
     if sessions.remove(&msg.sid).is_some() {
       // TODO remove from channels

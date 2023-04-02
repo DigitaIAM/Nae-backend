@@ -63,7 +63,7 @@ impl Service for People {
     self.ws.get(&oid).person(&id).load()
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&data)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
@@ -79,7 +79,7 @@ impl Service for People {
     }
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&data)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))

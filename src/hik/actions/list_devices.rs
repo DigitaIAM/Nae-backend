@@ -1,28 +1,28 @@
-use crate::hik::actions::task::CommandMeta;
+
 use crate::hik::auth::{digest_auth, RequestGenerator, WithDigestAuth};
 use crate::hik::error::Error;
 use crate::hik::ConfigCamera;
 use crate::services::Mutation;
-use crate::websocket::WsConn;
+
 use crate::{commutator::Application, animo::memory::ID};
 use actix::prelude::*;
 use async_trait::async_trait;
 use json::JsonValue;
-use reqwest::{multipart, Body, Client, RequestBuilder, Response, Url};
-use std::io::{BufReader, Read};
+use reqwest::{multipart, Client, RequestBuilder, Response, Url};
+use std::io::{Read};
 use std::path::PathBuf;
-use std::pin::Pin;
-use std::time::Duration;
-use tokio::fs::File;
-use tokio::runtime::Handle;
-use tokio_util::codec::{BytesCodec, FramedRead};
 
-use service::utils::json::JsonParams;
-use actix_interop::{critical_section, with_ctx, FutureInterop};
+
+use tokio::fs::File;
+
+
+
+
+
 use chrono::{Datelike, Utc};
 use rand::Rng;
-use reqwest::multipart::Form;
-use tokio::io::AsyncReadExt;
+
+
 
 #[async_trait]
 trait ToHttpRequest {
@@ -119,7 +119,7 @@ impl RequestGenerator for Data {
       .mime_str("application/json")
       .map_err(|e| Error::IOError(e.to_string()))?;
 
-    let mut file = File::open(&self.file).await.unwrap();
+    let _file = File::open(&self.file).await.unwrap();
 
     // let stream = FramedRead::new(file, BytesCodec::new());
     // let body = Body::wrap_stream(stream);
@@ -351,7 +351,7 @@ impl Actor for HttpClient {
 impl Handler<GetRequest> for HttpClient {
   type Result = ();
 
-  fn handle(&mut self, msg: GetRequest, ctx: &mut Self::Context) -> Self::Result {
+  fn handle(&mut self, msg: GetRequest, _ctx: &mut Self::Context) -> Self::Result {
     let app = self.app.clone();
     let client = self.client.clone();
     actix_web::rt::spawn(async move { HttpClient::process(app, client, msg.id, msg).await });
@@ -361,7 +361,7 @@ impl Handler<GetRequest> for HttpClient {
 impl Handler<PostRequest> for HttpClient {
   type Result = ();
 
-  fn handle(&mut self, msg: PostRequest, ctx: &mut Self::Context) -> Self::Result {
+  fn handle(&mut self, msg: PostRequest, _ctx: &mut Self::Context) -> Self::Result {
     let app = self.app.clone();
     let client = self.client.clone();
     actix_web::rt::spawn(async move { HttpClient::process(app, client, msg.id, msg).await });
@@ -371,7 +371,7 @@ impl Handler<PostRequest> for HttpClient {
 impl Handler<PutMultiRequest> for HttpClient {
   type Result = ();
 
-  fn handle(&mut self, msg: PutMultiRequest, ctx: &mut Self::Context) -> Self::Result {
+  fn handle(&mut self, msg: PutMultiRequest, _ctx: &mut Self::Context) -> Self::Result {
     let app = self.app.clone();
     let client = self.client.clone();
     actix_web::rt::spawn(async move { HttpClient::process(app, client, msg.id, msg).await });

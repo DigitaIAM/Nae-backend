@@ -1,29 +1,28 @@
-use actix_web::error::ParseError::Status;
-use dbase::FieldConversionError;
-use json::object::Object;
-use json::JsonValue;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::Infallible;
-use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
-use std::time::SystemTime;
-use tantivy::HasLen;
-use uuid::Uuid;
 
-use crate::animo::error::DBError;
+
+
+use json::JsonValue;
+
+
+
+
+use std::sync::{Arc};
+
+use tantivy::HasLen;
+
+
+
 use crate::services::JsonData;
 use crate::services::{Data, Params};
-use crate::warehouse::turnover::Organization;
-use crate::ws::error_general;
+
+
 use crate::{
-  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
-  auth,
+  animo::memory::{ID},
   commutator::Application,
   storage::Workspaces,
 };
 use service::error::Error;
-use service::{Service, Services};
+use service::{Service};
 pub(crate) struct Companies {
   app: Application,
   name: String,
@@ -43,7 +42,7 @@ impl Service for Companies {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let limit = self.limit(&params);
+    let _limit = self.limit(&params);
     let skip = self.skip(&params);
 
     let list = self.ws.list()?;
@@ -58,12 +57,12 @@ impl Service for Companies {
     })
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
     self.ws.get(&id).load()
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -78,7 +77,7 @@ impl Service for Companies {
     }
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -93,7 +92,7 @@ impl Service for Companies {
     }
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -114,7 +113,7 @@ impl Service for Companies {
     }
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, id: String, _params: Params) -> crate::services::Result {
     let id = ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))?;
 
     self.ws.get(&id).delete()

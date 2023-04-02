@@ -27,7 +27,7 @@ impl InKV {
     Arc::new(InKV { app, path: Arc::new(path.to_string()), zone, properties: Arc::new(properties) })
   }
 
-  fn save(&self, id: ID, data: Data, params: Params) -> crate::services::Result {
+  fn save(&self, id: ID, data: Data, _params: Params) -> crate::services::Result {
     let mut result = Object::with_capacity(self.properties.len() + 1);
 
     // prepare changes
@@ -41,7 +41,7 @@ impl InKV {
         };
         (name, value)
       })
-      .filter(|(n, v)| v.is_string())
+      .filter(|(_n, v)| v.is_string())
       .map(|(name, value)| {
         result.insert(&name, value.as_string().unwrap_or_default().into());
         ChangeTransformation::create(self.zone, id, &name, value)
@@ -62,8 +62,8 @@ impl Service for InKV {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let limit = self.limit(&params);
-    let skip = self.skip(&params);
+    let _limit = self.limit(&params);
+    let _skip = self.skip(&params);
 
     todo!()
 
@@ -84,7 +84,7 @@ impl Service for InKV {
     // )
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
     let keys = self.properties.iter().map(|name| TransformationKey::simple(id, name)).collect();
@@ -96,7 +96,7 @@ impl Service for InKV {
           .properties
           .iter()
           .zip(records.iter())
-          .filter(|(n, v)| v.into != Value::Nothing)
+          .filter(|(_n, v)| v.into != Value::Nothing)
           .for_each(|(n, v)| obj.insert(n, v.into.to_json()));
 
         if obj.len() == 0 {
@@ -131,7 +131,7 @@ impl Service for InKV {
     self.save(id, data, params)
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

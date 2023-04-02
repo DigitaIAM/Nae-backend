@@ -12,7 +12,7 @@ use crate::animo::Time;
 use crate::warehouse::primitives::Decimal;
 use blake2::{Blake2s256, Digest};
 use json::JsonValue;
-use json::JsonValue::Number;
+
 use std::convert::TryFrom;
 
 type Hasher = Blake2s256;
@@ -293,7 +293,7 @@ impl Value {
 
   pub(crate) fn is_number(&self) -> bool {
     match self {
-      Value::Number(number) => true,
+      Value::Number(_number) => true,
       _ => false,
     }
   }

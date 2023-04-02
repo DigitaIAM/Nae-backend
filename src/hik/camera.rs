@@ -1,28 +1,28 @@
 use crate::{commutator::Application, animo::memory::ID};
 use service::Services;
-use actix::ContextFutureSpawner;
+
 use async_trait::async_trait;
-use chrono::{DateTime, Datelike, SecondsFormat, Utc};
-use crossbeam::channel::{bounded, Receiver, Sender, TryRecvError};
+use chrono::{DateTime, Utc};
+
 use futures::StreamExt;
 use json::JsonValue;
 use reqwest::{header, Client, Response, Url};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::io::Write;
-use std::rc::Rc;
-use std::slice::Iter;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, SystemTime};
-use tantivy::fastfield::FastValue;
-use tokio::sync::mpsc;
+
+
+
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration};
+
+
 use tokio::task::JoinHandle;
-use tracing::{debug, error, event, info, info_span, trace, warn, Instrument};
-use uuid::Uuid;
+
+
 
 use crate::hik::auth::WithDigestAuth;
-use crate::hik::data::alert_item::AlertItem;
+
 use crate::hik::data::triggers_parser::TriggerItem;
 use crate::hik::error::{Error, Result};
 use crate::services::Mutation;
@@ -271,7 +271,7 @@ impl ConfigCamera {
   }
 
   pub(crate) fn data(&self) -> Result<String> {
-    serde_json::to_string(self).map_err(|e| Error::IOError(format!("fail to generate data json")))
+    serde_json::to_string(self).map_err(|_e| Error::IOError(format!("fail to generate data json")))
   }
 }
 
@@ -546,7 +546,7 @@ impl Camera {
     //   .map_err(Error::AlertInvalid)
   }
 
-  fn url(path: &str, client: &reqwest::Client, config: &ConfigCamera) -> Result<Url> {
+  fn url(path: &str, _client: &reqwest::Client, config: &ConfigCamera) -> Result<Url> {
     let url = if config.dev_index.is_empty() {
       format!(
         "{}://{}{}{}",

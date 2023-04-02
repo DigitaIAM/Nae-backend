@@ -94,7 +94,7 @@ impl Service for InFiles {
     })
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
     let objs = self.objs.read().unwrap();
     Ok(match objs.get(&id) {
@@ -103,7 +103,7 @@ impl Service for InFiles {
     })
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
     let array = vec![data.clone()]; // TODO rewrite
     let (single, total, it) = if data.is_array() {
       (true, data.len(), data.members())
@@ -122,7 +122,7 @@ impl Service for InFiles {
 
       match self.save(&id, &obj) {
         Ok(_) => result.push(obj),
-        Err(e) => result.push(error_general("can't save json")),
+        Err(_e) => result.push(error_general("can't save json")),
       }
     }
 
@@ -137,15 +137,15 @@ impl Service for InFiles {
     })
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

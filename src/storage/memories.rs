@@ -1,19 +1,19 @@
-use crate::animo::memory::ID;
+
 use crate::commutator::Application;
 use crate::services::Data;
 use crate::storage::organizations::Workspace;
-use crate::storage::{json, load, save};
+use crate::storage::{load, save};
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
-use rust_decimal::Decimal;
+
 use service::error::Error;
-use service::utils::{json::JsonParams, time::time_to_string};
+use service::utils::{time::time_to_string};
 use service::Services;
-use std::fs;
+
 use std::path::PathBuf;
-use std::str::FromStr;
+
 use std::sync::Mutex;
-use store::elements::{dt, receive_data, Batch, NumberForGoods, OpMutation};
+use store::elements::{receive_data};
 use uuid::Uuid;
 
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
@@ -37,12 +37,12 @@ fn save_data(
   top_folder: &PathBuf,
   folder: &PathBuf,
   ctx: &Vec<String>,
-  id: &String,
-  uuid: Option<Uuid>,
+  _id: &String,
+  _uuid: Option<Uuid>,
   time: DateTime<Utc>,
   mut data: JsonValue,
 ) -> Result<JsonValue, Error> {
-  let lock = LOCK.lock().unwrap();
+  let _lock = LOCK.lock().unwrap();
 
   // if data["_id"] != id {
   //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data["_id"])));
@@ -170,7 +170,7 @@ impl Memories {
 
   pub(crate) fn create(&self, app: &Application, mut data: JsonValue) -> Result<JsonValue, Error> {
     let (id, time, folder) = {
-      let lock = LOCK.lock().unwrap();
+      let _lock = LOCK.lock().unwrap();
 
       let mut count = 0;
       let mut time = chrono::Utc::now();
@@ -183,7 +183,7 @@ impl Memories {
         println!("id: {id}");
 
         // context/2023/01/2023-01-06T12:43:15Z/
-        let mut folder = self.folder(&id);
+        let folder = self.folder(&id);
 
         println!("creating folder {folder:?}");
 

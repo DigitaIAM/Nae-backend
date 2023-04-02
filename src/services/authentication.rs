@@ -29,7 +29,7 @@ impl Service for Authentication {
     Err(Error::NotImplemented)
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
     let strategy = data["strategy"].as_str().unwrap_or("local").to_string();
     match strategy.as_str() {
       "jwt" => {

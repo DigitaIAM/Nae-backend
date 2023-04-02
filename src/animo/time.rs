@@ -4,7 +4,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use crate::animo::error::DBError;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use chrono::{DateTime, Datelike, Duration, Month, NaiveDate, TimeZone, Timelike, Utc};
-use rust_decimal::Decimal;
+
 use std::cmp::Ordering;
 use std::ops::{Add, Sub};
 
@@ -245,7 +245,7 @@ impl PartialEq<Self> for Time {
     unimplemented!("{:?} vs {:?}", self, other)
   }
 
-  fn ne(&self, other: &Self) -> bool {
+  fn ne(&self, _other: &Self) -> bool {
     todo!()
   }
 }

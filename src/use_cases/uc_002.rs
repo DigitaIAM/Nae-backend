@@ -1,7 +1,7 @@
-use std::fs::File;
-use std::io::{BufRead, BufReader};
+
+
 use csv::{ReaderBuilder, Trim};
-use crate::*;
+
 use crate::use_cases::write;
 use crate::animo::{db::AnimoDB, Time, memory::{ID, create}, shared::{DESC, UOM_PIECE, UOM_METER, REFERENCE, LABEL, CAN_BUY_FROM, PRICE, NUMBER, UOM, MINIMUM_ORDER_QTY, DATE}};
 use crate::warehouse::primitives::Decimal;
@@ -37,15 +37,15 @@ pub(crate) fn import(db: &AnimoDB) {
             _ => unreachable!("internal errors")
         };
 
-        let activity = &record[8];
+        let _activity = &record[8];
 
-        let collection = &record[10];
-        let line = &record[12];
-        let subline = &record[14];
+        let _collection = &record[10];
+        let _line = &record[12];
+        let _subline = &record[14];
 
-        let cosl1 = &record[9];
-        let cosl2 = &record[11];
-        let cosl3 = &record[13];
+        let _cosl1 = &record[9];
+        let _cosl2 = &record[11];
+        let _cosl3 = &record[13];
 
         // println!("{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {}", rf, label, price, min_order, collection, line, subline, activity, cosl1, cosl2, cosl3 );
 
@@ -91,6 +91,6 @@ pub(crate) fn import(db: &AnimoDB) {
 }
 
 
-pub(crate) fn report(db: &AnimoDB) {
+pub(crate) fn report(_db: &AnimoDB) {
 
 }

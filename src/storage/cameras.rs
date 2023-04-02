@@ -45,7 +45,7 @@ impl SCamera {
     ts: DateTime<Utc>,
     prefix: &str,
     suffix: &str,
-    mut buf: &[u8],
+    buf: &[u8],
   ) -> Result<PathBuf, Error> {
     let mut folder = self.folder.clone();
     folder.push(format!("{:0>4}/{:0>2}/", ts.year(), ts.month()));

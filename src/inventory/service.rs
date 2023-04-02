@@ -24,7 +24,7 @@ impl Service for Inventory {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let oid = crate::services::oid(&params)?;
+    let _oid = crate::services::oid(&params)?;
 
     // let limit = self.limit(&params);
     let skip = self.skip(&params);

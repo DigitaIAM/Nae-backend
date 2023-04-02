@@ -1,14 +1,14 @@
-use crate::services::{string_to_id, Data, Mutation, Params};
-use crate::ws::error_general;
+use crate::services::{string_to_id, Data, Params};
+
 use crate::{
-  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  animo::memory::{ID},
   auth,
   commutator::Application,
 };
-use json::object::Object;
+
 use json::JsonValue;
 use service::error::Error;
-use service::{Service, Services};
+use service::{Service};
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::{Arc, RwLock};
@@ -106,7 +106,7 @@ impl Service for Users {
     })
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
     let obj = {
@@ -142,7 +142,7 @@ impl Service for Users {
     // }
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
     let email = data["email"].as_str().unwrap_or("").trim().to_lowercase();
     let password = data["password"].as_str().unwrap_or("").trim().to_string();
 
@@ -176,7 +176,7 @@ impl Service for Users {
     }
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -196,14 +196,14 @@ impl Service for Users {
     }
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
       let id = crate::services::string_to_id(id)?;
 
       let mut obj = {
-        let mut objs = self.objs.write().unwrap();
+        let objs = self.objs.write().unwrap();
         match objs.get(&id) {
           None => return Err(Error::GeneralError(format!("not found {}", id.to_base64()))),
           Some(obj) => obj.clone(),
@@ -227,7 +227,7 @@ impl Service for Users {
     }
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

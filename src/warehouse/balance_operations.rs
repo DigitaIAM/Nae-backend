@@ -104,7 +104,7 @@ impl From<&BalanceOperation> for BalanceOps {
 }
 
 impl FromBytes<Self> for BalanceOps {
-    fn from_bytes(bs: &[u8]) -> Result<Self, DBError> {
+    fn from_bytes(_bs: &[u8]) -> Result<Self, DBError> {
         todo!()
         // serde_json::from_slice(bs)
         //     .map_err(|_| "fail to decode BalanceOperations".into())

@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::fmt::Debug;
-use chrono::{TimeZone, Utc};
+
 use rkyv::AlignedVec;
-use serde::{Deserialize, Serialize};
+
 use crate::animo::error::DBError;
 use crate::animo::memory::{Context, ID, ID_BYTES, ID_MAX, ID_MIN};
 use crate::animo::memory::Zone;
@@ -198,7 +198,7 @@ impl WHStoreTopology {
             if prefix != *WH_STORE_TOPOLOGY {
                 Err(format!("incorrect prefix id ({:?}), expected {:?}", prefix, *WH_STORE_TOPOLOGY).into())
             } else {
-                let convert = |bs: &[u8]| -> [u8; 8] {
+                let _convert = |bs: &[u8]| -> [u8; 8] {
                     bs.try_into().expect("slice with incorrect length")
                 };
                 let store: ID = bs[1*ID_BYTES..2*ID_BYTES].try_into()?;
@@ -277,7 +277,7 @@ impl OperationsTopology for WHStoreTopology {
 
         // TODO handle delete case
 
-        let ts = std::time::Instant::now();
+        let _ts = std::time::Instant::now();
 
         // filter contexts by "object type"
         let mut contexts = HashSet::with_capacity(cs.len());
