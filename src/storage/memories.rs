@@ -1,7 +1,7 @@
 use crate::animo::memory::ID;
 use crate::commutator::Application;
 use crate::services::Data;
-use crate::storage::organizations::SOrganization;
+use crate::storage::organizations::Workspace;
 use crate::storage::{json, load, save};
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
@@ -19,7 +19,7 @@ use uuid::Uuid;
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
 pub(crate) struct SMemories {
-  pub(crate) org: SOrganization,
+  pub(crate) org: Workspace,
 
   pub(crate) oid: ID,
   pub(crate) ctx: Vec<String>,

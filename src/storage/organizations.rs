@@ -23,7 +23,7 @@ impl SOrganizations {
     SOrganizations { folder: folder.into() }
   }
 
-  pub(crate) fn create(&self, id: ID) -> Result<SOrganization, Error> {
+  pub(crate) fn create(&self, id: ID) -> Result<Workspace, Error> {
     let mut folder = self.folder.clone();
     folder.push(id.to_base64());
 
@@ -34,20 +34,20 @@ impl SOrganizations {
       Error::IOError(format!("can't create folder {}: {}", folder.to_string_lossy(), e))
     })?;
 
-    Ok(SOrganization { id, folder, path })
+    Ok(Workspace { id, folder, path })
   }
 
-  pub(crate) fn get(&self, id: &ID) -> SOrganization {
+  pub(crate) fn get(&self, id: &ID) -> Workspace {
     let mut folder = self.folder.clone();
     folder.push(id.to_base64());
 
     let mut path = folder.clone();
     path.push("organization.json");
 
-    SOrganization { id: id.clone(), folder, path }
+    Workspace { id: id.clone(), folder, path }
   }
 
-  pub(crate) fn list(&self) -> Result<Vec<SOrganization>, Error> {
+  pub(crate) fn list(&self) -> Result<Vec<Workspace>, Error> {
     let mut result = Vec::new();
 
     for entry in std::fs::read_dir(&self.folder).unwrap() {
@@ -60,7 +60,7 @@ impl SOrganizations {
 
         let id_name = entry.file_name().to_string_lossy().to_string();
         match ID::from_base64(id_name.as_bytes()) {
-          Ok(id) => result.push(SOrganization { id, folder, path }),
+          Ok(id) => result.push(Workspace { id, folder, path }),
           Err(_) => {}, // ignore?
         }
       }
@@ -71,14 +71,14 @@ impl SOrganizations {
 }
 
 #[derive(Clone)]
-pub struct SOrganization {
+pub struct Workspace {
   id: ID,
 
   folder: PathBuf,
   path: PathBuf,
 }
 
-impl SOrganization {
+impl Workspace {
   pub(crate) fn json(&self) -> JsonValue {
     json(self.id.to_base64(), &self.path)
   }
