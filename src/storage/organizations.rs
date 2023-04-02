@@ -72,7 +72,7 @@ impl Workspaces {
 
 #[derive(Clone)]
 pub struct Workspace {
-  id: ID,
+  pub id: ID,
 
   folder: PathBuf,
   path: PathBuf,
@@ -106,7 +106,7 @@ impl Workspace {
     // TODO remove it from here
     std::fs::create_dir_all(&folder);
 
-    Memories { org: self.clone(), oid: self.id.clone(), ctx, top_folder, folder }
+    Memories { ws: self.clone(), ctx, top_folder, folder }
   }
 
   pub(crate) fn resolve(&self, id: &Uuid) -> Option<Document> {
@@ -137,7 +137,7 @@ impl Workspace {
     let mut ctx: Vec<_> = id.split("/").map(|s| s.to_string()).collect();
     ctx.pop();
 
-    Some(Document { id: id.clone(), oid: self.id.clone(), ctx, path })
+    Some(Document { mem: self.memories(ctx), id: id.clone(), path })
   }
 
   pub(crate) fn department(&self, id: ID) -> SDepartment {

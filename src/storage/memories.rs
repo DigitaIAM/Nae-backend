@@ -18,16 +18,18 @@ use uuid::Uuid;
 
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
-pub(crate) struct Memories {
-  pub(crate) org: Workspace,
+#[derive(Clone)]
+pub struct Memories {
+  pub ws: Workspace,
 
-  pub(crate) oid: ID,
-  pub(crate) ctx: Vec<String>,
-
+  // ./memories
   pub(crate) top_folder: PathBuf,
 
+  // example: ['warehouse','receive']
+  pub ctx: Vec<String>,
+
   // example: warehouse/receive/
-  pub(crate) folder: PathBuf,
+  pub folder: PathBuf,
 }
 
 fn save_data(
@@ -237,10 +239,10 @@ impl Memories {
       let mut path = self.folder.clone();
       path.push(format!("{:0>4}/{:0>2}/{}/latest.json", year, month, id));
 
-      Some(Document { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path })
+      Some(Document { mem: self.clone(), id, path })
     } else {
       match Uuid::parse_str(id) {
-        Ok(id) => self.org.resolve(&id),
+        Ok(id) => self.ws.resolve(&id),
         Err(_) => None,
       }
     }
@@ -280,7 +282,7 @@ impl Memories {
           path.push("latest.json");
 
           let id = record.file_name().unwrap_or_default().to_string_lossy().to_string();
-          result.push(Document { id: id.to_string(), oid: self.oid, ctx: self.ctx.clone(), path });
+          result.push(Document { mem: self.clone(), id: id.to_string(), path });
         }
       }
     }
@@ -297,11 +299,9 @@ impl Memories {
   }
 }
 
-pub(crate) struct Document {
-  pub(crate) id: String,
-
-  pub(crate) oid: ID,
-  pub(crate) ctx: Vec<String>,
+pub struct Document {
+  pub mem: Memories,
+  pub id: String,
 
   pub(crate) path: PathBuf,
 }
