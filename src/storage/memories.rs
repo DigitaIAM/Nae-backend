@@ -1,6 +1,7 @@
 use crate::animo::memory::ID;
 use crate::commutator::Application;
 use crate::services::Data;
+use crate::storage::organizations::SOrganization;
 use crate::storage::{json, load, save};
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
@@ -18,6 +19,8 @@ use uuid::Uuid;
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
 pub(crate) struct SMemories {
+  pub(crate) org: SOrganization,
+
   pub(crate) oid: ID,
   pub(crate) ctx: Vec<String>,
 
@@ -236,26 +239,10 @@ impl SMemories {
 
       Some(SDoc { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path })
     } else {
-      let mut path = self.top_folder.clone();
-      path.push("uuid");
-      path.push(&id[0..4]);
-      path.push(id);
-
-      let path = match fs::read_link(path) {
-        Ok(r) => r,
-        Err(_) => return None,
-      };
-
-      let mut id = path.to_string_lossy().to_string();
-      while &id.as_str()[0..3] == "../" {
-        id = id[3..].to_string();
+      match Uuid::parse_str(id) {
+        Ok(id) => self.org.resolve(&id),
+        Err(_) => None,
       }
-
-      let mut path = self.top_folder.clone();
-      path.push(format!("{}/latest.json", id));
-
-      // TODO: take ctx from id
-      Some(SDoc { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path })
     }
   }
 
@@ -311,12 +298,12 @@ impl SMemories {
 }
 
 pub(crate) struct SDoc {
-  id: String,
+  pub(crate) id: String,
 
-  oid: ID,
-  ctx: Vec<String>,
+  pub(crate) oid: ID,
+  pub(crate) ctx: Vec<String>,
 
-  path: PathBuf,
+  pub(crate) path: PathBuf,
 }
 
 impl SDoc {

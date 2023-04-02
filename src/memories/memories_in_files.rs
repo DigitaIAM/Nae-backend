@@ -1,3 +1,5 @@
+use super::*;
+
 use actix_web::error::ParseError::Status;
 use dbase::FieldConversionError;
 use json::object::Object;
@@ -14,18 +16,21 @@ use uuid::Uuid;
 
 use crate::animo::error::DBError;
 use crate::services::{Data, Params};
-use service::{Service, Services};
-use service::error::Error;
 use crate::storage::SOrganizations;
-use service::utils::json::{JsonMerge, JsonParams};
-use store::elements::ToJson;
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth,
+  commutator::Application,
 };
-use store::GetWarehouse;
 use chrono::Utc;
+use service::error::Error;
+use service::utils::json::{JsonMerge, JsonParams};
+use service::{Service, Services};
 use store::balance::BalanceForGoods;
+use store::elements::ToJson;
+use store::GetWarehouse;
+
 // warehouse: { receiving, Put-away, transfer,  }
 // production: { manufacturing }
 
@@ -48,7 +53,6 @@ impl Service for MemoriesInFiles {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-
     let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
@@ -67,36 +71,40 @@ impl Service for MemoriesInFiles {
           data: JsonValue::Array(list),
           total: total,
           "$skip": skip,
-        })
+        });
       }
 
       let warehouse = self.app.warehouse().database;
 
-      let balances = warehouse.get_balance_for_all(Utc::now())
-          .map_err(|e| Error::GeneralError(e.message()))?;
+      let balances = warehouse
+        .get_balance_for_all(Utc::now())
+        .map_err(|e| Error::GeneralError(e.message()))?;
+
+      let org = self.orgs.get(&oid);
 
       let mut list = vec![];
       for (store, sb) in balances {
         for (goods, gb) in sb {
           for (batch, bb) in gb {
-
             // workaround until get_balance_for_all remove zero balances
             if bb.is_zero() {
               continue;
             }
 
             // TODO: add date into this id
-            let bytes: Vec<u8> = store.as_bytes().into_iter()
-                .zip(goods.as_bytes().into_iter().zip(batch.id.as_bytes().into_iter()))
-                .map(|(a,(b,c))| a ^ b ^ c)
-                .collect();
+            let bytes: Vec<u8> = store
+              .as_bytes()
+              .into_iter()
+              .zip(goods.as_bytes().into_iter().zip(batch.id.as_bytes().into_iter()))
+              .map(|(a, (b, c))| a ^ b ^ c)
+              .collect();
 
             let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
 
             list.push(json::object! {
               _id: id.to_json(),
-              storage: store.to_json(),
-              goods: goods.to_json(),
+              storage: store.resolve_to_json_object(&org),
+              goods: goods.resolve_to_json_object(&org),
               batch: batch.to_json(),
               qty: json::object! { number: bb.qty.to_json() },
               cost: json::object! { number: bb.cost.to_json() },
@@ -111,7 +119,7 @@ impl Service for MemoriesInFiles {
         data: JsonValue::Array(list),
         total: total,
         "$skip": skip,
-      })
+      });
     }
 
     let memories = self.orgs.get(&oid).memories(ctx.clone());
@@ -222,11 +230,12 @@ impl Service for MemoriesInFiles {
         }
       }
 
-      let balances: HashMap<Uuid, BalanceForGoods> = warehouse.get_balance(today, &list_of_goods).map_err(|e| Error::GeneralError(e.message()))?;
+      let balances: HashMap<Uuid, BalanceForGoods> = warehouse
+        .get_balance(today, &list_of_goods)
+        .map_err(|e| Error::GeneralError(e.message()))?;
 
       for mut goods in &mut list {
         if let Some(uuid) = goods["_uuid"].uuid_or_none() {
-
           if let Some(balance) = balances.get(&uuid) {
             goods["_balance"] = balance.to_json();
           }
@@ -295,7 +304,9 @@ impl Service for MemoriesInFiles {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
-      let doc = memories.get(&id).ok_or(Error::GeneralError(format!("id '{id}' not found").into()))?;
+      let doc = memories
+        .get(&id)
+        .ok_or(Error::GeneralError(format!("id '{id}' not found").into()))?;
       let mut obj = doc.json()?;
 
       let mut patch = data.clone();

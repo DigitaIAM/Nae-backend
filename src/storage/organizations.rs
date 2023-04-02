@@ -1,10 +1,12 @@
 use crate::animo::memory::ID;
-use service::error::Error;
-use crate::storage::memories::SMemories;
+use crate::storage::memories::{SDoc, SMemories};
 use crate::storage::old_references::{SDepartment, SLocation, SPerson, SShift};
 use crate::storage::{json, load, save, SCamera};
 use json::JsonValue;
+use service::error::Error;
+use std::fs;
 use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct SOrganizations {
@@ -68,7 +70,8 @@ impl SOrganizations {
   }
 }
 
-pub(crate) struct SOrganization {
+#[derive(Clone)]
+pub struct SOrganization {
   id: ID,
 
   folder: PathBuf,
@@ -93,17 +96,48 @@ impl SOrganization {
   }
 
   pub(crate) fn memories(&self, ctx: Vec<String>) -> SMemories {
-    let mut topFolder = self.folder.clone();
-    topFolder.push("memories");
+    let mut top_folder = self.folder.clone();
+    top_folder.push("memories");
 
-    let mut folder = topFolder.clone();
+    let mut folder = top_folder.clone();
     ctx.iter().for_each(|name| folder.push(name.as_str()));
 
     // workaround because of first request fail with none existing folder
     // TODO remove it from here
     std::fs::create_dir_all(&folder);
 
-    SMemories { oid: self.id.clone(), ctx, top_folder: topFolder, folder }
+    SMemories { org: self.clone(), oid: self.id.clone(), ctx, top_folder, folder }
+  }
+
+  pub(crate) fn resolve(&self, id: &Uuid) -> Option<SDoc> {
+    let mut top_folder = self.folder.clone();
+    top_folder.push("memories");
+
+    let id = id.to_string();
+
+    let mut path = top_folder.clone();
+    path.push("uuid");
+    path.push(&id[0..4]);
+    path.push(id);
+
+    let path = match fs::read_link(path) {
+      Ok(r) => r,
+      Err(_) => return None,
+    };
+
+    let mut id = path.to_string_lossy().to_string();
+    while &id.as_str()[0..3] == "../" {
+      id = id[3..].to_string();
+    }
+
+    let mut path = top_folder.clone();
+    path.push(format!("{}/latest.json", id));
+
+    // let ctx = vec![];
+    let mut ctx: Vec<_> = id.split("/").map(|s| s.to_string()).collect();
+    ctx.pop();
+
+    Some(SDoc { id: id.clone(), oid: self.id.clone(), ctx, path })
   }
 
   pub(crate) fn department(&self, id: ID) -> SDepartment {

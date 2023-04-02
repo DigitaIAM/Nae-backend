@@ -29,7 +29,7 @@ use super::{
   db::Db,
   store_date_type_batch_id::StoreDateTypeBatchId,
 };
-use service::utils::time::{time_to_string, date_to_string};
+use service::utils::time::{date_to_string, time_to_string};
 
 use crate::GetWarehouse;
 use service::Services;
@@ -83,7 +83,6 @@ impl Batch {
   fn new() -> Batch {
     Batch { id: Uuid::new_v4(), date: DateTime::<Utc>::MAX_UTC }
   }
-
 
   pub fn is_empty(&self) -> bool {
     self.id == UUID_NIL
@@ -471,23 +470,18 @@ pub trait OrderedTopology {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
     goods: &Vec<Goods>,
-    checkpoints: HashMap<Uuid, BalanceForGoods>
+    checkpoints: HashMap<Uuid, BalanceForGoods>,
   ) -> Result<HashMap<Uuid, BalanceForGoods>, WHError> {
-
     let mut result = checkpoints.clone();
 
     // get operations between checkpoint date and requested date
     let ops = self.get_ops_for_many_goods(goods, from_date, till_date)?;
 
     for op in ops {
-      result.entry(op.goods)
-          .and_modify(|bal| *bal += &op.op)
-          .or_insert(
-            match &op.op {
-              InternalOperation::Receive(q, c) => { BalanceForGoods {qty: q.clone(), cost: c.clone()} }
-              InternalOperation::Issue(q, c, _) => { BalanceForGoods {qty: -q.clone(), cost: -c.clone()} }
-            }
-          );
+      result.entry(op.goods).and_modify(|bal| *bal += &op.op).or_insert(match &op.op {
+        InternalOperation::Receive(q, c) => BalanceForGoods { qty: q.clone(), cost: c.clone() },
+        InternalOperation::Issue(q, c, _) => BalanceForGoods { qty: -q.clone(), cost: -c.clone() },
+      });
     }
 
     Ok(result)
@@ -497,22 +491,22 @@ pub trait OrderedTopology {
     &self,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
-    checkpoints: HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>
+    checkpoints: HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
   ) -> Result<HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>, WHError> {
-
     let mut result = checkpoints;
 
     // get operations between checkpoint date and requested date
     let ops = self.get_ops_for_all(from_date, till_date)?;
 
     for op in ops {
-      result.entry(op.store)
-          .or_insert_with(|| HashMap::new())
-          .entry(op.goods)
-          .or_insert_with(|| HashMap::new())
-          .entry(op.batch)
-          .and_modify(|bal| *bal += &op.op)
-          .or_insert_with(|| BalanceForGoods::default() + op.op);
+      result
+        .entry(op.store)
+        .or_insert_with(|| HashMap::new())
+        .entry(op.goods)
+        .or_insert_with(|| HashMap::new())
+        .entry(op.batch)
+        .and_modify(|bal| *bal += &op.op)
+        .or_insert_with(|| BalanceForGoods::default() + op.op);
     }
 
     // TODO remove zero balances
@@ -548,9 +542,19 @@ pub trait CheckpointTopology {
     date: DateTime<Utc>,
   ) -> Result<Option<Balance>, WHError>;
 
-  fn get_checkpoints_for_all(&self, date: DateTime<Utc>) -> Result<(DateTime<Utc>, HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>), WHError>;
+  fn get_checkpoints_for_all(
+    &self,
+    date: DateTime<Utc>,
+  ) -> Result<
+    (DateTime<Utc>, HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>),
+    WHError,
+  >;
 
-  fn get_checkpoints_for_many_goods(&self, date: DateTime<Utc>, goods: &Vec<Goods>) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError>;
+  fn get_checkpoints_for_many_goods(
+    &self,
+    date: DateTime<Utc>,
+    goods: &Vec<Goods>,
+  ) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError>;
 
   fn checkpoint_update(&self, ops: Vec<OpMutation>) -> Result<(), WHError> {
     for op in ops {
@@ -570,7 +574,6 @@ pub trait CheckpointTopology {
       }
 
       while check_point_date <= last_checkpoint_date {
-
         check_point_date = first_day_next_month(tmp_date);
 
         let key = self.key(&op.to_op(), check_point_date);
@@ -585,7 +588,9 @@ pub trait CheckpointTopology {
         }
         tmp_date = check_point_date;
 
-        if check_point_date == last_checkpoint_date { break; }
+        if check_point_date == last_checkpoint_date {
+          break;
+        }
       }
 
       self.set_latest_checkpoint_date(check_point_date)?;
@@ -676,7 +681,7 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum InternalOperation {
   // TODO Inventory(Qty, Cost), // actual qty, calculated qty; calculated qty +/- delta = actual qty (delta qty, delta cost)
-  Receive(Qty, Cost), // FROM // TODO Option<Store>
+  Receive(Qty, Cost),     // FROM // TODO Option<Store>
   Issue(Qty, Cost, Mode), // INTO // TODO Option<Store>
 }
 
@@ -801,7 +806,7 @@ impl Balance {
       store: Default::default(),
       goods: Default::default(),
       batch: Batch { id: Default::default(), date: Default::default() },
-      number: Default::default()
+      number: Default::default(),
     }
   }
 
@@ -885,14 +890,14 @@ impl Op {
   pub(crate) fn qty(&self) -> Decimal {
     match self.op {
       InternalOperation::Receive(q, _) => q,
-      InternalOperation::Issue(q, _, _) => q
+      InternalOperation::Issue(q, _, _) => q,
     }
   }
 
   pub(crate) fn cost(&self) -> Decimal {
     match self.op {
       InternalOperation::Receive(_, c) => c,
-      InternalOperation::Issue(_, c, _) => c
+      InternalOperation::Issue(_, c, _) => c,
     }
   }
 
@@ -924,7 +929,10 @@ impl Op {
       date: data["date"].date_with_check()?,
       store: data["store"].uuid()?,
       goods: data["goods"].uuid()?,
-      batch: Batch { id: data["batch"]["id"].uuid()?, date: data["batch"]["date"].date_with_check()? },
+      batch: Batch {
+        id: data["batch"]["id"].uuid()?,
+        date: data["batch"]["date"].date_with_check()?,
+      },
       store_into: data["transfer"].uuid_or_none(),
       op: operation,
       is_dependent: data["is_dependent"].boolean(),
@@ -1567,25 +1575,21 @@ pub(crate) fn get_aggregations_for_one_goods(
   start_date: DateTime<Utc>,
   end_date: DateTime<Utc>,
 ) -> Result<JsonValue, WHError> {
-
   let mut result: Vec<JsonValue> = vec![];
 
   let balance = match balances.len() {
     0 => Balance::zero_balance(),
     1 => balances[0].clone(),
-    _ => unreachable!("Two or more balances for one goods and batch")
+    _ => unreachable!("Two or more balances for one goods and batch"),
   };
 
-  result.push(
-    object! {
-      date: time_to_naive_string(start_date),
-      type: JsonValue::String("open_balance".to_string()),
-      _id: Uuid::new_v4().to_json(),
-      qty: balance.number.qty.to_json(),
-      cost: balance.number.cost.to_json(),
-    }
-  );
-
+  result.push(object! {
+    date: time_to_naive_string(start_date),
+    type: JsonValue::String("open_balance".to_string()),
+    _id: Uuid::new_v4().to_json(),
+    qty: balance.number.qty.to_json(),
+    cost: balance.number.cost.to_json(),
+  });
 
   let mut open_balance = balance.number.clone();
 
@@ -1616,15 +1620,13 @@ pub(crate) fn get_aggregations_for_one_goods(
   close_balance.qty += open_balance.qty;
   close_balance.cost += open_balance.cost;
 
-  result.push(
-    object! {
-          date: time_to_naive_string(end_date),
-          type: JsonValue::String("close_balance".to_string()),
-          _id: Uuid::new_v4().to_json(),
-          qty: close_balance.qty.to_json(),
-          cost: close_balance.cost.to_json(),
-        }
-  );
+  result.push(object! {
+    date: time_to_naive_string(end_date),
+    type: JsonValue::String("close_balance".to_string()),
+    _id: Uuid::new_v4().to_json(),
+    qty: close_balance.qty.to_json(),
+    cost: close_balance.cost.to_json(),
+  });
 
   Ok(JsonValue::Array(result))
 }
@@ -1636,12 +1638,12 @@ pub(crate) fn new_get_aggregations(
 ) -> (AgregationStore, Vec<AgregationStoreGoods>) {
   let key = |store: &Store, goods: &Goods, batch: &Batch| -> Vec<u8> {
     [].iter()
-        .chain(store.as_bytes().iter())
-        .chain(goods.as_bytes().iter())
-        .chain((batch.date.timestamp() as u64).to_be_bytes().iter())
-        .chain(batch.id.as_bytes().iter())
-        .map(|b| *b)
-        .collect()
+      .chain(store.as_bytes().iter())
+      .chain(goods.as_bytes().iter())
+      .chain((batch.date.timestamp() as u64).to_be_bytes().iter())
+      .chain(batch.id.as_bytes().iter())
+      .map(|b| *b)
+      .collect()
   };
 
   let key_for = |op: &Op| -> Vec<u8> { key(&op.store, &op.goods, &op.batch) };
@@ -1668,9 +1670,9 @@ pub(crate) fn new_get_aggregations(
   for op in operations {
     if op.date < start_date {
       aggregations
-          .entry(key_for(&op))
-          .or_insert(AgregationStoreGoods::default())
-          .add_to_open_balance(&op);
+        .entry(key_for(&op))
+        .or_insert(AgregationStoreGoods::default())
+        .add_to_open_balance(&op);
     } else {
       *aggregations.entry(key_for(&op)).or_insert(AgregationStoreGoods::default()) += &op;
     }
@@ -1732,7 +1734,12 @@ pub fn receive_data(
 
   while let Some(ref b) = before.next() {
     if let Some(a) = after.remove_entry(&b.0) {
-      if a.1.store == b.1.store && a.1.goods == b.1.goods && a.1.batch == b.1.batch && a.1.date == b.1.date && a.1.store_into == b.1.store_into {
+      if a.1.store == b.1.store
+        && a.1.goods == b.1.goods
+        && a.1.batch == b.1.batch
+        && a.1.date == b.1.date
+        && a.1.store_into == b.1.store_into
+      {
         ops.push(OpMutation::new_from_ops(Some(b.1.clone()), Some(a.1)));
       } else {
         ops.push(OpMutation::new_from_ops(Some(b.1.clone()), None));
@@ -1852,11 +1859,8 @@ fn json_to_ops(
       if qty.is_none() && cost.is_none() {
         return Ok(ops);
       } else {
-        let (cost, mode) = if let Some(cost) = cost {
-          (cost, Mode::Manual)
-        } else {
-          (0.into(), Mode::Auto)
-        };
+        let (cost, mode) =
+          if let Some(cost) = cost { (cost, Mode::Manual) } else { (0.into(), Mode::Auto) };
         InternalOperation::Issue(qty.unwrap_or_default(), cost, mode)
       }
     },
@@ -1904,7 +1908,7 @@ fn json_to_ops(
     id: tid,
     date,
     store: store_from,
-    store_into: store_into,
+    store_into,
     goods,
     batch,
     op,
@@ -1917,7 +1921,12 @@ fn json_to_ops(
   Ok(ops)
 }
 
-fn resolve_store(app: &impl Services, oid: &str, document: &JsonValue, name: &str) -> Result<Uuid, service::error::Error> {
+fn resolve_store(
+  app: &impl Services,
+  oid: &str,
+  document: &JsonValue,
+  name: &str,
+) -> Result<Uuid, service::error::Error> {
   let store_id = document[name].string();
 
   println!("store_id {store_id:?}");

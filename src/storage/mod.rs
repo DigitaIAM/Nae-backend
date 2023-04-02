@@ -1,13 +1,13 @@
 mod cameras;
 pub mod memories;
 mod old_references;
-mod organizations;
+pub mod organizations;
 
 use crate::services::JsonData;
-use service::error::Error;
 pub(crate) use cameras::{SCamera, SEvent};
 use json::JsonValue;
 pub use organizations::SOrganizations;
+use service::error::Error;
 use std::io::Write;
 use std::path::PathBuf;
 
