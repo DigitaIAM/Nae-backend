@@ -18,23 +18,26 @@ use walkdir::WalkDir;
 
 use crate::animo::error::DBError;
 use crate::services::{string_to_id, Data, Params};
-use service::{Service, Services};
-use service::error::Error;
 use crate::storage::SEvent;
-use service::utils::time::string_to_time;
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth,
+  commutator::Application,
+  storage::Workspaces,
 };
+use service::error::Error;
+use service::utils::time::string_to_time;
+use service::{Service, Services};
 pub struct Events {
   app: Application,
   path: Arc<String>,
 
-  orgs: SOrganizations,
+  orgs: Workspaces,
 }
 
 impl Events {
-  pub(crate) fn new(app: Application, path: &str, orgs: SOrganizations) -> Arc<dyn Service> {
+  pub(crate) fn new(app: Application, path: &str, orgs: Workspaces) -> Arc<dyn Service> {
     Arc::new(Events { app, path: Arc::new(path.to_string()), orgs })
   }
 }

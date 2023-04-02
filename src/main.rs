@@ -74,7 +74,7 @@ use crate::hr::services::shifts::Shifts;
 use crate::memories::MemoriesInFiles;
 use crate::services::People;
 use crate::settings::Settings;
-use crate::storage::SOrganizations;
+use crate::storage::Workspaces;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
 use animo::db::AnimoDB;
@@ -168,7 +168,7 @@ async fn startup() -> std::io::Result<()> {
     .await
     .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))?;
 
-  let storage = SOrganizations::new("./data/companies/");
+  let storage = Workspaces::new("./data/companies/");
   app.storage = Some(storage.clone());
 
   app.register(Actions::new(app.clone(), "actions", storage.clone()));

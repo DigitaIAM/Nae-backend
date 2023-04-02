@@ -17,26 +17,28 @@ use uuid::Uuid;
 use crate::animo::error::DBError;
 use crate::hik::ConfigCamera;
 use crate::services::{Data, JsonData, Params};
-use service::{Service, Services};
-use service::error::Error;
 use crate::storage::{SCamera, SEvent};
-use service::utils::{json::JsonParams,
-                     time::DateRange};
 use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth,
+  commutator::Application,
+  storage::Workspaces,
 };
+use service::error::Error;
+use service::utils::{json::JsonParams, time::DateRange};
+use service::{Service, Services};
 
 pub(crate) struct AttendanceReport {
   app: Application,
   name: String,
 
-  orgs: SOrganizations,
+  orgs: Workspaces,
 }
 
 impl AttendanceReport {
-  pub(crate) fn new(app: Application, orgs: SOrganizations) -> Arc<dyn Service> {
+  pub(crate) fn new(app: Application, orgs: Workspaces) -> Arc<dyn Service> {
     Arc::new(AttendanceReport { app, name: "attendance-report".to_string(), orgs })
   }
 

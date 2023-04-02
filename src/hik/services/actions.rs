@@ -23,25 +23,28 @@ use crate::hik::actions::list_devices::{DeviceMgmt, GetRequest, HttpClient};
 use crate::hik::actions::task::{CommandMeta, Stage};
 use crate::hik::{ConfigCamera, StatusCamera};
 use crate::services::{string_to_id, Data, Params};
-use service::{Service, Services};
-use service::utils::{json::JsonParams, time::now_in_seconds};
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth,
+  commutator::Application,
+  storage::Workspaces,
 };
+use service::utils::{json::JsonParams, time::now_in_seconds};
+use service::{Service, Services};
 
 pub struct Actions {
   app: Application,
   path: Arc<String>,
 
-  orgs: SOrganizations,
+  orgs: Workspaces,
 
   actor: Addr<HttpClient>,
   tasks: Arc<RwLock<BTreeMap<ID, CommandMeta>>>,
 }
 
 impl Actions {
-  pub(crate) fn new(app: Application, path: &str, orgs: SOrganizations) -> Arc<dyn Service> {
+  pub(crate) fn new(app: Application, path: &str, orgs: Workspaces) -> Arc<dyn Service> {
     // let mut commands = BTreeMap::new();
     // commands.insert("list_devices", ListDevicesCommand {});
 
@@ -114,7 +117,9 @@ impl Service for Actions {
         let password = params["password"].string();
 
         let mgmt = DeviceMgmt { protocol, ip, port, username, password };
-        let request = mgmt.list_devices(id).map_err(|e| service::error::Error::CameraError(e.to_string()))?;
+        let request = mgmt
+          .list_devices(id)
+          .map_err(|e| service::error::Error::CameraError(e.to_string()))?;
 
         let meta = CommandMeta::new(id, command, params);
 
@@ -149,8 +154,9 @@ impl Service for Actions {
         let gender = person["gender"].string_or_none().unwrap_or("male".into());
 
         let mgmt = DeviceMgmt::new(&camera);
-        let request =
-          mgmt.create_user(id, dev_index, pid, name, gender).map_err(|e| service::error::Error::CameraError(e.to_string()))?;
+        let request = mgmt
+          .create_user(id, dev_index, pid, name, gender)
+          .map_err(|e| service::error::Error::CameraError(e.to_string()))?;
 
         let meta = CommandMeta::new(id, command.clone(), params);
         let answer = meta.to_json();
@@ -186,7 +192,7 @@ impl Service for Actions {
         let mgmt = DeviceMgmt::new(&camera);
         let request = mgmt
           .register_picture(id, dev_index, pid, picture_path)
-            .map_err(|e| service::error::Error::CameraError(e.to_string()))?;
+          .map_err(|e| service::error::Error::CameraError(e.to_string()))?;
 
         let meta = CommandMeta::new(id, command.clone(), params);
         let answer = meta.to_json();
@@ -226,8 +232,9 @@ impl Service for Actions {
               },
               "data" => task.result = Some(Ok(v.clone())),
               "errors" => {
-                task.result =
-                  Some(Err(service::error::Error::GeneralError(v.as_str().unwrap_or("").trim().to_string())))
+                task.result = Some(Err(service::error::Error::GeneralError(
+                  v.as_str().unwrap_or("").trim().to_string(),
+                )))
               },
               _ => {}, // ignore
             }

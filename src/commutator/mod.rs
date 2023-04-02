@@ -1,23 +1,23 @@
 use crate::animo::memory::ChangeTransformation;
 use crate::services::{Event, Mutation};
-use service::{Service, Services};
-use service::error::Error;
 use crate::ws::{engine_io, error_general, socket_io, Connect, Disconnect, WsMessage};
-use crate::{ws, storage::SOrganizations};
-use crate::{animo::db::AnimoDB, settings::Settings, animo::memory::ID};
+use crate::{animo::db::AnimoDB, animo::memory::ID, settings::Settings};
+use crate::{storage::Workspaces, ws};
 use actix::prelude::*;
 use crossbeam::channel::{Receiver, RecvError, Sender};
 use futures::SinkExt;
 use json::{array, JsonValue};
+use service::error::Error;
+use service::{Service, Services};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
-use tokio_cron_scheduler::JobScheduler;
-use uuid::Uuid;
 use store::wh_storage::WHStorage;
 use store::GetWarehouse;
+use tokio_cron_scheduler::JobScheduler;
+use uuid::Uuid;
 
 type Socket = Recipient<WsMessage>;
 
@@ -28,7 +28,7 @@ pub struct Application {
   pub(crate) job_scheduler: JobScheduler,
   services: Arc<RwLock<HashMap<String, Arc<dyn Service>>>>,
 
-  pub storage: Option<SOrganizations>,
+  pub storage: Option<Workspaces>,
   pub(crate) warehouse: WHStorage,
 
   // background dispatcher
@@ -65,7 +65,8 @@ impl Application {
       job_scheduler,
       services,
       storage: None,
-      warehouse: WHStorage::open(&settings.database.inventory).map_err(|e| Error::GeneralError(e.message()))?,
+      warehouse: WHStorage::open(&settings.database.inventory)
+        .map_err(|e| Error::GeneralError(e.message()))?,
       // channels: Arc::new(HashMap::new()),
       stop: stop.clone(),
       events: events_sender,

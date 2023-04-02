@@ -14,22 +14,25 @@ use uuid::Uuid;
 use crate::animo::error::DBError;
 use crate::services::{string_to_id, JsonData};
 use crate::services::{Data, Params};
-use service::{Service, Services};
-use service::error::Error;
 use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, storage::SOrganizations, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth,
+  commutator::Application,
+  storage::Workspaces,
 };
+use service::error::Error;
+use service::{Service, Services};
 pub(crate) struct Shifts {
   app: Application,
   name: String,
 
-  orgs: SOrganizations,
+  orgs: Workspaces,
 }
 
 impl Shifts {
-  pub(crate) fn new(app: Application, orgs: SOrganizations) -> Arc<dyn Service> {
+  pub(crate) fn new(app: Application, orgs: Workspaces) -> Arc<dyn Service> {
     Arc::new(Shifts { app, name: "shifts".to_string(), orgs })
   }
 }

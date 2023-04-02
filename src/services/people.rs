@@ -1,14 +1,15 @@
 use crate::animo::error::DBError;
 use crate::services::{string_to_id, Data, Params};
-use service::{Service, Services};
-use service::error::Error;
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, animo::memory::ChangeTransformation, animo::memory::Memory, storage::SOrganizations, animo::memory::Transformation,
-  animo::memory::TransformationKey, animo::memory::Value, animo::memory::ID,
+  animo::memory::ChangeTransformation, animo::memory::Memory, animo::memory::Transformation,
+  animo::memory::TransformationKey, animo::memory::Value, animo::memory::ID, auth,
+  commutator::Application, storage::Workspaces,
 };
 use json::object::Object;
 use json::JsonValue;
+use service::error::Error;
+use service::{Service, Services};
 use std::sync::{Arc, RwLock};
 
 lazy_static::lazy_static! {
@@ -21,11 +22,11 @@ pub(crate) struct People {
   app: Application,
   path: Arc<String>,
 
-  orgs: SOrganizations,
+  orgs: Workspaces,
 }
 
 impl People {
-  pub(crate) fn new(app: Application, orgs: SOrganizations) -> Arc<dyn Service> {
+  pub(crate) fn new(app: Application, orgs: Workspaces) -> Arc<dyn Service> {
     Arc::new(People { app, path: Arc::new("people".to_string()), orgs })
   }
 }

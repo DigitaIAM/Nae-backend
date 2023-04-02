@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::animo::error::DBError;
 use crate::services::{Data, Params};
-use crate::storage::SOrganizations;
+use crate::storage::Workspaces;
 use crate::ws::error_general;
 use crate::{
   animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
@@ -38,11 +38,11 @@ pub struct MemoriesInFiles {
   app: Application,
   name: Arc<String>,
 
-  orgs: SOrganizations,
+  orgs: Workspaces,
 }
 
 impl MemoriesInFiles {
-  pub fn new(app: Application, name: &str, orgs: SOrganizations) -> Arc<dyn Service> {
+  pub fn new(app: Application, name: &str, orgs: Workspaces) -> Arc<dyn Service> {
     Arc::new(MemoriesInFiles { app, name: Arc::new(name.to_string()), orgs })
   }
 }

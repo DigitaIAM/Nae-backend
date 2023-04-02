@@ -5,12 +5,14 @@ use crate::{
   animo::memory::{ChangeTransformation, Memory, Transformation, TransformationKey, Value, ID},
   auth,
   commutator::Application,
-  storage::SOrganizations,
+  storage::Workspaces,
 };
 use chrono::{DateTime, Utc};
 use json::object::Object;
 use json::JsonValue;
 use service::error::Error;
+use service::utils::json::JsonParams;
+use service::utils::time::string_to_time;
 use service::{Service, Services};
 use std::sync::{Arc, RwLock};
 use store::elements::Batch;
@@ -18,8 +20,6 @@ use store::{
   elements::{Report, ToJson},
   error::WHError,
 };
-use service::utils::json::JsonParams;
-use service::utils::time::string_to_time;
 
 pub struct Inventory {
   app: Application,
@@ -44,11 +44,11 @@ impl Service for Inventory {
     let skip = self.skip(&params);
 
     if skip != 0 {
-      return     Ok(json::object! {
-      data: json::array![],
-      total: 0,
-      "$skip": skip,
-    });
+      return Ok(json::object! {
+        data: json::array![],
+        total: 0,
+        "$skip": skip,
+      });
     }
 
     // println!("FN_FIND_PARAMS: {:#?}", params);
@@ -76,10 +76,10 @@ impl Service for Inventory {
       };
 
       let report = match self
-          .app
-          .warehouse
-          .database
-          .get_report_for_goods(storage, goods, &batch, dates.0, dates.1)
+        .app
+        .warehouse
+        .database
+        .get_report_for_goods(storage, goods, &batch, dates.0, dates.1)
       {
         Ok(report) => report,
         Err(error) => return Err(Error::GeneralError(error.message())),
@@ -92,7 +92,6 @@ impl Service for Inventory {
         total: 1,
         "$skip": 0,
       })
-
     } else {
       let params = self.params(&params);
 
@@ -104,15 +103,11 @@ impl Service for Inventory {
         return Err(Error::GeneralError("dates not defined".into()));
       };
 
-      let report = match self
-          .app
-          .warehouse
-          .database
-          .get_report_for_storage(storage, dates.0, dates.1)
-      {
-        Ok(report) => report.to_json(),
-        Err(error) => return Err(Error::GeneralError(error.message())),
-      };
+      let report =
+        match self.app.warehouse.database.get_report_for_storage(storage, dates.0, dates.1) {
+          Ok(report) => report.to_json(),
+          Err(error) => return Err(Error::GeneralError(error.message())),
+        };
 
       // println!("REPORT = {report:?}");
 

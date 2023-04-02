@@ -17,13 +17,15 @@ use crate::hik::camera::States;
 use crate::hik::error::Error;
 use crate::hik::{camera, Camera, ConfigCamera, StatusCamera};
 use crate::services::{string_to_id, Data, Params};
-use service::{Service, Services};
-use crate::storage::{SCamera, SOrganizations};
+use crate::storage::{SCamera, Workspaces};
 use crate::warehouse::turnover::Organization;
 use crate::ws::error_general;
 use crate::{
-  auth, commutator::Application, animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  animo::memory::{Memory, Transformation, TransformationKey, Value, ID},
+  auth,
+  commutator::Application,
 };
+use service::{Service, Services};
 type ORG = crate::animo::memory::ID;
 type CAM = crate::animo::memory::ID;
 
@@ -31,7 +33,7 @@ pub struct Cameras {
   app: Application,
   path: Arc<String>,
 
-  orgs: SOrganizations,
+  orgs: Workspaces,
 
   // organization id > camera id
   mapping: Arc<RwLock<BTreeMap<ID, Vec<ID>>>>, // TODO switch to ordered hash set
@@ -39,7 +41,7 @@ pub struct Cameras {
 }
 
 impl Cameras {
-  pub(crate) fn new(app: Application, path: &str, orgs: SOrganizations) -> Arc<dyn Service> {
+  pub(crate) fn new(app: Application, path: &str, orgs: Workspaces) -> Arc<dyn Service> {
     let mut mapping = BTreeMap::new();
     let mut objs = BTreeMap::new();
 

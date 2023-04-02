@@ -9,18 +9,18 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
-pub struct SOrganizations {
+pub struct Workspaces {
   folder: PathBuf,
 }
 
-impl SOrganizations {
+impl Workspaces {
   pub fn new<S: AsRef<Path>>(folder: S) -> Self
   where
     PathBuf: std::convert::From<S>,
   {
     std::fs::create_dir_all(&folder).map_err(|e| panic!("can't create folder: {}", e)); // folder
 
-    SOrganizations { folder: folder.into() }
+    Workspaces { folder: folder.into() }
   }
 
   pub(crate) fn create(&self, id: ID) -> Result<Workspace, Error> {

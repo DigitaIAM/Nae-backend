@@ -6,7 +6,7 @@ pub mod organizations;
 use crate::services::JsonData;
 pub(crate) use cameras::{SCamera, SEvent};
 use json::JsonValue;
-pub use organizations::SOrganizations;
+pub use organizations::Workspaces;
 use service::error::Error;
 use std::io::Write;
 use std::path::PathBuf;
