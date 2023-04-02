@@ -1,5 +1,5 @@
 use crate::animo::memory::ID;
-use crate::storage::memories::{SDoc, SMemories};
+use crate::storage::memories::{Document, SMemories};
 use crate::storage::old_references::{SDepartment, SLocation, SPerson, SShift};
 use crate::storage::{json, load, save, SCamera};
 use json::JsonValue;
@@ -109,7 +109,7 @@ impl Workspace {
     SMemories { org: self.clone(), oid: self.id.clone(), ctx, top_folder, folder }
   }
 
-  pub(crate) fn resolve(&self, id: &Uuid) -> Option<SDoc> {
+  pub(crate) fn resolve(&self, id: &Uuid) -> Option<Document> {
     let mut top_folder = self.folder.clone();
     top_folder.push("memories");
 
@@ -137,7 +137,7 @@ impl Workspace {
     let mut ctx: Vec<_> = id.split("/").map(|s| s.to_string()).collect();
     ctx.pop();
 
-    Some(SDoc { id: id.clone(), oid: self.id.clone(), ctx, path })
+    Some(Document { id: id.clone(), oid: self.id.clone(), ctx, path })
   }
 
   pub(crate) fn department(&self, id: ID) -> SDepartment {

@@ -226,7 +226,7 @@ impl SMemories {
   }
 
   // TODO move to ???
-  pub(crate) fn get(&self, id: &String) -> Option<SDoc> {
+  pub(crate) fn get(&self, id: &String) -> Option<Document> {
     if id.contains("/") {
       // remove prefix (context)
       let id = self.remove_prefix(id);
@@ -237,7 +237,7 @@ impl SMemories {
       let mut path = self.folder.clone();
       path.push(format!("{:0>4}/{:0>2}/{}/latest.json", year, month, id));
 
-      Some(SDoc { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path })
+      Some(Document { id: id.clone(), oid: self.oid.clone(), ctx: self.ctx.clone(), path })
     } else {
       match Uuid::parse_str(id) {
         Ok(id) => self.org.resolve(&id),
@@ -246,7 +246,7 @@ impl SMemories {
     }
   }
 
-  pub(crate) fn list(&self, reverse: Option<bool>) -> std::io::Result<Vec<SDoc>> {
+  pub(crate) fn list(&self, reverse: Option<bool>) -> std::io::Result<Vec<Document>> {
     let mut result = Vec::new();
 
     // let mut folder = self.folder.clone();
@@ -280,7 +280,7 @@ impl SMemories {
           path.push("latest.json");
 
           let id = record.file_name().unwrap_or_default().to_string_lossy().to_string();
-          result.push(SDoc { id: id.to_string(), oid: self.oid, ctx: self.ctx.clone(), path });
+          result.push(Document { id: id.to_string(), oid: self.oid, ctx: self.ctx.clone(), path });
         }
       }
     }
@@ -297,7 +297,7 @@ impl SMemories {
   }
 }
 
-pub(crate) struct SDoc {
+pub(crate) struct Document {
   pub(crate) id: String,
 
   pub(crate) oid: ID,
@@ -306,7 +306,7 @@ pub(crate) struct SDoc {
   pub(crate) path: PathBuf,
 }
 
-impl SDoc {
+impl Document {
   pub(crate) fn json(&self) -> Result<JsonValue, Error> {
     load(&self.path)
   }
