@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
-pub(crate) struct SMemories {
+pub(crate) struct Memories {
   pub(crate) org: Workspace,
 
   pub(crate) oid: ID,
@@ -137,7 +137,7 @@ pub fn memories_create(
   Ok(result)
 }
 
-impl SMemories {
+impl Memories {
   // remove context details
   fn remove_prefix(&self, id: &String) -> String {
     if let Some(pos) = &id.rfind('/') {

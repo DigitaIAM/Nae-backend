@@ -1,5 +1,5 @@
 use crate::animo::memory::ID;
-use crate::storage::memories::{Document, SMemories};
+use crate::storage::memories::{Document, Memories};
 use crate::storage::old_references::{SDepartment, SLocation, SPerson, SShift};
 use crate::storage::{json, load, save, SCamera};
 use json::JsonValue;
@@ -95,7 +95,7 @@ impl Workspace {
     Err(Error::NotImplemented)
   }
 
-  pub(crate) fn memories(&self, ctx: Vec<String>) -> SMemories {
+  pub(crate) fn memories(&self, ctx: Vec<String>) -> Memories {
     let mut top_folder = self.folder.clone();
     top_folder.push("memories");
 
@@ -106,7 +106,7 @@ impl Workspace {
     // TODO remove it from here
     std::fs::create_dir_all(&folder);
 
-    SMemories { org: self.clone(), oid: self.id.clone(), ctx, top_folder, folder }
+    Memories { org: self.clone(), oid: self.id.clone(), ctx, top_folder, folder }
   }
 
   pub(crate) fn resolve(&self, id: &Uuid) -> Option<Document> {
