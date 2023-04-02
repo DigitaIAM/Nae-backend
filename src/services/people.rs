@@ -11,7 +11,7 @@ lazy_static::lazy_static! {
 
 // const PROPERTIES: [&str; 4] = ["organization", "first_name", "last_name", "email"];
 
-pub(crate) struct People {
+pub struct People {
   app: Application,
   path: Arc<String>,
 
@@ -19,7 +19,7 @@ pub(crate) struct People {
 }
 
 impl People {
-  pub(crate) fn new(app: Application, ws: Workspaces) -> Arc<dyn Service> {
+  pub fn new(app: Application, ws: Workspaces) -> Arc<dyn Service> {
     Arc::new(People { app, path: Arc::new("people".to_string()), ws })
   }
 }

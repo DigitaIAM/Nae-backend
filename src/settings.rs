@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Database {
-  pub(crate) memory: PathBuf,
-  pub(crate) inventory: PathBuf,
+  pub memory: PathBuf,
+  pub inventory: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,7 +36,7 @@ impl Settings {
     }
   }
 
-  pub(crate) fn new() -> Result<Self, ConfigError> {
+  pub fn new() -> Result<Self, ConfigError> {
     let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| "development".into());
 
     let config = Config::builder()

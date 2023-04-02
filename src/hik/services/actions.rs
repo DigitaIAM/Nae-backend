@@ -1,36 +1,15 @@
 use actix::{Actor, Addr};
-
-
-
-
 use json::JsonValue;
-
-use std::collections::{BTreeMap};
-
-
-use std::io::Write;
-
-
-
+use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
-use tantivy::HasLen;
-
-
-
+use service::utils::{json::JsonParams, time::now_in_seconds};
+use service::{Service, Services};
 
 use crate::hik::actions::list_devices::{DeviceMgmt, HttpClient};
 use crate::hik::actions::task::{CommandMeta, Stage};
-
 use crate::services::{string_to_id, Data, Params};
-
-use crate::{
-  animo::memory::{ID},
-  commutator::Application,
-  storage::Workspaces,
-};
-use service::utils::{json::JsonParams, time::now_in_seconds};
-use service::{Service, Services};
+use crate::{animo::memory::ID, commutator::Application, storage::Workspaces};
 
 pub struct Actions {
   app: Application,

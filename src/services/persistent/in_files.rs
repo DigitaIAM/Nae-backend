@@ -18,7 +18,7 @@ pub struct InFiles {
 }
 
 impl InFiles {
-  pub(crate) fn new(app: Application, path: &str, folder: &str) -> Arc<dyn Service> {
+  pub fn new(app: Application, path: &str, folder: &str) -> Arc<dyn Service> {
     // make sure folder exist
     std::fs::create_dir_all(folder).unwrap();
 

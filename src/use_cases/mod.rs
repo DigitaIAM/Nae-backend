@@ -1,19 +1,18 @@
+use crate::animo::db::AnimoDB;
 use crate::animo::memory::{ChangeTransformation, Memory};
 use lazy_static::lazy_static;
 use std::sync::Mutex;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::animo::db::AnimoDB;
 
 pub(crate) mod csv;
 pub(crate) mod uc_001;
 pub(crate) mod uc_002;
 pub(crate) mod uc_003;
-pub mod uc_005;
-pub mod uc_006;
-pub mod uc_007;
-pub mod uc_008;
-// pub(crate) mod uc_004;
+pub(crate) mod uc_005;
+pub(crate) mod uc_006;
+pub(crate) mod uc_007;
+pub(crate) mod uc_008;
 
 const MAX_WRITES: usize = 17;
 const PARALLEL_PROCESSING: bool = false;

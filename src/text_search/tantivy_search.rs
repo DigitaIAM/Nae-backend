@@ -2,8 +2,8 @@ use crate::animo::db::Snapshot;
 use crate::animo::error::{convert, DBError};
 use crate::animo::memory::{ChangeTransformation, Context, Value, ID};
 use crate::animo::shared::*;
-use crate::animo::{Txn};
-use actix_web::web::BufMut;
+use crate::animo::Txn;
+
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -11,7 +11,8 @@ use tantivy::collector::TopDocs;
 use tantivy::query::{FuzzyTermQuery, QueryParser, RegexQuery};
 use tantivy::schema::{Field, STRING};
 use tantivy::{
-  schema::{Schema, STORED, TEXT}, DocAddress, Document, Index, IndexReader, IndexWriter, Score, Term,
+  schema::{Schema, STORED, TEXT},
+  DocAddress, Document, Index, IndexReader, IndexWriter, Score, Term,
 };
 
 pub struct TextSearch {

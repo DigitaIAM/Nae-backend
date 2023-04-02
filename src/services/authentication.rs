@@ -5,13 +5,13 @@ use service::error::Error;
 use service::{Service, Services};
 use std::sync::Arc;
 
-pub(crate) struct Authentication {
+pub struct Authentication {
   app: Application,
   path: Arc<String>,
 }
 
 impl Authentication {
-  pub(crate) fn new(app: Application, path: &str) -> Arc<dyn Service> {
+  pub fn new(app: Application, path: &str) -> Arc<dyn Service> {
     Arc::new(Authentication { app, path: Arc::new(path.to_string()) })
   }
 }

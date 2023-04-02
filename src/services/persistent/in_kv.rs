@@ -18,12 +18,7 @@ pub(crate) struct InKV {
 }
 
 impl InKV {
-  pub(crate) fn new(
-    app: Application,
-    path: &str,
-    zone: ID,
-    properties: Vec<String>,
-  ) -> Arc<dyn Service> {
+  pub fn new(app: Application, path: &str, zone: ID, properties: Vec<String>) -> Arc<dyn Service> {
     Arc::new(InKV { app, path: Arc::new(path.to_string()), zone, properties: Arc::new(properties) })
   }
 

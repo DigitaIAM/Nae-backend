@@ -1,32 +1,15 @@
-
-
-
 use json::JsonValue;
-
-use std::collections::{BTreeMap};
-
-use std::io::Write;
-
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::SystemTime;
-use tantivy::HasLen;
-
-
 
 use crate::hik::camera::States;
-
 use crate::hik::{ConfigCamera, StatusCamera};
 use crate::services::{string_to_id, Data, Params};
 use crate::storage::{SCamera, Workspaces};
 
-
-use crate::{
-  animo::memory::{ID},
-  commutator::Application,
-};
-use service::{Service};
-type ORG = crate::animo::memory::ID;
-type CAM = crate::animo::memory::ID;
+use crate::{animo::memory::ID, commutator::Application};
+use service::Service;
 
 pub struct Cameras {
   app: Application,

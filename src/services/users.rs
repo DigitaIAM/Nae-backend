@@ -1,21 +1,17 @@
 use crate::services::{string_to_id, Data, Params};
 
-use crate::{
-  animo::memory::{ID},
-  auth,
-  commutator::Application,
-};
+use crate::{animo::memory::ID, auth, commutator::Application};
 
 use json::JsonValue;
 use service::error::Error;
-use service::{Service};
+use service::Service;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::{Arc, RwLock};
 
 pub const PATH: &str = "./data/services/users/";
 
-pub(crate) struct Users {
+pub struct Users {
   app: Application,
   path: Arc<String>,
   folder: String,
@@ -24,7 +20,7 @@ pub(crate) struct Users {
 }
 
 impl Users {
-  pub(crate) fn new(app: Application, path: &str) -> Arc<dyn Service> {
+  pub fn new(app: Application, path: &str) -> Arc<dyn Service> {
     // make sure folder exist
     std::fs::create_dir_all(PATH).unwrap();
 

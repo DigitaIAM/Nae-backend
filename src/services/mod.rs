@@ -4,12 +4,11 @@ pub(crate) mod persistent;
 mod users;
 
 use crate::animo::memory::ID;
-pub(crate) use authentication::Authentication;
+pub use authentication::Authentication;
 use json::JsonValue;
-pub(crate) use people::People;
+pub use people::People;
 use service::error::Error;
-use store;
-pub(crate) use users::Users;
+pub use users::Users;
 
 pub(crate) type Result = std::result::Result<JsonValue, Error>;
 pub(crate) type Data = JsonValue;
