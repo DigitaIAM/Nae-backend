@@ -3,26 +3,13 @@ mod people;
 pub(crate) mod persistent;
 mod users;
 
-
 use crate::animo::memory::ID;
-use store;
-
-
+pub(crate) use authentication::Authentication;
 use json::JsonValue;
-
-
-
-
-
-
-
+pub(crate) use people::People;
 use service::error::Error;
-
-
-
-
-
-
+use store;
+pub(crate) use users::Users;
 
 pub(crate) type Result = std::result::Result<JsonValue, Error>;
 pub(crate) type Data = JsonValue;
@@ -68,7 +55,6 @@ pub fn uuid(name: &str, params: &Params) -> std::result::Result<uuid::Uuid, Erro
       Err(Error::GeneralError(format!("uuid `{name}` not found")))
     }
   }
-
 }
 
 pub fn oid(params: &Params) -> std::result::Result<ID, Error> {

@@ -1,13 +1,12 @@
-use json::JsonValue;
-
-mod start;
-
-
-mod messages;
-pub(crate) use messages::*;
-
 pub(crate) mod engine_io;
+mod messages;
 pub(crate) mod socket_io;
+pub(crate) mod start;
+
+pub(crate) use messages::*;
+pub(crate) use start::start_connection;
+
+use json::JsonValue;
 
 fn error<S: AsRef<str>>(class_name: S, name: S, code: u16, message: S) -> JsonValue {
   json::object! {
@@ -25,4 +24,3 @@ pub(crate) fn error_not_found<S: AsRef<str>>(message: S) -> JsonValue {
 pub(crate) fn error_general<S: AsRef<str>>(message: S) -> JsonValue {
   error("general-errors", "GeneralError", 500, message.as_ref())
 }
-
