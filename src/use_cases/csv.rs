@@ -91,20 +91,22 @@ pub(crate) fn receive_csv_to_json(
       continue;
     }
 
-    let counterparty_name = &record[6];
-    let counterparty = json(
+    let from_ctx = if ctx.get(1) == Some(&"transfer") || &record[6] == "склад" { STORAGE.to_vec() } else { COUNTERPARTY.to_vec() };
+    let from_name = &record[6];
+    let from = json(
       app,
-      object! { name: counterparty_name },
-      COUNTERPARTY.to_vec(),
-      &|| object! { name: counterparty_name },
+      object! { name: from_name },
+      from_ctx,
+      &|| object! { name: from_name },
     )?;
 
-    let storage_name = &record[7];
-    let storage = json(
+    let into_ctx = if ctx.get(1) == Some(&"transfer") || &record[7] == "склад" { STORAGE.to_vec() } else { COUNTERPARTY.to_vec() };
+    let into_name = &record[7];
+    let into = json(
       app,
-      object! { name: storage_name },
+      object! { name: into_name },
       STORAGE.to_vec(),
-      &|| object! { name: storage_name },
+      &|| object! { name: into_name },
     )?;
 
     let doc_ctx = if ctx.get(1) == Some(&"receive") {
@@ -122,15 +124,15 @@ pub(crate) fn receive_csv_to_json(
         if &doc_ctx == &TRANSFER_DOCUMENT.to_vec() {
           object! {
             date: date.clone(),
-            from: counterparty["_id"].clone(),
-            into: storage["_id"].clone(),
+            from: from["_id"].clone(),
+            into: into["_id"].clone(),
             number: number,
           }
         } else {
           object! {
             date: date.clone(),
-            counterparty: counterparty["_id"].clone(),
-            storage: storage["_id"].clone(),
+            counterparty: from["_id"].clone(),
+            storage: into["_id"].clone(),
             number: number,
           }
         }
@@ -148,8 +150,34 @@ pub(crate) fn receive_csv_to_json(
       }
     })?;
 
-    // cell at the warehouse
-    // let cell: std::option::Option<String> = None;
+    // cells at the warehouse
+    let cell_from: Option<JsonValue> = if ctx.get(1) == Some(&"transfer") {
+      match &record[8] {
+        "" => None,
+        _ => Some(json(
+          app,
+          object! { name: &record[8] },
+          STORAGE.to_vec(),
+          &|| object! { name: &record[8] },
+        )?),
+      }
+    } else {
+      None
+    };
+
+    let cell_into: Option<JsonValue> = if ctx.get(1) == Some(&"transfer") {
+      match &record[9] {
+        "none" => None,
+        _ => Some(json(
+          app,
+          object! { name: &record[9] },
+          STORAGE.to_vec(),
+          &|| object! { name: &record[9] },
+        )?),
+      }
+    } else {
+      None
+    };
 
     let price: Decimal = 0.into();
 
@@ -164,7 +192,8 @@ pub(crate) fn receive_csv_to_json(
     let data = object! {
         document: document["_id"].clone(),
         goods: item["_id"].clone(),
-        // storage: cell,
+        storage_from: cell_from,
+        storage_into: cell_into,
         qty: object! { number: number.to_json(), uom: uom["_id"].clone() },
         price: price.to_json(),
         cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },

@@ -1808,15 +1808,32 @@ fn json_to_ops(
     Ok(d) => d,
     Err(_) => return Ok(ops),
   };
+
   let (store_from, store_into) = if type_of_operation == "transfer" {
-    let store_from = match resolve_store(app, oid, &document, "from") {
-      Ok(uuid) => uuid,
-      Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+    let store_from = if data["storage_from"].string() == "" {
+      match resolve_store(app, oid, &document, "from") {
+        Ok(uuid) => uuid,
+        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+      }
+    } else {
+      match resolve_store(app, oid, &data, "storage_from") {
+        Ok(uuid) => uuid,
+        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+      }
     };
-    let store_into = match resolve_store(app, oid, &document, "into") {
-      Ok(uuid) => uuid,
-      Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+
+    let store_into = if data["storage_into"].string() == "" {
+      match resolve_store(app, oid, &document, "into") {
+        Ok(uuid) => uuid,
+        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+      }
+    } else {
+      match resolve_store(app, oid, &data, "storage_into" ) {
+        Ok(uuid) => uuid,
+        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+      }
     };
+
     (store_from, Some(store_into))
   } else {
     let store_from = match resolve_store(app, oid, &document, "storage") {

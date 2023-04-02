@@ -5,7 +5,7 @@ const WAREHOUSE_TRANSFER: [&str; 2] = ["warehouse", "transfer"];
 pub(crate) fn import(app: &Application) {
   crate::use_cases::csv::receive_csv_to_json(
     app,
-    "./tests/data/Dista_transfer_31.03.2023.csv",
+    "./import/transfer.csv",
     WAREHOUSE_TRANSFER.to_vec(),
     None,
   )
