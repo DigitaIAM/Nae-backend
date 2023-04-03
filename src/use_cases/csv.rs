@@ -2,8 +2,7 @@
 use csv::{ReaderBuilder, Trim};
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
-
-
+use tantivy::HasLen;
 
 
 use store::elements::ToJson;
@@ -93,21 +92,25 @@ pub(crate) fn receive_csv_to_json(
 
     let from_ctx = if ctx.get(1) == Some(&"transfer") || &record[6] == "склад" { STORAGE.to_vec() } else { COUNTERPARTY.to_vec() };
     let from_name = &record[6];
-    let from = json(
-      app,
-      object! { name: from_name },
-      from_ctx,
-      &|| object! { name: from_name },
-    )?;
+    let from = if from_name.is_empty() {JsonValue::String("".to_string())} else {
+      json(
+        app,
+        object! { name: from_name },
+        from_ctx,
+        &|| object! { name: from_name },
+      )?
+    };
 
     let into_ctx = if ctx.get(1) == Some(&"transfer") || &record[7] == "склад" { STORAGE.to_vec() } else { COUNTERPARTY.to_vec() };
     let into_name = &record[7];
-    let into = json(
-      app,
-      object! { name: into_name },
-      STORAGE.to_vec(),
-      &|| object! { name: into_name },
-    )?;
+    let into = if into_name.is_empty() {JsonValue::String("".to_string())} else {
+      json(
+        app,
+        object! { name: into_name },
+        into_ctx,
+        &|| object! { name: into_name },
+      )?
+    };
 
     let doc_ctx = if ctx.get(1) == Some(&"receive") {
       RECEIVE_DOCUMENT.to_vec()
@@ -126,6 +129,13 @@ pub(crate) fn receive_csv_to_json(
             date: date.clone(),
             from: from["_id"].clone(),
             into: into["_id"].clone(),
+            number: number,
+          }
+        } else if &doc_ctx == &DISPATCH_DOCUMENT.to_vec() {
+          object! {
+            date: date.clone(),
+            storage: from["_id"].clone(),
+            counterparty: into["_id"].clone(),
             number: number,
           }
         } else {
@@ -167,7 +177,7 @@ pub(crate) fn receive_csv_to_json(
 
     let cell_into: Option<JsonValue> = if ctx.get(1) == Some(&"transfer") {
       match &record[9] {
-        "none" => None,
+        "" => None,
         _ => Some(json(
           app,
           object! { name: &record[9] },

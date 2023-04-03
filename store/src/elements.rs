@@ -1906,7 +1906,7 @@ fn json_to_ops(
         // let doc_from = app.service("memories").get(d["_id"].string(), params)?;
         Batch { id: data["batch"]["_uuid"].uuid()?, date: data["batch"]["date"].date_with_check()? }
       },
-      _ => Batch { id: UUID_NIL, date },
+      _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
     }
   };
 
