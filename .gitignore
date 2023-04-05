@@ -21,3 +21,5 @@ Cargo.lock
 .DS_Store
 
 **/*.zip
+
+/utf8_dbo.GOOD.Table.sql
