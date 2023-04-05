@@ -1,6 +1,10 @@
 use crate::commutator::Application;
+use memories_create;
 
 pub(crate) fn import(app: &Application) {
+  let j_val = load();
+  let ctx = vec!["empty"];
+  memories_create(app, j_val, ctx);
   unimplemented!()
 }
 
