@@ -31,7 +31,7 @@ fn load() -> JsonValue {
           );
           jvalue.push(both)
       })
-      .for_each(|js_obj| {
+      .for_each(|empty| {
           search_id += 1;
       });
 
