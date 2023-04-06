@@ -1910,6 +1910,12 @@ fn json_to_ops(
     }
   };
 
+  data["batch"] = object! {
+    "_uuid": batch.id.to_string(),
+    "date": time_to_string(batch.date),
+    "barcode": batch.to_barcode(),
+  };
+
   let mut batches = vec![];
 
   match &data["batches"] {
