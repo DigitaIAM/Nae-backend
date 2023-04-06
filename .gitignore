@@ -23,3 +23,5 @@ Cargo.lock
 **/*.zip
 
 /utf8_dbo.GOOD.Table.sql
+
+/Cargo.toml
