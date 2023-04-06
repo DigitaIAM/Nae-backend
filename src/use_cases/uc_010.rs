@@ -3,7 +3,8 @@ use std::fs::{File, self};
 use std::io::{BufRead, BufReader};
 use json::JsonValue;
 
-use crate::storage::memories::{memories_create, process_text_search};
+use crate::storage::memories::memories_create;
+use crate::text_search::process_text_search;
 
 const DRUGS: [&str; 1] = ["drugs"];
 
