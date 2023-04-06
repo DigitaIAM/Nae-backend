@@ -1,30 +1,30 @@
 use crate::commutator::Application;
 use std::fs::{File, self};
-use std::io::{self, Write};
 use std::io::{BufRead, BufReader};
 use json::JsonValue;
-use memories_create;
 
-const WAREHOUSE_RECEIVE: [&str; 2] = ["warehouse", "receive"];
+use crate::storage::memories::memories_create;
+
+const DRUGS: [&str; 1] = ["drugs"];
 
 pub(crate) fn import(app: &Application) {
-  let j_val = load();
-  let ctx = WAREHOUSE_RECEIVE.to_vec();
-  memories_create(app, j_val, ctx);
-  unimplemented!()
+  let items = load();
+  let ctx = DRUGS.to_vec();
+
+  for item in items {
+    memories_create(app, item, ctx.clone());
+  }
 }
 
 pub(crate) fn report(app: &Application) {
   unimplemented!()
 }
 
-fn load() -> JsonValue {
+fn load() -> Vec<JsonValue> {
   let text_file = "utf8_dbo.GOOD.Table.sql";
   let file = File::open(text_file).unwrap();
 
   let mut search_id = 0;
-
-  let mut jvalue = JsonValue::new_array();
 
   BufReader::new(file)
       .lines()
@@ -32,18 +32,21 @@ fn load() -> JsonValue {
       .filter(|l| l.starts_with("INSERT"))
       .map(|l| l[398..].to_string())
       .map(|l| {
-          let name = l.split("N'").nth(1).unwrap();
-          let manufacturer = l.split("N'").nth(1).unwrap();
-          let both = format!(
-              "{}; {}",
-              name[0..name.len() - 3].to_owned(),
-              manufacturer[0..manufacturer.len() - 3].to_owned()
-          );
-          jvalue.push(both)
-      })
-      .for_each(|empty| {
-          search_id += 1;
-      });
+          let mut name = l.split("N'").nth(1).unwrap().to_string();
+          let mut manufacturer = l.split("N'").nth(2).unwrap().to_string();
+          
+          // println!("BEFORE NAME: {name}");
+          // println!("BEFORE MANU: {manufacturer}");
 
-  jvalue
+          name.truncate((name.len() as isize - 3).max(0) as usize);
+          manufacturer.truncate((manufacturer.len() as isize - 3).max(0) as usize);
+          
+          // println!("AFTER NAME: {name}");
+          // println!("AFTER MANU: {manufacturer}");
+
+          json::object! {
+            name: name,
+            manufacturer: manufacturer,
+          }
+      }).collect()
 }
