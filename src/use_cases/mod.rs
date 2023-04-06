@@ -1,4 +1,5 @@
 use crate::animo::db::AnimoDB;
+use crate::animo::db::AnimoDB;
 use crate::animo::memory::{ChangeTransformation, Memory};
 use lazy_static::lazy_static;
 use std::sync::Mutex;
@@ -14,6 +15,7 @@ pub(crate) mod uc_006;
 pub(crate) mod uc_007;
 pub(crate) mod uc_008;
 pub(crate) mod uc_009;
+pub(crate) mod uc_010;
 
 const MAX_WRITES: usize = 17;
 const PARALLEL_PROCESSING: bool = false;

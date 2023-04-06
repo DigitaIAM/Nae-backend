@@ -1,9 +1,15 @@
 use crate::commutator::Application;
+use std::fs::{File, self};
+use std::io::{self, Write};
+use std::io::{BufRead, BufReader};
+use json::JsonValue;
 use memories_create;
+
+const WAREHOUSE_RECEIVE: [&str; 2] = ["warehouse", "receive"];
 
 pub(crate) fn import(app: &Application) {
   let j_val = load();
-  let ctx = vec!["empty"];
+  let ctx = WAREHOUSE_RECEIVE.to_vec();
   memories_create(app, j_val, ctx);
   unimplemented!()
 }
