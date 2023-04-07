@@ -35,7 +35,7 @@ pub struct Application {
   pub(crate) sender: Sender<Mutation>,
 
   // search
-  pub search: Arc<SearchEngine>,
+  pub search: Arc<RwLock<SearchEngine>>,
 }
 
 impl GetWarehouse for Application {
@@ -72,7 +72,7 @@ impl Application {
       stop: stop.clone(),
       events: events_sender,
       sender,
-      search: Arc::new(SearchEngine::new()),
+      search: Arc::new(RwLock::new(SearchEngine::new())),
     };
 
     thread::spawn({
