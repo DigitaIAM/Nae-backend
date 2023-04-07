@@ -1,3 +1,5 @@
+use std::io::Error;
+
 use serde::{Deserialize, Serialize};
 use json::JsonValue;
 use crate::commutator::Application;
@@ -19,11 +21,16 @@ impl SearchEngine {
   pub fn new() -> Self {
     SearchEngine {  }
   }
+  pub fn create(&self, id: &str, text: &str) -> Result<(), Error> {
+    Ok(())
+  }
+  pub fn change() {}
+  pub fn remove() {}
 }
 
 pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonValue, data: &JsonValue) {
   if ctx == &vec!["drugs"] {
-    let id = data["id"].as_str().unwrap_or_default();
+    let id = data["_id"].as_str().unwrap_or_default();
     let before_name = before["name"].as_str();
     let after_name = data["name"].as_str();
 
