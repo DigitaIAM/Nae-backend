@@ -78,7 +78,8 @@ fn save_data(
 
   // println!("loaded before {before:?}");
 
-  // process_text_search(app, ctx, &before, &data);
+  use crate::text_search::process_text_search;
+  process_text_search(app, ctx, &before, &data);
 
   let data =
     receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?;

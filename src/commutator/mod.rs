@@ -32,6 +32,8 @@ pub struct Application {
   stop: Arc<AtomicBool>,
   pub(crate) events: Sender<Event>,
   pub(crate) sender: Sender<Mutation>,
+
+  // search
 }
 
 impl GetWarehouse for Application {

@@ -12,14 +12,6 @@ pub(crate) fn import(app: &Application) {
   let items = load();
   let ctx = DRUGS.to_vec();
 
-  let mut index = 0;
-  for item in items.clone() {
-    if index < 2 {
-      process_text_search(ctx.clone(), &item.clone());
-    }
-    index += 1
-  }
-
   for item in items {
     memories_create(app, item, ctx.clone());
   }
