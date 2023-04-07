@@ -36,7 +36,9 @@ impl SearchEngine {
     };
     Ok(())
   }
-  pub fn search() {}
+  pub fn search(&self, text: &str) -> Result<Vec<String>, Error> {
+    Ok(vec![])
+  }
 }
 
 pub fn process_text_search(app: &mut Application,  ctx: &Vec<String>, before: &JsonValue, data: &JsonValue) -> Result<(), Error> {
@@ -50,17 +52,14 @@ pub fn process_text_search(app: &mut Application,  ctx: &Vec<String>, before: &J
         if before_name == after_name {
           todo!() // IGNORE
         } else {
-          // todo!()
           app.search.change(id, before_name, after_name);
         }
       } else {
-        // todo!()
         app.search.delete(id, after_name.unwrap_or_default());
       }
     } else {
       if let Some(after_name) = after_name {
-        todo!()
-        // app.search.delete(id, after_name.unwrap_or_default())
+        app.search.delete(id, after_name);
       } else {
         todo!() // IGNORE
       }
