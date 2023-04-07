@@ -25,12 +25,18 @@ impl SearchEngine {
     self.catalog.push((id.to_string(), text.to_string()));
     Ok(())
   }
-  pub fn change(&self, id: &str, before: &str, after: &str) -> Result<(), Error> {
-    todo!()
-  }
-  pub fn remove(&self, id: &str, text: &str) -> Result<(), Error> {
+  pub fn change(&mut self, id: &str, before: &str, after: &str) -> Result<(), Error> {
+    self.delete(id, before);
+    self.create(id, after);
     Ok(())
   }
+  pub fn delete(&mut self, id: &str, text: &str) -> Result<(), Error> {
+    if let Some(index) = self.catalog.iter().position(|(current_id, current_text)| current_id == id) {
+      self.catalog.remove(index);
+    };
+    Ok(())
+  }
+  pub fn search() {}
 }
 
 pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonValue, data: &JsonValue) -> Result<(), Error> {
@@ -44,17 +50,17 @@ pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonV
         if before_name == after_name {
           todo!() // IGNORE
         } else {
-          todo!() // CHANGE
-          // app.search.change(id, before_name, after_name)
+          // todo!() // CHANGE
+          // app.search.change(id, before_name, after_name);
         }
       } else {
-        todo!() // REMOVE
-        // app.search.delete()
+        // todo!() // REMOVE
+        app.search.delete(id, after_name.unwrap_or_default());
       }
     } else {
       if let Some(after_name) = after_name {
         todo!() // CREATE
-        // app.search.delete(id, after_name)
+        // app.search.delete(id, after_name.unwrap_or_default())
       } else {
         todo!() // IGNORE
       }
