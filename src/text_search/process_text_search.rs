@@ -39,7 +39,7 @@ impl SearchEngine {
   pub fn search() {}
 }
 
-pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonValue, data: &JsonValue) -> Result<(), Error> {
+pub fn process_text_search(app: &mut Application,  ctx: &Vec<String>, before: &JsonValue, data: &JsonValue) -> Result<(), Error> {
   if ctx == &vec!["drugs"] {
     let id = data["_id"].as_str().unwrap_or_default();
     let before_name = before["name"].as_str();
@@ -50,16 +50,16 @@ pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonV
         if before_name == after_name {
           todo!() // IGNORE
         } else {
-          // todo!() // CHANGE
-          // app.search.change(id, before_name, after_name);
+          // todo!()
+          app.search.change(id, before_name, after_name);
         }
       } else {
-        // todo!() // REMOVE
+        // todo!()
         app.search.delete(id, after_name.unwrap_or_default());
       }
     } else {
       if let Some(after_name) = after_name {
-        todo!() // CREATE
+        todo!()
         // app.search.delete(id, after_name.unwrap_or_default())
       } else {
         todo!() // IGNORE
