@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use json::JsonValue;
+use crate::commutator::Application;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 struct JsonValueObject {
@@ -9,7 +10,7 @@ struct JsonValueObject {
   // uuid: String,
 }
 
-pub fn process_text_search(app: &Application,  ctx: Vec<&str>, before: &JsonValue, data: &JsonValue) {
+pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonValue, data: &JsonValue) {
   if ctx[0] == "drugs" {
     let before_str = format!("{}", before);
     let data_str = format!("{}", data);
