@@ -34,6 +34,7 @@ pub struct Application {
   pub(crate) sender: Sender<Mutation>,
 
   // search
+  // pub search: SearchEngine,
 }
 
 impl GetWarehouse for Application {
