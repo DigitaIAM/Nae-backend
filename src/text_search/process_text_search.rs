@@ -28,13 +28,13 @@ impl SearchEngine {
     self.create(id, after);
   }
 
-  pub fn delete(&mut self, id: &str, text: &str) {
-    if let Some(index) = self.catalog.iter().position(|(current_id, current_text)| current_id == id)
+  pub fn delete(&mut self, id: &str, _text: &str) {
+    if let Some(index) = self.catalog.iter().position(|(current_id, _current_text)| current_id == id)
     {
       self.catalog.remove(index);
     };
   }
-  pub fn search(&self, text: &str) -> Vec<String> {
+  pub fn search(&self, _text: &str) -> Vec<String> {
     vec![]
   }
 }
