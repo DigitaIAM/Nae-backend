@@ -2,6 +2,7 @@ use crate::services::{Event, Mutation};
 use crate::ws::{engine_io, socket_io, Connect, Disconnect, WsMessage};
 use crate::{animo::db::AnimoDB, settings::Settings};
 use crate::{storage::Workspaces, ws};
+use crate::text_search::process_text_search::SearchEngine;
 use actix::prelude::*;
 use crossbeam::channel::{Receiver, Sender};
 use json::{array, JsonValue};
@@ -34,7 +35,7 @@ pub struct Application {
   pub(crate) sender: Sender<Mutation>,
 
   // search
-  // pub search: SearchEngine,
+  pub search: SearchEngine,
 }
 
 impl GetWarehouse for Application {
@@ -71,6 +72,7 @@ impl Application {
       stop: stop.clone(),
       events: events_sender,
       sender,
+      search: SearchEngine::new(),
     };
 
     thread::spawn({

@@ -10,6 +10,7 @@ struct JsonValueObject {
   // uuid: String,
 }
 
+#[derive(Clone)]
 pub struct SearchEngine {
   
 }
