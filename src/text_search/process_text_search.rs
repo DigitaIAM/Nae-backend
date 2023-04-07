@@ -17,8 +17,15 @@ pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonV
     let bfr: JsonValueObject = serde_json::from_str(&before_str).unwrap();
     let dta: JsonValueObject = serde_json::from_str(&data_str).unwrap();
 
-    println!("DATA.NAME = {}", dta.name);
-    // assert_eq!(before, data);
+    if dta.name.is_empty() && !bfr.name.is_empty() {
+      todo!() // remove bfr.name
+    }
+    if !dta.name.is_empty() && bfr.name.is_empty() {
+      todo!() // add dta.name
+    }
+    if dta.name != bfr.name {
+      todo!() // replace bfr.name with dta.name
+    }
 
     todo!()
   }
