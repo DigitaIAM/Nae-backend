@@ -24,8 +24,12 @@ impl SearchEngine {
   pub fn create(&self, id: &str, text: &str) -> Result<(), Error> {
     Ok(())
   }
-  pub fn change() {}
-  pub fn remove() {}
+  pub fn change(&self, id: &str, before: &str, after: &str) -> Result<(), Error> {
+    todo!()
+  }
+  pub fn remove(&self, id: &str, text: &str) -> Result<(), Error> {
+    Ok(())
+  }
 }
 
 pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonValue, data: &JsonValue) {
