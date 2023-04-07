@@ -35,9 +35,6 @@ fn load() -> Vec<JsonValue> {
       .map(|l| {
           let mut name = l.split("N'").nth(1).unwrap().to_string();
           let mut manufacturer = l.split("N'").nth(2).unwrap().to_string();
-          
-          // println!("BEFORE NAME: {name}");
-          // println!("BEFORE MANU: {manufacturer}");
 
           name.truncate((name.len() as isize - 3).max(0) as usize);
           manufacturer.truncate((manufacturer.len() as isize - 3).max(0) as usize);

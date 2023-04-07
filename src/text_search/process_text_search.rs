@@ -14,14 +14,15 @@ struct JsonValueObject {
 
 #[derive(Clone)]
 pub struct SearchEngine {
-  
+  catalog: Vec<(String, String)>
 }
 
 impl SearchEngine {
   pub fn new() -> Self {
-    SearchEngine {  }
+    SearchEngine { catalog: vec![], }
   }
-  pub fn create(&self, id: &str, text: &str) -> Result<(), Error> {
+  pub fn create(&mut self, id: &str, text: &str) -> Result<(), Error> {
+    self.catalog.push((id.to_string(), text.to_string()));
     Ok(())
   }
   pub fn change(&self, id: &str, before: &str, after: &str) -> Result<(), Error> {
@@ -32,7 +33,7 @@ impl SearchEngine {
   }
 }
 
-pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonValue, data: &JsonValue) {
+pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonValue, data: &JsonValue) -> Result<(), Error> {
   if ctx == &vec!["drugs"] {
     let id = data["_id"].as_str().unwrap_or_default();
     let before_name = before["name"].as_str();
@@ -61,4 +62,5 @@ pub fn process_text_search(app: &Application,  ctx: &Vec<String>, before: &JsonV
 
     todo!()
   }
+  Ok(())
 }
