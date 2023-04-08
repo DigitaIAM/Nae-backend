@@ -36,6 +36,11 @@ impl Enrich for JsonValue {
       data["uom"] = id_into_object(ws, uom);
     }
 
+    // workaround for goods
+    if let Some(goods) = data["goods"].as_str() {
+      data["goods"] = id_into_object(ws, goods);
+    }
+
     data
   }
 }
