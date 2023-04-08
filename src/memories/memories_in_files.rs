@@ -250,10 +250,12 @@ impl Service for MemoriesInFiles {
       return Err(Error::GeneralError(format!("id `{id}` not valid")));
     }
 
-    if let Some(memories) = self.wss.get(&oid).memories(ctx).get(&id) {
-      memories.json()
+    let ws = self.wss.get(&oid);
+
+    if let Some(memories) = ws.memories(ctx.clone()).get(&id) {
+      Ok(memories.json()?.enrich(&ws))
     } else {
-      Err(Error::GeneralError(format!("id `{id}` not found")))
+      Err(Error::GeneralError(format!("id `{id}` not found at {ctx:?}")))
     }
   }
 
@@ -261,9 +263,11 @@ impl Service for MemoriesInFiles {
     let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
-    let memories = self.wss.get(&oid).memories(ctx);
+    let ws = self.wss.get(&oid);
 
-    memories.create(&self.app, data)
+    let data = ws.memories(ctx).create(&self.app, data)?;
+
+    Ok(data.enrich(&ws))
   }
 
   fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
@@ -277,9 +281,12 @@ impl Service for MemoriesInFiles {
         return Err(Error::GeneralError(format!("id `{id}` not valid")));
       }
 
-      let memories = self.wss.get(&oid).memories(ctx);
+      let ws = self.wss.get(&oid);
+      let memories = ws.memories(ctx);
 
-      memories.update(&self.app, id, data)
+      let data = memories.update(&self.app, id, data)?;
+
+      Ok(data.enrich(&ws))
     }
   }
 
@@ -291,7 +298,8 @@ impl Service for MemoriesInFiles {
       return Err(Error::GeneralError(format!("id `{id}` not valid")));
     }
 
-    let memories = self.wss.get(&oid).memories(ctx);
+    let ws = self.wss.get(&oid);
+    let memories = ws.memories(ctx);
 
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
@@ -312,7 +320,9 @@ impl Service for MemoriesInFiles {
       //   }
       // }
 
-      memories.update(&self.app, id, obj)
+      let data = memories.update(&self.app, id, obj)?;
+
+      Ok(data.enrich(&ws))
     }
   }
 
