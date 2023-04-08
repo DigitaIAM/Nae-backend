@@ -1,4 +1,3 @@
-
 use crate::commutator::Application;
 use crate::services::Data;
 use crate::storage::organizations::Workspace;
@@ -7,13 +6,13 @@ use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
 
 use service::error::Error;
-use service::utils::{time::time_to_string};
+use service::utils::time::time_to_string;
 use service::Services;
 
 use std::path::PathBuf;
 
 use std::sync::Mutex;
-use store::elements::{receive_data};
+use store::elements::receive_data;
 use uuid::Uuid;
 
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
@@ -139,35 +138,35 @@ pub fn memories_create(
   Ok(result)
 }
 
+// remove context details
+fn remove_prefix(id: &String) -> String {
+  if let Some(pos) = &id.rfind('/') {
+    id[(*pos + 1)..].to_string()
+  } else {
+    id.to_string()
+  }
+}
+
+pub(crate) fn build_folder_path(id: &String, folder: &PathBuf) -> PathBuf {
+  println!("before: {id}");
+  let id = remove_prefix(id);
+  println!("after: {id}");
+
+  let year = &id[0..4];
+  let month = &id[5..7];
+
+  println!("create id {id} year {year} month {month}");
+
+  // 2023/01/2023-01-06T12:43:15Z/
+  let mut folder = folder.clone();
+  folder.push(year);
+  folder.push(month);
+  folder.push(&id);
+
+  folder
+}
+
 impl Memories {
-  // remove context details
-  fn remove_prefix(&self, id: &String) -> String {
-    if let Some(pos) = &id.rfind('/') {
-      id[(*pos + 1)..].to_string()
-    } else {
-      id.to_string()
-    }
-  }
-
-  fn folder(&self, id: &String) -> PathBuf {
-    println!("before: {id}");
-    let id = self.remove_prefix(id);
-    println!("after: {id}");
-
-    let year = &id[0..4];
-    let month = &id[5..7];
-
-    println!("create id {id} year {year} month {month}");
-
-    // 2023/01/2023-01-06T12:43:15Z/
-    let mut folder = self.folder.clone();
-    folder.push(year);
-    folder.push(month);
-    folder.push(&id);
-
-    folder
-  }
-
   pub(crate) fn create(&self, app: &Application, mut data: JsonValue) -> Result<JsonValue, Error> {
     let (id, time, folder) = {
       let _lock = LOCK.lock().unwrap();
@@ -183,7 +182,7 @@ impl Memories {
         println!("id: {id}");
 
         // context/2023/01/2023-01-06T12:43:15Z/
-        let folder = self.folder(&id);
+        let folder = build_folder_path(&id, &self.folder);
 
         println!("creating folder {folder:?}");
 
@@ -224,25 +223,25 @@ impl Memories {
     data: Data,
   ) -> Result<JsonValue, Error> {
     let time = Utc::now();
-    save_data(app, &self.top_folder, &self.folder(&id), &self.ctx, &id, None, time, data)
+    save_data(
+      app,
+      &self.top_folder,
+      &build_folder_path(&id, &self.folder),
+      &self.ctx,
+      &id,
+      None,
+      time,
+      data,
+    )
   }
 
   // TODO move to ???
   pub(crate) fn get(&self, id: &String) -> Option<Document> {
     if id.contains("/") {
-      // remove prefix (context)
-      let id = self.remove_prefix(id);
-
-      let year = &id[..4];
-      let month = &id[5..7];
-
-      let mut path = self.folder.clone();
-      path.push(format!("{:0>4}/{:0>2}/{}/latest.json", year, month, id));
-
-      Some(Document { mem: self.clone(), id, path })
+      self.ws.resolve_id(id)
     } else {
       match Uuid::parse_str(id) {
-        Ok(id) => self.ws.resolve(&id),
+        Ok(id) => self.ws.resolve_uuid(&id),
         Err(_) => None,
       }
     }

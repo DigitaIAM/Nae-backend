@@ -109,7 +109,7 @@ impl Workspace {
     Memories { ws: self.clone(), ctx, top_folder, folder }
   }
 
-  pub(crate) fn resolve(&self, id: &Uuid) -> Option<Document> {
+  pub(crate) fn resolve_uuid(&self, id: &Uuid) -> Option<Document> {
     let mut top_folder = self.folder.clone();
     top_folder.push("memories");
 
@@ -137,7 +137,26 @@ impl Workspace {
     let mut ctx: Vec<_> = id.split("/").map(|s| s.to_string()).collect();
     ctx.pop();
 
-    Some(Document { mem: self.memories(ctx), id: id.clone(), path })
+    Some(Document { mem: self.memories(ctx), id, path })
+  }
+
+  pub(crate) fn resolve_id(&self, id: &str) -> Option<Document> {
+    let mut top_folder = self.folder.clone();
+    top_folder.push("memories");
+
+    let mut ctx: Vec<_> = id.split("/").map(|s| s.to_string()).collect();
+    let ctx_id = ctx.pop().unwrap_or_default();
+
+    let mut path = top_folder.clone();
+    ctx.iter().for_each(|name| path.push(name));
+
+    let mut path = crate::storage::memories::build_folder_path(&ctx_id, &path);
+    path.push("latest.json");
+
+    println!("id {id:?}");
+    println!("path {path:?}");
+
+    Some(Document { mem: self.memories(ctx), id: id.to_string(), path })
   }
 
   pub(crate) fn department(&self, id: ID) -> SDepartment {
