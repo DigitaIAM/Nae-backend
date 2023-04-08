@@ -1,3 +1,5 @@
+use std::io::Error;
+
 use json::JsonValue;
 use serde::{Deserialize, Serialize};
 
@@ -50,15 +52,6 @@ fn load() -> Vec<(String, String)> {
   vec![]
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-  #[error("IO error occurred: {0}")]
-  IOError(#[from] std::io::Error),
-
-  #[error("Failed to lock RwLock on search engine")]
-  TryLockError,
-}
-
 pub fn process_text_search(
   app: &Application,
   ctx: &Vec<String>,
@@ -66,25 +59,28 @@ pub fn process_text_search(
   data: &JsonValue,
 ) -> Result<(), Error> {
   if ctx == &vec!["drugs"] {
-    let id = data["_id"].as_str().unwrap_or_default();
+    let id = data["_uuid"].as_str().unwrap_or_default();
     let before_name = before["name"].as_str();
     let after_name = data["name"].as_str();
 
     if let Some(before_name) = before_name {
       if let Some(after_name) = after_name {
         if before_name == after_name {
-          todo!() // IGNORE
+          // IGNORE
         } else {
-          app.search.try_write().map_err(|_| Error::TryLockError)?.change(id, before_name, after_name);
+          let mut search = app.search.write().unwrap();
+          search.change(id, before_name, after_name);
         }
       } else {
-        app.search.try_write().map_err(|_| Error::TryLockError)?.delete(id, after_name.unwrap_or_default());
+        let mut search = app.search.write().unwrap();
+        search.delete(id, before_name);
       }
     } else {
       if let Some(after_name) = after_name {
-        app.search.try_write().map_err(|_| Error::TryLockError)?.delete(id, after_name);
+        let mut search = app.search.write().unwrap();
+        search.create(id, after_name);
       } else {
-        todo!() // IGNORE
+        // IGNORE
       }
     }
   }

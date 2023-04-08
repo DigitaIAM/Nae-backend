@@ -49,6 +49,24 @@ impl Service for MemoriesInFiles {
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
 
     // workaround
+    if ctx == vec!["drugs"] { 
+      let search = self.params(&params)["search"].as_str().unwrap_or_default();
+      let engine = self.app.search.read().unwrap();
+      let result: Vec<String> = engine.search(search).into_iter().skip(skip).take(limit).collect(); //id
+
+      let list: Vec<JsonValue> = todo!();
+
+      let total = list.len();
+
+      return Ok(json::object! {
+        data: JsonValue::Array(list),
+        total: total,
+        "$skip": skip,
+      });
+
+    }
+
+    // workaround
     if ctx == vec!["warehouse", "stock"] {
       if skip != 0 {
         let list = vec![];
