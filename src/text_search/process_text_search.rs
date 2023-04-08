@@ -1,6 +1,5 @@
 use json::JsonValue;
 use serde::{Deserialize, Serialize};
-use simsearch::SimSearch;
 
 use crate::{commutator::Application, text_search::SimSearchEngine};
 use crate::text_search::search_engines::Search;
