@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use simsearch::SimSearch;
 
 use crate::{commutator::Application, text_search::SimSearchEngine};
+use crate::text_search::search_engines::Search;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 struct JsonValueObject {
@@ -41,7 +42,7 @@ impl SearchEngine {
     let catalog = SearchEngine {
       catalog: load()
     };
-    // engine.search(text);
+    let search_test = engine.search(text);
     vec![]
   }
 }
