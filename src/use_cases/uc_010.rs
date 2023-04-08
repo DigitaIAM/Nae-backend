@@ -1,7 +1,8 @@
 use crate::commutator::Application;
 use std::fs::{File, self};
 use std::io::{BufRead, BufReader};
-use json::JsonValue;
+use json::{JsonValue, object};
+use service::Services;
 
 use crate::storage::memories::memories_create;
 use crate::text_search::process_text_search;
@@ -18,7 +19,10 @@ pub(crate) fn import(app: &Application) {
 }
 
 pub(crate) fn report(app: &Application) {
-  unimplemented!()
+  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
+  let ctx = DRUGS.to_vec();
+  let result = app.service("memories").find(object! {oid: oid, ctx: ctx, search: "пояс"}).unwrap();
+  println!("{}", result.dump());
 }
 
 fn load() -> Vec<JsonValue> {

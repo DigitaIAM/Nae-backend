@@ -2,6 +2,7 @@ use std::io::Error;
 
 use json::JsonValue;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{commutator::Application, text_search::SimSearchEngine};
 use crate::text_search::search_engines::Search;
@@ -16,35 +17,31 @@ struct JsonValueObject {
 
 #[derive(Clone)]
 pub struct SearchEngine {
-  catalog: Vec<(String, String)>,
+  catalog: Vec<(Uuid, String)>,
 }
 
 impl SearchEngine {
   pub fn new() -> Self {
     SearchEngine { catalog: vec![] }
   }
-  pub fn create(&mut self, id: &str, text: &str) {
-    self.catalog.push((id.to_string(), text.to_string()));
+  pub fn create(&mut self, id: Uuid, text: &str) {
+    self.catalog.push((id, text.to_string()));
   }
-  pub fn change(&mut self, id: &str, before: &str, after: &str) {
+  pub fn change(&mut self, id: Uuid, before: &str, after: &str) {
     self.delete(id, before);
     self.create(id, after);
   }
 
-  pub fn delete(&mut self, id: &str, _text: &str) {
-    if let Some(index) = self.catalog.iter().position(|(current_id, _current_text)| current_id == id)
+  pub fn delete(&mut self, id: Uuid, _text: &str) {
+    if let Some(index) = self.catalog.iter().position(|(current_id, _current_text)| current_id == &id)
     {
       self.catalog.remove(index);
     };
   }
   #[allow(unused)]
-  pub fn search(&self, text: &str) -> Vec<String> {
-    let engine = SimSearchEngine::new();
-    let catalog = SearchEngine {
-      catalog: load()
-    };
-    let search_test = engine.search(text);
-    vec![]
+  pub fn search(&self, text: &str) -> Vec<Uuid> {
+    println!("{text}");
+    todo!()
   }
 }
 
@@ -59,7 +56,7 @@ pub fn process_text_search(
   data: &JsonValue,
 ) -> Result<(), Error> {
   if ctx == &vec!["drugs"] {
-    let id = data["_uuid"].as_str().unwrap_or_default();
+    let id = data["_uuid"].as_str().map(|data| Uuid::parse_str(data).unwrap()).unwrap();
     let before_name = before["name"].as_str();
     let after_name = data["name"].as_str();
 

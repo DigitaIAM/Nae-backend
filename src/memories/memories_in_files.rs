@@ -50,13 +50,18 @@ impl Service for MemoriesInFiles {
 
     // workaround
     if ctx == vec!["drugs"] { 
+      let ws = self.wss.get(&wsid);
+
       let search = self.params(&params)["search"].as_str().unwrap_or_default();
-      let engine = self.app.search.read().unwrap();
-      let result: Vec<String> = engine.search(search).into_iter().skip(skip).take(limit).collect(); //id
 
-      let list: Vec<JsonValue> = todo!();
+      let result = {
+        let engine = self.app.search.read().unwrap();
+        engine.search(search)
+      };
 
-      let total = list.len();
+      let total = result.len();
+      
+      let list: Vec<JsonValue> = result.into_iter().skip(skip).take(limit).map(|id| id.resolve_to_json_object(&ws)).collect();
 
       return Ok(json::object! {
         data: JsonValue::Array(list),
