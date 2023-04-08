@@ -18,11 +18,15 @@ struct JsonValueObject {
 #[derive(Clone)]
 pub struct SearchEngine {
   catalog: Vec<(Uuid, String)>,
+  engine: SimSearchEngine,
 }
 
 impl SearchEngine {
   pub fn new() -> Self {
-    SearchEngine { catalog: vec![] }
+    SearchEngine {
+      catalog: vec![],
+      engine: search_engines::SimSearchEngine::new(),
+    }
   }
   pub fn create(&mut self, id: Uuid, text: &str) {
     self.catalog.push((id, text.to_string()));

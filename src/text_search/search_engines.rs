@@ -6,6 +6,7 @@ pub trait Search {
   fn search(&self, input: &str) -> Vec<usize>;
 }
 
+#[derive(Clone)]
 pub struct SimSearchEngine {
   engine: SimSearch<usize>,
 }
