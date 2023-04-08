@@ -1,7 +1,8 @@
 use json::JsonValue;
 use serde::{Deserialize, Serialize};
+use simsearch::SimSearch;
 
-use crate::commutator::Application;
+use crate::{commutator::Application, text_search::SimSearchEngine};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 struct JsonValueObject {
@@ -34,10 +35,15 @@ impl SearchEngine {
       self.catalog.remove(index);
     };
   }
-  pub fn search(&self, _text: &str) -> Vec<String> {
+  #[allow(unused)]
+  pub fn search(&self, text: &str) -> Vec<String> {
+    let engine = SimSearchEngine::new();
+    // engine.search(text);
     vec![]
   }
 }
+
+fn load() {}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -76,8 +82,6 @@ pub fn process_text_search(
         todo!() // IGNORE
       }
     }
-
-    todo!()
   }
   Ok(())
 }
