@@ -1,30 +1,22 @@
 use super::*;
 
-
-
-
 use json::JsonValue;
 use rust_decimal::Decimal;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
-
-
-use std::sync::{Arc};
+use std::sync::Arc;
 
 use tantivy::HasLen;
 use uuid::Uuid;
 
-
 use crate::services::{Data, Params};
 use crate::storage::Workspaces;
 
-use crate::{
-  commutator::Application,
-};
+use crate::commutator::Application;
 use chrono::Utc;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
-use service::{Service};
+use service::Service;
 use store::balance::BalanceForGoods;
 use store::elements::ToJson;
 use store::GetWarehouse;
@@ -36,12 +28,12 @@ pub struct MemoriesInFiles {
   app: Application,
   name: Arc<String>,
 
-  ws: Workspaces,
+  wss: Workspaces,
 }
 
 impl MemoriesInFiles {
   pub fn new(app: Application, name: &str, ws: Workspaces) -> Arc<dyn Service> {
-    Arc::new(MemoriesInFiles { app, name: Arc::new(name.to_string()), ws })
+    Arc::new(MemoriesInFiles { app, name: Arc::new(name.to_string()), wss: ws })
   }
 }
 
@@ -51,7 +43,7 @@ impl Service for MemoriesInFiles {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let oid = crate::services::oid(&params)?;
+    let wsid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
     let limit = self.limit(&params);
@@ -78,7 +70,7 @@ impl Service for MemoriesInFiles {
         .get_balance_for_all(Utc::now())
         .map_err(|e| Error::GeneralError(e.message()))?;
 
-      let org = self.ws.get(&oid);
+      let org = self.wss.get(&wsid);
 
       let mut list = vec![];
       for (store, sb) in balances {
@@ -120,7 +112,8 @@ impl Service for MemoriesInFiles {
       });
     }
 
-    let memories = self.ws.get(&oid).memories(ctx.clone());
+    let ws = self.wss.get(&wsid);
+    let memories = ws.memories(ctx.clone());
     let list = memories.list(Some(reverse))?;
 
     let search = &self.params(&params)["search"];
@@ -167,6 +160,7 @@ impl Service for MemoriesInFiles {
         })
         .skip(skip)
         .take(limit)
+        .map(|o| o.enrich(&ws))
         .collect::<_>();
 
       if list.is_empty() {
@@ -189,8 +183,8 @@ impl Service for MemoriesInFiles {
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
       let produced = self
-        .ws
-        .get(&oid)
+        .wss
+        .get(&wsid)
         .memories(vec!["production".into(), "produce".into()])
         .list(None)?;
       for order in &mut list {
@@ -256,7 +250,7 @@ impl Service for MemoriesInFiles {
       return Err(Error::GeneralError(format!("id `{id}` not valid")));
     }
 
-    if let Some(memories) = self.ws.get(&oid).memories(ctx).get(&id) {
+    if let Some(memories) = self.wss.get(&oid).memories(ctx).get(&id) {
       memories.json()
     } else {
       Err(Error::GeneralError(format!("id `{id}` not found")))
@@ -267,7 +261,7 @@ impl Service for MemoriesInFiles {
     let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
-    let memories = self.ws.get(&oid).memories(ctx);
+    let memories = self.wss.get(&oid).memories(ctx);
 
     memories.create(&self.app, data)
   }
@@ -283,7 +277,7 @@ impl Service for MemoriesInFiles {
         return Err(Error::GeneralError(format!("id `{id}` not valid")));
       }
 
-      let memories = self.ws.get(&oid).memories(ctx);
+      let memories = self.wss.get(&oid).memories(ctx);
 
       memories.update(&self.app, id, data)
     }
@@ -297,7 +291,7 @@ impl Service for MemoriesInFiles {
       return Err(Error::GeneralError(format!("id `{id}` not valid")));
     }
 
-    let memories = self.ws.get(&oid).memories(ctx);
+    let memories = self.wss.get(&oid).memories(ctx);
 
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
