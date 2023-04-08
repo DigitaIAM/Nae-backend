@@ -38,12 +38,17 @@ impl SearchEngine {
   #[allow(unused)]
   pub fn search(&self, text: &str) -> Vec<String> {
     let engine = SimSearchEngine::new();
+    let catalog = SearchEngine {
+      catalog: load()
+    };
     // engine.search(text);
     vec![]
   }
 }
 
-fn load() {}
+fn load() -> Vec<(String, String)> {
+  vec![]
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

@@ -1,0 +1,9 @@
+{
+    "rust-analyzer.files.excludeDirs": [
+        "data",
+        "derives",
+        "service",
+        "store",
+        "tests"
+    ]
+}
