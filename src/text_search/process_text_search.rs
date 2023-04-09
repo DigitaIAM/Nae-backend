@@ -45,23 +45,17 @@ impl SearchEngine {
   }
   #[allow(unused)]
   pub fn search(&self, text: &str) -> Vec<Uuid> {
-    println!("SEARCH PHRASE = {text}");
+    println!("-> SEARCH PHRASE = {text}");
     // map id to uuid
     // SimSearch
     // Which id condains text
     // map uuid to id
     let engine = search_engines::SimSearchEngine::new();
-    // let result: Vec<Uuid> = engine.search(text).into_iter().map(|id| self.catalog[id].0).collect();
-    let result = engine.search(text);
-    println!("RESULT LENGTH = {}", result.len());
+    let result: Vec<Uuid> = engine.search(text).into_iter().map(|id| self.catalog[id].0).collect();
 
-    let uuid_string: Vec<String> = result
-      .iter()
-      .take(10)
-      .map(|uuid| uuid.to_string())
-      .collect::<Vec<String>>();
+    println!("-> RESULT LENGTH = {}", result.len());
 
-    todo!()
+    result
   }
 }
 
