@@ -56,6 +56,7 @@ pub fn process_text_search(
   before: &JsonValue,
   data: &JsonValue,
 ) -> Result<(), Error> {
+  dbg!(&ctx, &before, &data);
   if ctx == &vec!["drugs"] {
     let id = data["_uuid"].as_str().map(|data| Uuid::parse_str(data).unwrap()).unwrap();
     let before_name = before["name"].as_str();
