@@ -2,11 +2,11 @@ use std::io::Error;
 
 use json::JsonValue;
 use serde::{Deserialize, Serialize};
+use simsearch::{SearchOptions, SimSearch};
 use uuid::Uuid;
 
 // use crate::{commutator::Application, text_search::SimSearchEngine};
 use crate::commutator::Application;
-use crate::text_search::search_engines::{Search, self};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 struct JsonValueObject {
@@ -18,44 +18,34 @@ struct JsonValueObject {
 
 #[derive(Clone)]
 pub struct SearchEngine {
-  catalog: Vec<(Uuid, String)>,
-  // engine: SimSearchEngine,
+  engine: SimSearch<Uuid>,
 }
 
 impl SearchEngine {
   pub fn new() -> Self {
-    SearchEngine {
-      catalog: vec![],
-      // engine: search_engines::SimSearchEngine::new(),
+    Self {
+      engine: SimSearch::new(),
+      // engine: SimSearch::new_with(),
     }
   }
-  pub fn create(&mut self, id: Uuid, text: &str) {
-    self.catalog.push((id, text.to_string()));
-  }
-  pub fn change(&mut self, id: Uuid, before: &str, after: &str) {
-    self.delete(id, before);
-    self.create(id, after);
+
+  pub fn insert(&mut self, id: Uuid, text: &str) {
+    self.engine.insert(id, text);
   }
 
-  pub fn delete(&mut self, id: Uuid, _text: &str) {
-    if let Some(index) = self.catalog.iter().position(
-      |(current_id, _current_text)| current_id == &id
-    ) {
-      self.catalog.remove(index);
-    };
+  pub fn update(&mut self, id: Uuid, after: &str) {
+    self.engine.delete(&id);
+    self.engine.insert(id, after);
+  }
+
+  pub fn delete(&mut self, id: &Uuid) {
+    self.engine.delete(id);
   }
 
   pub fn search(&self, text: &str) -> Vec<Uuid> {
-    println!("-> SEARCH PHRASE = {text}");
-    // map id to uuid
-    // SimSearch
-    // Which id condains text
-    // map uuid to id
-    let engine = search_engines::SimSearchEngine::new();
-    let result: Vec<Uuid> = engine.search(text).into_iter().map(|id| self.catalog[id].0).collect();
-
-    println!("-> RESULT LENGTH = {}", result.len());
-
+    println!("-> {text}");
+    let result = self.engine.search(text);
+    println!("{}", result.len());
     result
   }
 }
@@ -77,16 +67,16 @@ pub fn process_text_search(
           // IGNORE
         } else {
           let mut search = app.search.write().unwrap();
-          search.change(id, before_name, after_name);
+          search.update(id, after_name);
         }
       } else {
         let mut search = app.search.write().unwrap();
-        search.delete(id, before_name);
+        search.delete(&id);
       }
     } else {
       if let Some(after_name) = after_name {
         let mut search = app.search.write().unwrap();
-        search.create(id, after_name);
+        search.insert(id, after_name);
       } else {
         // IGNORE
       }
