@@ -29,6 +29,7 @@ impl Search for SimSearchEngine {
       .for_each(|(i, data)| self.engine.insert(*i, data))
   }
   fn search(&self, input: &str) -> Vec<usize> {
+    println!("SEARCH ENGINE = {input}");
     self.engine.search(input)
   }
 }
