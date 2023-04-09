@@ -37,8 +37,9 @@ impl SearchEngine {
   }
 
   pub fn delete(&mut self, id: Uuid, _text: &str) {
-    if let Some(index) = self.catalog.iter().position(|(current_id, _current_text)| current_id == &id)
-    {
+    if let Some(index) = self.catalog.iter().position(
+      |(current_id, _current_text)| current_id == &id
+    ) {
       self.catalog.remove(index);
     };
   }
@@ -52,13 +53,15 @@ impl SearchEngine {
     let engine = search_engines::SimSearchEngine::new();
     let result: Vec<Uuid> = engine.search(text).into_iter().map(|id| self.catalog[id].0).collect();
 
+    let uuid_string: Vec<String> = result
+      .iter()
+      .take(10)
+      .map(|id| id.to_string())
+      .collect::<Vec<String>>();
+
     todo!()
   }
 }
-
-// fn load() -> Vec<(String, String)> {
-//   vec![]
-// }
 
 pub fn process_text_search(
   app: &Application,
