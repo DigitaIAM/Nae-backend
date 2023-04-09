@@ -4,7 +4,8 @@ use json::JsonValue;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{commutator::Application, text_search::SimSearchEngine};
+// use crate::{commutator::Application, text_search::SimSearchEngine};
+use crate::commutator::Application;
 use crate::text_search::search_engines::{Search, self};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -18,14 +19,14 @@ struct JsonValueObject {
 #[derive(Clone)]
 pub struct SearchEngine {
   catalog: Vec<(Uuid, String)>,
-  engine: SimSearchEngine,
+  // engine: SimSearchEngine,
 }
 
 impl SearchEngine {
   pub fn new() -> Self {
     SearchEngine {
       catalog: vec![],
-      engine: search_engines::SimSearchEngine::new(),
+      // engine: search_engines::SimSearchEngine::new(),
     }
   }
   pub fn create(&mut self, id: Uuid, text: &str) {
@@ -43,7 +44,7 @@ impl SearchEngine {
       self.catalog.remove(index);
     };
   }
-  #[allow(unused)]
+
   pub fn search(&self, text: &str) -> Vec<Uuid> {
     println!("-> SEARCH PHRASE = {text}");
     // map id to uuid
