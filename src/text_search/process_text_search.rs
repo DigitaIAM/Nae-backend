@@ -2,7 +2,8 @@ use std::io::Error;
 
 use json::JsonValue;
 use serde::{Deserialize, Serialize};
-use simsearch::{SearchOptions, SimSearch};
+// use simsearch::{SearchOptions, SimSearch};
+use simsearch::SimSearch;
 use uuid::Uuid;
 
 // use crate::{commutator::Application, text_search::SimSearchEngine};
