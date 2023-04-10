@@ -7,7 +7,7 @@ use simsearch::SimSearch;
 use uuid::Uuid;
 
 // use crate::{commutator::Application, text_search::SimSearchEngine};
-use crate::commutator::Application;
+use crate::{commutator::Application, storage::Workspaces};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 struct JsonValueObject {
@@ -29,6 +29,15 @@ impl SearchEngine {
       catalog: vec![],
       engine: SimSearch::new(),
     }
+  }
+
+  fn load(&self, workspaces: Workspaces) -> Result<(), service::error::Error> {
+    workspaces.list()?.iter().for_each(|ws| {
+      let memories = ws.memories(vec!["drugs".to_string()]);
+      memories.list(None)?.iter().map(|doc| doc.json().unwrap()).map(|doc| (doc["name"].clone(), doc["_uuid"].clone()));
+      // memories.list(None).unwrap().iter().map(|doc| doc.json().unwrap()).map(|doc| (doc["name"].clone(), doc["_uuid"].clone()));
+    });
+    Ok(())
   }
 
   pub fn create(&mut self, id: Uuid, text: &str) {
@@ -59,6 +68,7 @@ impl SearchEngine {
     result
   }
 }
+
 
 pub fn process_text_search(
   app: &Application,
