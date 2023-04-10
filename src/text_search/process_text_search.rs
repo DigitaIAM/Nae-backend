@@ -38,13 +38,13 @@ impl SearchEngine {
       let jsontuple: Vec<(JsonValue, JsonValue)> = memories.list(None).unwrap().iter().map(|doc| 
         doc.json().unwrap()).map(|doc| (doc["name"].clone(), doc["_uuid"].clone())
       ).collect();
-      jsontuple.iter().for_each(|(name, uuid)| {
-        let name = name.as_str().unwrap();
-        let uuid_str = uuid.as_str().unwrap();
-        let uuid = Uuid::parse_str(uuid_str).unwrap();
-        self.engine.insert(uuid, name);
-      });
-
+      // jsontuple.iter().for_each(|(name, uuid)| {
+      //   let name = name.as_str().unwrap();
+      //   let uuid_str = uuid.as_str().unwrap();
+      //   let uuid = Uuid::parse_str(uuid_str).unwrap();
+      //   self.engine.insert(uuid, name);
+      // });
+      
       // Ok(())
     });
     Ok(())
@@ -72,9 +72,10 @@ impl SearchEngine {
   }
 
   pub fn search(&self, text: &str) -> Vec<Uuid> {
-    let path = "/data/companies/yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ/memories/drugs/2023";
-    let ws = Workspaces::new(path);
+    let ws = Workspaces::new("./data/companies/");
     self.load(ws).unwrap();
+
+    // let ctx = vec!["drugs"];
 
     println!("-> {text}");
     let result = self.engine.search(text);
