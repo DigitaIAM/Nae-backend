@@ -19,28 +19,36 @@ struct JsonValueObject {
 
 #[derive(Clone)]
 pub struct SearchEngine {
+  catalog: Vec<(Uuid, String)>,
   engine: SimSearch<Uuid>,
 }
 
 impl SearchEngine {
   pub fn new() -> Self {
     Self {
+      catalog: vec![],
       engine: SimSearch::new(),
-      // engine: SimSearch::new_with(),
     }
   }
 
-  pub fn insert(&mut self, id: Uuid, text: &str) {
+  pub fn create(&mut self, id: Uuid, text: &str) {
     self.engine.insert(id, text);
   }
 
-  pub fn update(&mut self, id: Uuid, after: &str) {
-    self.engine.delete(&id);
-    self.engine.insert(id, after);
+  pub fn change(&mut self, id: Uuid, _before: &str, after: &str) {
+    self.delete(&id);
+    self.create(id, after);
+    // self.engine.delete(&id);
+    // self.engine.insert(id, after);
   }
 
   pub fn delete(&mut self, id: &Uuid) {
-    self.engine.delete(id);
+    if let Some(index) = self.catalog.iter().position(
+      |(current_id, _current_text)| current_id == id
+    ) {
+      self.catalog.remove(index);
+    };
+    // self.engine.delete(id);
   }
 
   pub fn search(&self, text: &str) -> Vec<Uuid> {
@@ -69,7 +77,7 @@ pub fn process_text_search(
           // IGNORE
         } else {
           let mut search = app.search.write().unwrap();
-          search.update(id, after_name);
+          search.change(id, before_name, after_name);
         }
       } else {
         let mut search = app.search.write().unwrap();
@@ -78,7 +86,7 @@ pub fn process_text_search(
     } else {
       if let Some(after_name) = after_name {
         let mut search = app.search.write().unwrap();
-        search.insert(id, after_name);
+        search.create(id, after_name);
       } else {
         // IGNORE
       }
