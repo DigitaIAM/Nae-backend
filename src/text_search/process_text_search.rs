@@ -1,4 +1,4 @@
-use std::io::Error;
+use std::{io::Error, sync::RwLock};
 
 use json::JsonValue;
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,7 @@ impl SearchEngine {
     }
   }
 
-  fn load(&mut self, workspaces: Workspaces) -> Result<(), service::error::Error> {
+  fn load(&self, workspaces: Workspaces) -> Result<(), service::error::Error> {
     workspaces.list()?.iter().for_each(|ws| {
       let memories = ws.memories(vec!["drugs".to_string()]);
       // memories.list(None)?.iter().map(|doc| doc.json().unwrap()).map(|doc| (doc["name"].clone(), doc["_uuid"].clone()));
@@ -72,13 +72,16 @@ impl SearchEngine {
   }
 
   pub fn search(&self, text: &str) -> Vec<Uuid> {
+    let path = "/data/companies/yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ/memories/drugs/2023";
+    let ws = Workspaces::new(path);
+    self.load(ws).unwrap();
+
     println!("-> {text}");
     let result = self.engine.search(text);
     println!("result.len() = {}", result.len());
     result
   }
 }
-
 
 pub fn process_text_search(
   app: &Application,
