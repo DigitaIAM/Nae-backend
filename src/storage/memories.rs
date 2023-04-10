@@ -226,7 +226,7 @@ impl Memories {
     data: Data,
   ) -> Result<JsonValue, Error> {
     let time = Utc::now();
-    save_data(
+    let data = save_data(
       app,
       &self.top_folder,
       &build_folder_path(&id, &self.folder),
@@ -235,7 +235,9 @@ impl Memories {
       None,
       time,
       data,
-    )
+    )?;
+
+    Ok(data.enrich(&self.ws))
   }
 
   // TODO move to ???
