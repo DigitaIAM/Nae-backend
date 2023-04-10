@@ -170,6 +170,11 @@ async fn startup() -> std::io::Result<()> {
   let storage = Workspaces::new("./data/companies/");
   app.storage = Some(storage.clone());
 
+  {
+    let mut engine = app.search.write().unwrap();
+    engine.load(storage.clone());
+  }
+
   app.register(Actions::new(app.clone(), "actions", storage.clone()));
 
   app.register(crate::services::Authentication::new(app.clone(), "authentication"));

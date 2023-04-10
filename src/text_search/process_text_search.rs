@@ -1,11 +1,11 @@
-use std::{io::Error, sync::RwLock};
+use std::io::Error;
 
 use json::JsonValue;
 use serde::{Deserialize, Serialize};
 use simsearch::SimSearch;
 use uuid::Uuid;
 
-use crate::storage::organizations::Workspace;
+// use crate::storage::organizations::Workspace;
 use crate::{commutator::Application, storage::Workspaces};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -27,14 +27,15 @@ impl SearchEngine {
     Self { catalog: vec![], engine: SimSearch::new() }
   }
 
-  fn load(&mut self, workspaces: Workspaces) -> Result<(), service::error::Error> {
+  pub fn load(&mut self, workspaces: Workspaces) -> Result<(), service::error::Error> {
     for ws in workspaces.list()? {
       let memories = ws.memories(vec!["drugs".to_string()]);
       
       for mem in memories.list(None)? {
         let jdoc = mem.json()?;
         let name = jdoc["name"].as_str().unwrap();
-        let uuid = Uuid::parse_str(jdoc["_uuid"].as_str().unwrap()).unwrap();
+        let uuid = jdoc["_uuid"].as_str().unwrap();
+        let uuid = Uuid::parse_str(uuid).unwrap();
         self.engine.insert(uuid, name);
       }
     }
@@ -44,14 +45,11 @@ impl SearchEngine {
 
   pub fn create(&mut self, id: Uuid, text: &str) {
     self.catalog.push((id, text.to_string()));
-    // self.engine.insert(id, text);
   }
 
   pub fn change(&mut self, id: Uuid, _before: &str, after: &str) {
     self.delete(&id);
     self.create(id, after);
-    // self.engine.delete(&id);
-    // self.engine.insert(id, after);
   }
 
   pub fn delete(&mut self, id: &Uuid) {
@@ -63,12 +61,6 @@ impl SearchEngine {
   }
 
   pub fn search(&mut self, text: &str) -> Vec<Uuid> {
-    // let ws = Workspaces::new("./data/companies/"); // organization.json
-    let ws = Workspaces::new("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ");
-    self.load(ws).unwrap();
-
-    // let ctx = vec!["drugs"];
-
     println!("-> {text}");
     let result = self.engine.search(text);
     println!("result.len() = {}", result.len());
