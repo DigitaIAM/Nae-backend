@@ -31,11 +31,21 @@ impl SearchEngine {
     }
   }
 
-  fn load(&self, workspaces: Workspaces) -> Result<(), service::error::Error> {
+  fn load(&mut self, workspaces: Workspaces) -> Result<(), service::error::Error> {
     workspaces.list()?.iter().for_each(|ws| {
       let memories = ws.memories(vec!["drugs".to_string()]);
-      memories.list(None)?.iter().map(|doc| doc.json().unwrap()).map(|doc| (doc["name"].clone(), doc["_uuid"].clone()));
-      // memories.list(None).unwrap().iter().map(|doc| doc.json().unwrap()).map(|doc| (doc["name"].clone(), doc["_uuid"].clone()));
+      // memories.list(None)?.iter().map(|doc| doc.json().unwrap()).map(|doc| (doc["name"].clone(), doc["_uuid"].clone()));
+      let jsontuple: Vec<(JsonValue, JsonValue)> = memories.list(None).unwrap().iter().map(|doc| 
+        doc.json().unwrap()).map(|doc| (doc["name"].clone(), doc["_uuid"].clone())
+      ).collect();
+      jsontuple.iter().for_each(|(name, uuid)| {
+        let name = name.as_str().unwrap();
+        let uuid_str = uuid.as_str().unwrap();
+        let uuid = Uuid::parse_str(uuid_str).unwrap();
+        self.engine.insert(uuid, name);
+      });
+
+      // Ok(())
     });
     Ok(())
   }
@@ -64,7 +74,7 @@ impl SearchEngine {
   pub fn search(&self, text: &str) -> Vec<Uuid> {
     println!("-> {text}");
     let result = self.engine.search(text);
-    println!("{}", result.len());
+    println!("result.len() = {}", result.len());
     result
   }
 }
@@ -76,7 +86,7 @@ pub fn process_text_search(
   before: &JsonValue,
   data: &JsonValue,
 ) -> Result<(), Error> {
-  dbg!(&ctx, &before, &data);
+  // dbg!(&ctx, &before, &data);
   if ctx == &vec!["drugs"] {
     let id = data["_uuid"].as_str().map(|data| Uuid::parse_str(data).unwrap()).unwrap();
     let before_name = before["name"].as_str();
