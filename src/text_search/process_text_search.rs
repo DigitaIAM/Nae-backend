@@ -31,7 +31,7 @@ impl SearchEngine {
     for ws in workspaces.list()? {
       let memories = ws.memories(vec!["drugs".to_string()]);
       
-      for mem in dbg!(memories.list(None)?) {
+      for mem in memories.list(None)? {
         let jdoc = mem.json()?;
         let name = jdoc["name"].as_str().unwrap();
         let uuid = Uuid::parse_str(jdoc["_uuid"].as_str().unwrap()).unwrap();

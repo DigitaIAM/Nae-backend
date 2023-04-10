@@ -70,7 +70,7 @@ impl Workspaces {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Workspace {
   pub id: ID,
 
