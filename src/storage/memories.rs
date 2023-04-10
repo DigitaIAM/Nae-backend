@@ -11,6 +11,7 @@ use service::Services;
 
 use std::path::PathBuf;
 
+use crate::memories::Enrich;
 use std::sync::Mutex;
 use store::elements::receive_data;
 use uuid::Uuid;
@@ -213,7 +214,9 @@ impl Memories {
     data["_id"] = id.clone().into();
     data["_uuid"] = uuid.to_string().into();
 
-    save_data(app, &self.top_folder, &folder, &self.ctx, &id, Some(uuid), time, data)
+    let data = save_data(app, &self.top_folder, &folder, &self.ctx, &id, Some(uuid), time, data)?;
+
+    Ok(data.enrich(&self.ws))
   }
 
   pub(crate) fn update(
