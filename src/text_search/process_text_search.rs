@@ -32,7 +32,8 @@ impl SearchEngine {
   }
 
   pub fn create(&mut self, id: Uuid, text: &str) {
-    self.engine.insert(id, text);
+    self.catalog.push((id, text.to_string()));
+    // self.engine.insert(id, text);
   }
 
   pub fn change(&mut self, id: Uuid, _before: &str, after: &str) {
