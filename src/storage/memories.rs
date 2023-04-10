@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Memories {
   pub ws: Workspace,
 
@@ -278,7 +278,7 @@ impl Memories {
     Ok(result)
   }
 }
-
+#[derive(Debug)]
 pub struct Document {
   pub mem: Memories,
   pub id: String,
