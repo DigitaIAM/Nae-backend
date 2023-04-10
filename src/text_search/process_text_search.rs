@@ -2,7 +2,6 @@ use std::{io::Error, sync::RwLock};
 
 use json::JsonValue;
 use serde::{Deserialize, Serialize};
-// use simsearch::{SearchOptions, SimSearch};
 use simsearch::SimSearch;
 use uuid::Uuid;
 
@@ -31,21 +30,11 @@ impl SearchEngine {
   fn load(&mut self, workspaces: Workspaces) -> Result<(), service::error::Error> {
     for ws in workspaces.list()? {
       let memories = ws.memories(vec!["drugs".to_string()]);
-
-      let jsontuples: Vec<(JsonValue, JsonValue)> = memories
-        .list(None)
-        .unwrap()
-        .iter()
-        .map(|doc| {
-          let jdoc = doc.json().unwrap();
-          (jdoc["name"].clone(), jdoc["_uuid"].clone())
-        })
-        .collect();
-
-      for (name, uuid) in jsontuples {
-        let name = name.as_str().unwrap();
-        let uuid_str = uuid.as_str().unwrap();
-        let uuid = Uuid::parse_str(uuid_str).unwrap();
+      
+      for mem in memories.list(None)? {
+        let jdoc = mem.json()?;
+        let name = jdoc["name"].as_str().unwrap();
+        let uuid = Uuid::parse_str(jdoc["_uuid"].as_str().unwrap()).unwrap();
         self.engine.insert(uuid, name);
       }
     }
