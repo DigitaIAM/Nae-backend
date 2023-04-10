@@ -21,7 +21,7 @@ pub(crate) fn import(app: &Application) {
 pub(crate) fn report(app: &Application) {
   let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
   let ctx = DRUGS.to_vec();
-  let result = app.service("memories").find(object! {oid: oid, ctx: ctx, search: "пояс"}).unwrap();
+  let result = app.service("memories").find(object! {oid: oid, ctx: ctx, search: "ПЛАКВЕНИЛ"}).unwrap();
   println!("{}", result.dump());
 }
 

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use simsearch::SimSearch;
 use uuid::Uuid;
 
-// use crate::{commutator::Application, text_search::SimSearchEngine};
+use crate::storage::organizations::Workspace;
 use crate::{commutator::Application, storage::Workspaces};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -25,28 +25,31 @@ pub struct SearchEngine {
 
 impl SearchEngine {
   pub fn new() -> Self {
-    Self {
-      catalog: vec![],
-      engine: SimSearch::new(),
-    }
+    Self { catalog: vec![], engine: SimSearch::new() }
   }
 
-  fn load(&self, workspaces: Workspaces) -> Result<(), service::error::Error> {
-    workspaces.list()?.iter().for_each(|ws| {
+  fn load(&mut self, workspaces: Workspaces) -> Result<(), service::error::Error> {
+    for ws in workspaces.list()? {
       let memories = ws.memories(vec!["drugs".to_string()]);
-      // memories.list(None)?.iter().map(|doc| doc.json().unwrap()).map(|doc| (doc["name"].clone(), doc["_uuid"].clone()));
-      let jsontuple: Vec<(JsonValue, JsonValue)> = memories.list(None).unwrap().iter().map(|doc| 
-        doc.json().unwrap()).map(|doc| (doc["name"].clone(), doc["_uuid"].clone())
-      ).collect();
-      // jsontuple.iter().for_each(|(name, uuid)| {
-      //   let name = name.as_str().unwrap();
-      //   let uuid_str = uuid.as_str().unwrap();
-      //   let uuid = Uuid::parse_str(uuid_str).unwrap();
-      //   self.engine.insert(uuid, name);
-      // });
-      
-      // Ok(())
-    });
+
+      let jsontuples: Vec<(JsonValue, JsonValue)> = memories
+        .list(None)
+        .unwrap()
+        .iter()
+        .map(|doc| {
+          let jdoc = doc.json().unwrap();
+          (jdoc["name"].clone(), jdoc["_uuid"].clone())
+        })
+        .collect();
+
+      for (name, uuid) in jsontuples {
+        let name = name.as_str().unwrap();
+        let uuid_str = uuid.as_str().unwrap();
+        let uuid = Uuid::parse_str(uuid_str).unwrap();
+        self.engine.insert(uuid, name);
+      }
+    }
+
     Ok(())
   }
 
@@ -63,16 +66,16 @@ impl SearchEngine {
   }
 
   pub fn delete(&mut self, id: &Uuid) {
-    if let Some(index) = self.catalog.iter().position(
-      |(current_id, _current_text)| current_id == id
-    ) {
+    if let Some(index) = self.catalog.iter().position(|(current_id, _current_text)| current_id == id)
+    {
       self.catalog.remove(index);
     };
     // self.engine.delete(id);
   }
 
-  pub fn search(&self, text: &str) -> Vec<Uuid> {
-    let ws = Workspaces::new("./data/companies/");
+  pub fn search(&mut self, text: &str) -> Vec<Uuid> {
+    // let ws = Workspaces::new("./data/companies/"); // organization.json
+    let ws = Workspaces::new("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ");
     self.load(ws).unwrap();
 
     // let ctx = vec!["drugs"];

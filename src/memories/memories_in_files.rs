@@ -55,7 +55,7 @@ impl Service for MemoriesInFiles {
       let search = self.params(&params)["search"].as_str().unwrap_or_default();
 
       let result = {
-        let engine = self.app.search.read().unwrap();
+        let mut engine = self.app.search.write().unwrap();
         engine.search(search)
       };
 
