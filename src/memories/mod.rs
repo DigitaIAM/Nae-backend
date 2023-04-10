@@ -50,6 +50,15 @@ impl Enrich for JsonValue {
       data["into"] = id_into_object(ws, into);
     }
 
+    // workaround for counterparty and storage
+    if let Some(counterparty) = data["counterparty"].as_str() {
+      data["counterparty"] = id_into_object(ws, counterparty);
+    }
+
+    if let Some(storage) = data["storage"].as_str() {
+      data["storage"] = id_into_object(ws, storage);
+    }
+
     data
   }
 }
