@@ -38,17 +38,17 @@ pub struct TantivySearch {
 
 impl TantivySearch {
   pub fn new() -> Self {
-      let mut schema_builder = Schema::builder();
-      schema_builder.add_text_field("body", TEXT);
-      schema_builder.add_text_field("id", TEXT | STORED);
+    let mut schema_builder = Schema::builder();
+    schema_builder.add_text_field("body", TEXT);
+    schema_builder.add_text_field("id", TEXT | STORED);
 
-      let schema = schema_builder.build();
+    let schema = schema_builder.build();
 
-      let path = "./tantivy";
+    let index = Index::create_in_ram(schema);
 
-      let index = Index::create_in_dir(&path, schema).unwrap();
-
-      TantivySearch { index }
+    Self {
+      index,
+    }
   }
 }
 
@@ -87,8 +87,13 @@ impl Search for TantivySearch {
 
     let top_docs = searcher.search(&query, &TopDocs::with_limit(10)).unwrap();
 
-    let result: Vec<Uuid> = vec![];
-    
+    let mut result: Vec<Uuid> = vec![];
+    result.extend(top_docs.iter().map(|(_score, doc_address)| {
+      let retrieved_doc = searcher.doc(*doc_address).unwrap();
+      let id = retrieved_doc.get_first(id).unwrap();
+      let id = id.as_text().unwrap();
+      Uuid::parse_str(id).unwrap()
+    }));
     result
   }
 }
