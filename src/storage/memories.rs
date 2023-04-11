@@ -114,31 +114,6 @@ fn save_data(
   Ok(data)
 }
 
-// TODO remove from here
-pub fn memories_find(
-  app: &Application,
-  filter: JsonValue,
-  ctx: Vec<&str>,
-) -> Result<Vec<JsonValue>, Error> {
-  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-  let result = app.service("memories").find(object! {oid: oid, ctx: ctx, filter: filter})?;
-
-  Ok(result["data"].members().map(|o| o.clone()).collect())
-}
-
-// TODO remove from here
-pub fn memories_create(
-  app: &Application,
-  data: JsonValue,
-  ctx: Vec<&str>,
-) -> Result<JsonValue, Error> {
-  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-  let result = app.service("memories").create(data, object! {oid: oid, ctx: ctx })?;
-
-  // println!("create_result: {result:?}");
-  Ok(result)
-}
-
 // remove context details
 fn remove_prefix(id: &String) -> String {
   if let Some(pos) = &id.rfind('/') {

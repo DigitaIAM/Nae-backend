@@ -36,6 +36,10 @@ pub trait Service: Send + Sync {
   fn patch(&self, id: String, data: Data, params: Params) -> Result;
   fn remove(&self, id: String, params: Params) -> Result;
 
+  fn enrich(&self, params: &Params) -> bool {
+    self.params(params)["enrich"].as_bool().unwrap_or(true)
+  }
+
   fn ctx(&self, params: &Params) -> Vec<String> {
     self.params(params)["ctx"]
       .members()

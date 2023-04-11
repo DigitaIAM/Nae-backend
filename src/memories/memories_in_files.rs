@@ -243,6 +243,7 @@ impl Service for MemoriesInFiles {
   fn get(&self, id: String, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
+    let do_enrich = self.enrich(&params);
 
     if id.len() < 10 {
       return Err(Error::GeneralError(format!("id `{id}` not valid")));
@@ -251,7 +252,11 @@ impl Service for MemoriesInFiles {
     let ws = self.wss.get(&oid);
 
     if let Some(memories) = ws.memories(ctx.clone()).get(&id) {
-      Ok(memories.json()?.enrich(&ws))
+      if do_enrich {
+        Ok(memories.json()?.enrich(&ws))
+      } else {
+        memories.json()
+      }
     } else {
       Err(Error::GeneralError(format!("id `{id}` not found at {ctx:?}")))
     }
