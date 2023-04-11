@@ -78,8 +78,9 @@ impl Search for TantivySearch {
       for (_score, doc_address) in top_docs {
           let retrieved_doc = searcher.doc(doc_address).unwrap();
           let id = retrieved_doc.get_first(id).unwrap();
-          let id = id.text().unwrap();
-          
+          let id = id.as_text().unwrap();
+          let id = Uuid::parse_str(id).unwrap();
+          results.push(id);
       }
 
       results
