@@ -6,7 +6,7 @@ use simsearch::SimSearch;
 use uuid::Uuid;
 
 // use crate::storage::organizations::Workspace;
-use crate::{commutator::Application, storage::Workspaces};
+use crate::{commutator::Application, storage::Workspaces, text_search::search_engines::SimSearchEngine};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 struct JsonValueObject {
@@ -14,6 +14,11 @@ struct JsonValueObject {
   manufacturer: String,
   // id: String,
   // uuid: String,
+}
+
+pub trait SearchTrait {
+  fn load(&mut self, catalog: Vec<(Uuid, String)>);
+  fn search(&self, input: &str) -> Vec<Uuid>;
 }
 
 #[derive(Clone)]
@@ -24,7 +29,11 @@ pub struct SearchEngine {
 
 impl SearchEngine {
   pub fn new() -> Self {
-    Self { catalog: vec![], engine: SimSearch::new() }
+    Self { 
+      catalog: vec![], 
+      // engine: SimSearch::new(),
+      engine: SimSearchEngine::new().engine,
+    }
   }
 
   pub fn load(&mut self, workspaces: Workspaces) -> Result<(), service::error::Error> {
@@ -57,7 +66,6 @@ impl SearchEngine {
     {
       self.catalog.remove(index);
     };
-    // self.engine.delete(id);
   }
 
   pub fn search(&mut self, text: &str) -> Vec<Uuid> {

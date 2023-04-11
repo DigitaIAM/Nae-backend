@@ -1,26 +1,38 @@
 use simsearch::{SearchOptions, SimSearch};
+// use tantivy::schema::{Schema, STORED, TEXT, Value};
+use uuid::Uuid;
+
+pub trait Search {
+  // fn load();
+  fn search(&self, input: &str) -> Vec<Uuid>;
+}
 
 #[derive(Clone)]
 pub struct SimSearchEngine {
-  engine: SimSearch<usize>,
+  pub engine: SimSearch<Uuid>,
 }
 
 impl SimSearchEngine {
   pub fn new() -> Self {
-    SimSearchEngine {
-      engine: SimSearch::new_with(SearchOptions::new().threshold(0.9)),
-    }
-  }
-  fn name(&self) -> String {
-    return "SimSearch".into();
-  }
-  fn load(&mut self, catalog: Vec<(usize, String)>) {
-    catalog
-      .iter()
-      .for_each(|(i, data)| self.engine.insert(*i, data))
-  }
-  pub fn search(&self, input: &str) -> Vec<usize> {
-    println!("-> {} = {input}", self.name());
-    self.engine.search(input)
+      Self {
+          engine: SimSearch::new(),
+      }
   }
 }
+
+impl Search for SimSearchEngine {
+  // fn load()
+  fn search(&self, input: &str) -> Vec<Uuid> {
+      self.engine.search(input)
+  }
+}
+
+// ------------------------------
+
+// pub struct TantivySearch {}
+
+// impl TantivySearch {
+//   pub fn new() -> Self {}
+// }
+
+// impl Search for TantivySearch {}
