@@ -29,8 +29,8 @@ pub trait SearchTrait {
 #[derive(Clone)]
 pub struct SearchEngine {
   catalog: Vec<(Uuid, String)>,
-  // engine: SimSearch<Uuid>,
-  engine: TantivySearch,
+  engine: SimSearch<Uuid>,
+  // engine: TantivySearch,
 }
 
 impl SearchEngine {
@@ -38,8 +38,8 @@ impl SearchEngine {
     Self { 
       catalog: vec![], 
       // engine: SimSearch::new(),
-      // engine: SimSearchEngine::new().engine,
-      engine: TantivySearch::new(),
+      engine: SimSearchEngine::new().engine,
+      // engine: TantivySearch::new(),
     }
   }
 
@@ -52,8 +52,8 @@ impl SearchEngine {
         let name = jdoc["name"].as_str().unwrap();
         let uuid = jdoc["_uuid"].as_str().unwrap();
         let uuid = Uuid::parse_str(uuid).unwrap();
-        // self.engine.insert(uuid, name);
-        self.engine.search(name);
+        self.engine.insert(uuid, name);
+        // self.engine.search(name);
       }
     }
 

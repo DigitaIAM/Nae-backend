@@ -6,7 +6,7 @@ use tantivy::collector::TopDocs;
 use uuid::Uuid;
 
 pub trait Search {
-  // fn load();
+  fn load(&mut self, catalog: Vec<(Uuid, String)>);
   fn search(&self, input: &str) -> Vec<Uuid>;
 }
 
@@ -20,15 +20,8 @@ pub struct SimSearchEngine {
 impl SimSearchEngine {
   pub fn new() -> Self {
       Self {
-          engine: SimSearch::new(),
+        engine: SimSearch::new(),
       }
-  }
-}
-
-impl Search for SimSearchEngine {
-  // fn load()
-  fn search(&self, input: &str) -> Vec<Uuid> {
-      self.engine.search(input)
   }
 }
 
@@ -42,14 +35,28 @@ pub struct TantivySearch {
 
 impl TantivySearch {
   pub fn new() -> Self {
-      Self {
-          engine: SimSearch::new(),
-      }
+    Self {
+      engine: SimSearch::new(),
+    }
   }
 }
 
 impl Search for TantivySearch {
+  fn load(&mut self, catalog: Vec<(Uuid, String)>) {
+    let mut schema_builder = Schema::builder();
+    let text_field = schema_builder.add_text_field("text", TEXT | STORED);
+    let schema = schema_builder.build();
+    let index = Index::create_in_ram(schema);
+    let mut index_writer = index.writer(50_000_000).unwrap();
+
+    for (uuid, text) in catalog {
+      let mut doc = tantivy::Document::default();
+      doc.add_text(text_field, &text);
+    }
+
+  }
+
   fn search(&self, input: &str) -> Vec<Uuid> {
-      self.engine.search(input)
+    vec![Uuid::new_v4()]
   }
 }
