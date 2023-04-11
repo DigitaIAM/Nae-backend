@@ -557,7 +557,10 @@ pub trait CheckpointTopology {
   ) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError>;
 
   fn checkpoint_update(&self, ops: Vec<OpMutation>) -> Result<(), WHError> {
+    log::debug!("ops len: {}", ops.len());
     for op in ops {
+      log::debug!("================================");
+      log::debug!("checkpoint_update {:?} {:?} {:?} {:?}", op.store, op.goods, op.batch, op.after);
       let mut tmp_date = op.date;
       let mut check_point_date = op.date;
       let mut last_checkpoint_date = self.get_latest_checkpoint_date()?;
@@ -568,8 +571,12 @@ pub trait CheckpointTopology {
         last_checkpoint_date = first_day_next_month(op.date);
 
         for old_checkpoint in old_checkpoints.iter() {
-          let key = self.key_checkpoint(old_checkpoint, last_checkpoint_date);
-          self.set_balance(&key, old_checkpoint.clone().number)?;
+          let mut new_checkpoint_date = first_day_next_month(old_checkpoint.date);
+          while new_checkpoint_date <= last_checkpoint_date {
+            let key = self.key_checkpoint(old_checkpoint, new_checkpoint_date);
+            self.set_balance(&key, old_checkpoint.clone().number)?;
+            new_checkpoint_date = first_day_next_month(new_checkpoint_date);
+          }
         }
       }
 
@@ -579,11 +586,16 @@ pub trait CheckpointTopology {
         let key = self.key(&op.to_op(), check_point_date);
 
         let mut balance = self.get_balance(&key)?;
+        log::debug!("balance on {check_point_date} before operation {balance:?}");
         balance += op.to_delta();
+        log::debug!("dates: op {} last checkpoint {last_checkpoint_date}", op.date);
+        log::debug!("balance after {:?} : {balance:?}", op.after);
 
         if balance.is_zero() {
+          log::debug!("del_balance: {key:?}");
           self.del_balance(&key)?;
         } else {
+          log::debug!("set_balance: {balance:?} {key:?}");
           self.set_balance(&key, balance)?;
         }
         tmp_date = check_point_date;
@@ -594,14 +606,6 @@ pub trait CheckpointTopology {
       }
 
       self.set_latest_checkpoint_date(check_point_date)?;
-
-      if op.transfer.is_some() {
-        if let Some(dep) = &op.dependent() {
-          let mut deps = vec![];
-          deps.push(dep.clone());
-          self.checkpoint_update(deps);
-        }
-      }
     }
 
     Ok(())
@@ -1796,7 +1800,7 @@ fn json_to_ops(
 
   let oid = oid["data"][0]["_id"].as_str().unwrap_or_default();
 
-  let params = object! {oid: oid, ctx: doc_ctx };
+  let params = object! {oid: oid, ctx: doc_ctx, enrich: false };
   let document = match app.service("memories").get(data["document"].string(), params) {
     Ok(d) => d,
     Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
@@ -1828,7 +1832,7 @@ fn json_to_ops(
         Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
       }
     } else {
-      match resolve_store(app, oid, &data, "storage_into" ) {
+      match resolve_store(app, oid, &data, "storage_into") {
         Ok(uuid) => uuid,
         Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
       }
@@ -1952,10 +1956,10 @@ fn resolve_store(
 ) -> Result<Uuid, service::error::Error> {
   let store_id = document[name].string();
 
-  println!("store_id {store_id:?}");
+  log::debug!("store_id {name} {store_id:?}");
 
   let params = object! {oid: oid, ctx: vec!["warehouse", "storage"] };
   let storage = app.service("memories").get(store_id, params)?;
-  println!("storage {:?}", storage.dump());
+  log::debug!("storage {:?}", storage.dump());
   storage["_uuid"].uuid()
 }

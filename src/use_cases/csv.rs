@@ -1,15 +1,12 @@
-
 use csv::{ReaderBuilder, Trim};
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use tantivy::HasLen;
 
-
 use store::elements::ToJson;
 
 use crate::animo::memory::ID;
 use crate::commutator::Application;
-use crate::storage::memories::{memories_create, memories_find};
 use service::error::Error;
 use service::Services;
 
@@ -41,7 +38,8 @@ pub(crate) fn report(
   till_date: &str,
 ) {
   println!("CSV_REPORT");
-  let oid = ID::from(company);
+  // let oid = ID::from(company);
+  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
   let ctx = vec!["report"];
 
   let storage =
@@ -49,9 +47,28 @@ pub(crate) fn report(
 
   println!("STORAGE: {:?}", storage["_uuid"]);
 
-  let result = app.service("inventory").find(object!{ctx: ctx, oid: oid.to_base64(), storage: storage["_uuid"].clone(), dates: {"from": from_date, "till": till_date}}).unwrap();
+  let result = app.service("inventory").find(object!{ctx: ctx, oid: oid, storage: storage["_uuid"].clone(), dates: {"from": from_date, "till": till_date}}).unwrap();
 
   println!("report: {:#?}", result);
+}
+
+fn memories_find(
+  app: &Application,
+  filter: JsonValue,
+  ctx: Vec<&str>,
+) -> Result<Vec<JsonValue>, Error> {
+  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
+  let result = app.service("memories").find(object! {oid: oid, ctx: ctx, filter: filter})?;
+
+  Ok(result["data"].members().map(|o| o.clone()).collect())
+}
+
+fn memories_create(app: &Application, data: JsonValue, ctx: Vec<&str>) -> Result<JsonValue, Error> {
+  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
+  let result = app.service("memories").create(data, object! {oid: oid, ctx: ctx })?;
+
+  // println!("create_result: {result:?}");
+  Ok(result)
 }
 
 fn json(
@@ -90,26 +107,28 @@ pub(crate) fn receive_csv_to_json(
       continue;
     }
 
-    let from_ctx = if ctx.get(1) == Some(&"transfer") || &record[6] == "склад" { STORAGE.to_vec() } else { COUNTERPARTY.to_vec() };
+    let from_ctx = if ctx.get(1) == Some(&"transfer") || &record[6] == "склад" {
+      STORAGE.to_vec()
+    } else {
+      COUNTERPARTY.to_vec()
+    };
     let from_name = &record[6];
-    let from = if from_name.is_empty() {JsonValue::String("".to_string())} else {
-      json(
-        app,
-        object! { name: from_name },
-        from_ctx,
-        &|| object! { name: from_name },
-      )?
+    let from = if from_name.is_empty() {
+      JsonValue::String("".to_string())
+    } else {
+      json(app, object! { name: from_name }, from_ctx, &|| object! { name: from_name })?
     };
 
-    let into_ctx = if ctx.get(1) == Some(&"transfer") || &record[7] == "склад" { STORAGE.to_vec() } else { COUNTERPARTY.to_vec() };
+    let into_ctx = if ctx.get(1) == Some(&"transfer") || &record[7] == "склад" {
+      STORAGE.to_vec()
+    } else {
+      COUNTERPARTY.to_vec()
+    };
     let into_name = &record[7];
-    let into = if into_name.is_empty() {JsonValue::String("".to_string())} else {
-      json(
-        app,
-        object! { name: into_name },
-        into_ctx,
-        &|| object! { name: into_name },
-      )?
+    let into = if into_name.is_empty() {
+      JsonValue::String("".to_string())
+    } else {
+      json(app, object! { name: into_name }, into_ctx, &|| object! { name: into_name })?
     };
 
     let doc_ctx = if ctx.get(1) == Some(&"receive") {
