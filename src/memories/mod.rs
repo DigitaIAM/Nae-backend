@@ -4,6 +4,7 @@ use crate::storage::memories::Document;
 use crate::storage::organizations::Workspace;
 use json::JsonValue;
 pub use memories_in_files::MemoriesInFiles;
+use service::error::Error;
 
 pub trait Enrich {
   fn enrich(&self, ws: &crate::storage::organizations::Workspace) -> JsonValue;
@@ -88,10 +89,18 @@ impl Resolve for uuid::Uuid {
 }
 
 fn id_into_object(ws: &crate::storage::organizations::Workspace, id: &str) -> JsonValue {
-  ws.resolve_id(id).and_then(|s| s.json().ok()).unwrap_or_else(|| {
+  if let Some(doc) = ws.resolve_id(id) {
+    match doc.json() {
+      Ok(o) => o,
+      Err(e) => json::object! {
+        "_id": id,
+        "_err": e.to_string(),
+      },
+    }
+  } else {
     json::object! {
       "_id": id,
       "_status": "not_found",
     }
-  })
+  }
 }
