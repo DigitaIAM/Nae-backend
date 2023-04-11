@@ -34,8 +34,10 @@ impl Search for SimSearchEngine {
 
 // ------------------------------
 
+#[derive(Clone)]
 pub struct TantivySearch {
   index: Index,
+  // pub engine: SimSearch<Uuid>,
 }
 
 impl TantivySearch {
