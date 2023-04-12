@@ -78,13 +78,13 @@ impl SearchEngine {
   pub fn search(&mut self, text: &str) -> Vec<Uuid> {
     println!("-> {text}");
     let mut result_sim = self.sim.search(text);
-    let mut result_tan = self.tan.search(text);
-    result_sim.append(&mut result_tan);
+    let result_tan = self.tan.search(text);
+    result_sim.extend(result_tan);
     println!("result.len() = {}", result_sim.len());
     result_sim
   }
 }
-// Проверка актуальности данных в базе
+
 pub fn process_text_search(
   app: &Application,
   ctx: &Vec<String>,
@@ -92,34 +92,24 @@ pub fn process_text_search(
   data: &JsonValue,
 ) -> Result<(), Error> {
   // dbg!(&ctx, &before, &data);
-// Проверить, что контекст равен "drugs"
   if ctx == &vec!["drugs"] {
-// Получить uuid записи
     let id = data["_uuid"].as_str().map(|data| Uuid::parse_str(data).unwrap()).unwrap();
-// Получить имя записи до и после изменения
     let before_name = before["name"].as_str();
     let after_name = data["name"].as_str();
-// Если имя до изменения не равно имени после изменения, то
     if let Some(before_name) = before_name {
-// Если имя после изменения не пустое, то
       if let Some(after_name) = after_name {
-// Если имя до изменения не равно имени после изменения, то
         if before_name == after_name {
           // IGNORE
         } else {
-// Иначе изменить запись в индексе поисковых движков вызвав метод change у движков поиска
           let mut search = app.search.write().unwrap();
           search.change(id, before_name, after_name);
         }
       } else {
-// Иначе удалить запись из индекса поисковых движков вызвав метод delete поискового движка
         let mut search = app.search.write().unwrap();
         search.delete(&id);
       }
     } else {
-// Если имя после изменения не пустое, то
       if let Some(after_name) = after_name {
-// Иначе создать запись в индексе поисковых движков вызвав метод create у обоих движков
         let mut search = app.search.write().unwrap();
         search.create(id, after_name);
       } else {
