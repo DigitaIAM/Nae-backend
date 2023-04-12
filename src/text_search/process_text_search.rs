@@ -1,14 +1,14 @@
 use std::io::Error;
 
 use json::JsonValue;
-use serde::{Deserialize, Serialize};
+// use serde::{Deserialize, Serialize};
 use simsearch::SimSearch;
 use uuid::Uuid;
 
 // use crate::storage::organizations::Workspace;
 use crate::{
   commutator::Application, storage::Workspaces, 
-  text_search::search_engines::SimSearchEngine,
+  // text_search::search_engines::SimSearchEngine,
   text_search::search_engines::TantivyEngine,
   text_search::search_engines::Search,
 };

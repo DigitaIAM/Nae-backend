@@ -1,12 +1,14 @@
 // use std::sync::Arc;
 
-use simsearch::{SearchOptions, SimSearch};
-use tantivy::schema::{Schema, STORED, TEXT, Value};
-use tantivy::{Index, ReloadPolicy, Term};
+// use simsearch::{SimSearch, SearchOptions};
+use tantivy::schema::{
+  Schema, STORED, TEXT, 
+  // Value
+};
+use tantivy::{Index, ReloadPolicy, Term, doc};
 use tantivy::query::QueryParser;
 use tantivy::collector::TopDocs;
 // use tantivy::{doc, Document};
-use tantivy::doc;
 use uuid::Uuid;
 
 pub trait Search {
@@ -17,18 +19,18 @@ pub trait Search {
 
 // --------------------------------
 
-#[derive(Clone)]
-pub struct SimSearchEngine {
-  pub engine: SimSearch<Uuid>,
-}
+// #[derive(Clone)]
+// pub struct SimSearchEngine {
+//   pub engine: SimSearch<Uuid>,
+// }
 
-impl SimSearchEngine {
-  pub fn new() -> Self {
-      Self {
-        engine: SimSearch::new(),
-      }
-  }
-}
+// impl SimSearchEngine {
+//   pub fn new() -> Self {
+//       Self {
+//         engine: SimSearch::new(),
+//       }
+//   }
+// }
 
 // ------------------------------
 
