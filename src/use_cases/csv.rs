@@ -124,7 +124,15 @@ pub(crate) fn receive_csv_to_json(
     } else {
       COUNTERPARTY.to_vec()
     };
-    let into_name = &record[7];
+    let into_name = match &record[7] {
+      "Гагарина 36" => "склад",
+      "Склад" => "склад",
+      "Материалы в пути" => "склад",
+      "Администрация" => continue,
+      "Кухня" => continue,
+      "Топливо в баках" => continue,
+      _ => continue,
+    };
     let into = if into_name.is_empty() {
       JsonValue::String("".to_string())
     } else {
