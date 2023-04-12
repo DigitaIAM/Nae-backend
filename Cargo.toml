@@ -106,7 +106,8 @@ crossbeam = "0.8"
 log = "0.4.17"
 env_logger = "0.10"
 
-dbase = "0.3"
+dbase = { version = "0.3", features = ["yore"] }
+yore = "1.0.1"
 csv = "1.1.6"
 
 profiling = "1.0.6"

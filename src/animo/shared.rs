@@ -29,7 +29,7 @@ lazy_static::lazy_static! {
     pub(crate) static ref SUPPLIER: ID = ID::for_constant("supplier");
     // покупатель
     pub(crate) static ref CUSTOMER: ID = ID::for_constant("customer");
-    
+
 
     pub(crate) static ref WH_BASE_TOPOLOGY: ID = ID::for_constant("warehouse_base_topology");
     pub(crate) static ref WH_STOCK_TOPOLOGY: ID = ID::for_constant("warehouse_stock_topology");
@@ -44,6 +44,7 @@ lazy_static::lazy_static! {
 
     pub(crate) static ref STORE: ID = ID::for_constant("store");
     pub(crate) static ref GOODS: ID = ID::for_constant("goods");
+    pub(crate) static ref GOODS_CODE: ID = ID::for_constant("goods_code");
     pub(crate) static ref DATE: ID = ID::for_constant("date");
     pub(crate) static ref QTY: ID = ID::for_constant("qty");
     pub(crate) static ref PRICE: ID = ID::for_constant("price");
