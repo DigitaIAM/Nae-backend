@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use simsearch::{SearchOptions, SimSearch};
 use tantivy::schema::{Schema, STORED, TEXT, Value};
-use tantivy::{Index, ReloadPolicy};
+use tantivy::{Index, ReloadPolicy, Term};
 use tantivy::query::QueryParser;
 use tantivy::collector::TopDocs;
 use tantivy::{doc, Document};
@@ -72,6 +72,13 @@ impl Search for TantivyEngine {
   }
 
   fn delete(&mut self, id: Uuid) {
+    let mut index_writer = self.index.writer(3_000_000).unwrap();
+
+    let uuid = self.index.schema().get_field("uuid").unwrap();
+    let name = self.index.schema().get_field("name").unwrap();
+
+    index_writer.delete_term(Term::from_field_text(uuid, id));
+
     unimplemented!()
   }
 
