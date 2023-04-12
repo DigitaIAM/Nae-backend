@@ -51,9 +51,7 @@ impl TantivyEngine {
     let schema = schema_builder.build();
 // Создаем индекс в памяти 
     let directory_path = "./tantivy";
-    let index = Index::create_in_dir(directory_path, schema).unwrap();
-    // let index = Index::open_or_create(directory_path.into(), schema);
-    // let index_meta = Index::load_metas(&index).unwrap();
+    let index = Index::open_in_dir(directory_path).unwrap();
 // Возвращаем структуру TantivySearch
     Self {
       index,
