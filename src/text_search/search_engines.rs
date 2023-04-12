@@ -75,11 +75,10 @@ impl Search for TantivyEngine {
     let mut index_writer = self.index.writer(3_000_000).unwrap();
 
     let uuid = self.index.schema().get_field("uuid").unwrap();
-    let name = self.index.schema().get_field("name").unwrap();
 
-    index_writer.delete_term(Term::from_field_text(uuid, id));
+    index_writer.delete_term(Term::from_field_text(uuid, &id.to_string()));
 
-    unimplemented!()
+    index_writer.commit().unwrap();
   }
 
   fn search(&self, input: &str) -> Vec<Uuid> {
