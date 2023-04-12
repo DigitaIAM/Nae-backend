@@ -28,7 +28,7 @@ impl SearchEngine {
   pub fn new() -> Self {
     Self { 
       sim: SimSearch::new(),
-      tan: TantivyEngine::new(),
+      tan: TantivyEngine::new(), // Не создавать новый индекс
     }
   }
 // SIMSEARCH индексирует базу, т.к хранит индекс не на диске, а в памяти.
@@ -54,8 +54,7 @@ impl SearchEngine {
 
     Ok(())
   }
-// Создать запись. Сейчас она добавляется в каталог, который я создал.
-// А должна добавляться в индекс поисковых движков.
+// Добавить запись в индекс движков
   pub fn create(&mut self, id: Uuid, text: &str) {
     self.sim.insert(id, text);
     self.tan.insert(id, text);
@@ -65,9 +64,7 @@ impl SearchEngine {
     self.delete(&id);
     self.create(id, after);
   }
-// Удалить запись. Сейчас она удаляется из каталога, который я создал.
-// А должна удаляться из индекса поисковых движков.
-// Как удалить запись из индекса SimSearch?
+// Удалить запись из индекса поисковых движков
   pub fn delete(&mut self, id: &Uuid) {
 // Удалить запись из каталога. Заменить на удаление из индекса поисковых движков Tantivy и SimSearch
     self.sim.delete(id);
