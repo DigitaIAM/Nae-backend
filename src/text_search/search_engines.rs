@@ -44,12 +44,12 @@ impl TantivyEngine {
 // Создаем новый индекс в памяти с полями body и id
   pub fn new() -> Self {
 // Создаем схему индекса с полями body и id
-    let mut schema_builder = Schema::builder();
-    schema_builder.add_text_field("uuid", TEXT | STORED);
-    schema_builder.add_text_field("name", TEXT);
+    // let mut schema_builder = Schema::builder();
+    // schema_builder.add_text_field("uuid", TEXT | STORED);
+    // schema_builder.add_text_field("name", TEXT);
 // Собираем схему индекса в индекс
-    let schema = schema_builder.build();
-// Создаем индекс в памяти 
+    // let schema = schema_builder.build();
+// Чиатем индекс с диска 
     let directory_path = "./tantivy";
     let index = Index::open_in_dir(directory_path).unwrap();
 // Возвращаем структуру TantivySearch

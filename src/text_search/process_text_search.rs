@@ -70,14 +70,15 @@ impl SearchEngine {
     self.sim.delete(id);
     self.tan.delete(*id);
   }
-// Поиск по индексу SimSearch
-// Нужно добавить поиск по индексу Tantivy
+// Поиск по индексу поисковых движков
   pub fn search(&mut self, text: &str) -> Vec<Uuid> {
     println!("-> {text}");
     let mut result_sim = self.sim.search(text);
     let result_tan = self.tan.search(text);
+    println!("result_tan.len() = {}", result_tan.len());
+    println!("result_sim.len() = {}", result_sim.len());
     result_sim.extend(result_tan);
-    println!("result.len() = {}", result_sim.len());
+    println!("sim + tan = {}", result_sim.len());
     result_sim
   }
 }
