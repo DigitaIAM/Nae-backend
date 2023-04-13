@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::path::Path;
 
 use crate::commutator::Application;
 use dbase::{FieldValue, Record};
@@ -17,256 +18,266 @@ use crate::animo::{
 };
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 
-// db: &AnimoDB
 pub(crate) fn import(app: &Application) {
-  println!("running import");
+  if !Path::new("./import/receive_1s.csv").is_file() {
+    println!("running import");
 
-  let string = |record: &Record, name| -> String {
-    let field = record.get(name).unwrap();
-    println!("FIELD: {name} {field:?}");
-    match field {
-      FieldValue::Character(data) => match data {
-        Some(str) => str.clone(),
-        None => unreachable!("internal errors"),
-      },
-      _ => unreachable!("internal errors"),
-    }
-  };
-
-  let date = |record: &Record, name| -> String {
-    let field = record.get(name).unwrap();
-    match field {
-      FieldValue::Date(data) => match data {
-        Some(date) => {
-          format!("{:0>2}.{:0>2}.{:0>4}", date.day(), date.month(), date.year())
+    let string = |record: &Record, name| -> String {
+      let field = record.get(name).unwrap();
+      // println!("FIELD: {name} {field:?}");
+      match field {
+        FieldValue::Character(data) => match data {
+          Some(str) => {
+            println!("FIELD: {name} {str}");
+            str.clone().replace(',', "-")
+          },
+          None => unreachable!("internal errors"),
         },
-        None => unreachable!("internal errors"),
-      },
-      _ => unreachable!("internal errors"),
+        _ => unreachable!("internal errors"),
+      }
+    };
+
+    let date = |record: &Record, name| -> String {
+      let field = record.get(name).unwrap();
+      match field {
+        FieldValue::Date(data) => match data {
+          Some(date) => {
+            format!("{:0>2}.{:0>2}.{:0>4}", date.day(), date.month(), date.year())
+          },
+          None => unreachable!("internal errors"),
+        },
+        _ => unreachable!("internal errors"),
+      }
+    };
+
+    let number = |record: &Record, name| -> f64 {
+      let field = record.get(name).unwrap();
+      match field {
+        FieldValue::Numeric(data) => match data {
+          Some(number) => number.clone(),
+          None => unreachable!("internal errors"),
+        },
+        _ => unreachable!("internal errors"),
+      }
+    };
+
+    let mut doc_date = HashMap::with_capacity(1_000_000);
+
+    let mut count = 0;
+    {
+      let f = File::create("data/journal.txt").expect("Unable to create file");
+      let mut f = BufWriter::new(f);
+
+      // 1SJOURN Журналы
+      let mut reader = dbase::Reader::from_path("./import/1S/1SJOURN.dbf").unwrap();
+      for record in reader.iter_records() {
+        let record = &record.unwrap();
+
+        count += 1;
+        if count % 50_000 == 0 {
+          println!("1SJOURN {:?}", count);
+        }
+
+        // F=IDJOURNAL |ID of Journal       |C   |4     |0
+        let journal_id = string(record, "IDJOURNAL");
+        // F=IDDOC     |ID Document         |C   |9     |0
+        let doc_id = string(record, "IDDOC");
+        // F=DATE      |date                |D   |8     |0
+        let date = date(record, "DATE");
+        // F=TIME      |Time                |C   |6     |0
+        let time = string(record, "TIME");
+
+        let data = format!("{:?} - {:?} - {:?} - {:?}\n", journal_id, doc_id, date, time);
+        f.write_all(data.as_bytes()).expect("Unable to write data");
+
+        doc_date.insert(doc_id, date);
+      }
+      count = 0;
     }
-  };
 
-  let number = |record: &Record, name| -> f64 {
-    let field = record.get(name).unwrap();
-    match field {
-      FieldValue::Numeric(data) => match data {
-        Some(number) => number.clone(),
-        None => unreachable!("internal errors"),
-      },
-      _ => unreachable!("internal errors"),
-    }
-  };
+    // SC792 Справочник Контрагенты
+    let mut counterparties = HashMap::with_capacity(1_000_000);
 
-  let mut doc_date = HashMap::with_capacity(1_000_000);
-
-  let mut count = 0;
-  {
-    let f = File::create("data/journal.txt").expect("Unable to create file");
-    let mut f = BufWriter::new(f);
-
-    // 1SJOURN Журналы
-    let mut reader = dbase::Reader::from_path("./import/1S/1SJOURN.dbf").unwrap();
+    let mut reader = dbase::Reader::from_path_with_encoding(
+      "./import/1S/SC792.dbf",
+      dbase::yore::code_pages::CP1251,
+    )
+    .unwrap();
     for record in reader.iter_records() {
       let record = &record.unwrap();
-
       count += 1;
+
       if count % 50_000 == 0 {
-        println!("1SJOURN {:?}", count);
+        println!("SC792 {:?}", count);
       }
 
-      // F=IDJOURNAL |ID of Journal       |C   |4     |0
-      let journal_id = string(record, "IDJOURNAL");
-      // F=IDDOC     |ID Document         |C   |9     |0
-      let doc_id = string(record, "IDDOC");
-      // F=DATE      |date                |D   |8     |0
-      let date = date(record, "DATE");
-      // F=TIME      |Time                |C   |6     |0
-      let time = string(record, "TIME");
+      // F=ID       |ID object           |C   |9     |0
+      let counterparty_id = string(record, "ID");
+      // F=DESCR    |object description  |C   |50     |0
+      let counterparty_descr = string(record, "DESCR");
 
-      let data = format!("{:?} - {:?} - {:?} - {:?}\n", journal_id, doc_id, date, time);
-      f.write_all(data.as_bytes()).expect("Unable to write data");
-
-      doc_date.insert(doc_id, date);
+      counterparties.insert(counterparty_id, counterparty_descr);
     }
+    println!("Справочник Контрагенты {:?}", count);
     count = 0;
-  }
 
-  // SC792 Справочник Контрагенты
-  let mut counterparties = HashMap::with_capacity(1_000_000);
+    // SC1305 Справочник МестаХранения
+    let mut storages = HashMap::with_capacity(1_000_000);
 
-  let mut reader =
-    dbase::Reader::from_path_with_encoding("./import/1S/SC792.dbf", dbase::yore::code_pages::CP1251)
-      .unwrap();
-  for record in reader.iter_records() {
-    let record = &record.unwrap();
-    count += 1;
+    let mut reader = dbase::Reader::from_path_with_encoding(
+      "./import/1S/SC1305.dbf",
+      dbase::yore::code_pages::CP1251,
+    )
+    .unwrap();
+    for record in reader.iter_records() {
+      let record = &record.unwrap();
+      count += 1;
 
-    if count % 50_000 == 0 {
-      println!("SC792 {:?}", count);
+      if count % 50_000 == 0 {
+        println!("SC1305 {:?}", count);
+      }
+
+      // F=ID       |ID object           |C   |9     |0
+      let storage_id = string(record, "ID");
+      // F=DESCR    |object description  |C   |50     |0
+      let storage_descr = string(record, "DESCR");
+
+      storages.insert(storage_id, storage_descr);
     }
+    println!("Справочник МестаХранения {:?}", count);
+    count = 0;
 
-    // F=ID       |ID object           |C   |9     |0
-    let counterparty_id = string(record, "ID");
-    // F=DESCR    |object description  |C   |50     |0
-    let counterparty_descr = string(record, "DESCR");
+    // SC725 Справочник ЕдиницыИзмерений
+    let mut uoms = HashMap::with_capacity(1_000_000);
 
-    counterparties.insert(counterparty_id, counterparty_descr);
-  }
-  println!("Справочник Контрагенты {:?}", count);
-  count = 0;
+    let mut reader = dbase::Reader::from_path_with_encoding(
+      "./import/1S/SC725.dbf",
+      dbase::yore::code_pages::CP1251,
+    )
+    .unwrap();
+    for record in reader.iter_records() {
+      let record = &record.unwrap();
+      count += 1;
 
-  // SC1305 Справочник МестаХранения
-  let mut storages = HashMap::with_capacity(1_000_000);
+      if count % 50_000 == 0 {
+        println!("SC725 {:?}", count);
+      }
 
-  let mut reader = dbase::Reader::from_path_with_encoding(
-    "./import/1S/SC1305.dbf",
-    dbase::yore::code_pages::CP1251,
-  )
-  .unwrap();
-  for record in reader.iter_records() {
-    let record = &record.unwrap();
-    count += 1;
+      // F=ID       |ID object           |C   |9     |0
+      let uom_id = string(record, "ID");
+      // F=DESCR    |object description  |C   |50     |0
+      let uom_descr = string(record, "DESCR");
 
-    if count % 50_000 == 0 {
-      println!("SC1305 {:?}", count);
+      uoms.insert(uom_id, uom_descr);
     }
+    println!("Справочник ЕдиницыИзмерений {:?}", count);
+    count = 0;
 
-    // F=ID       |ID object           |C   |9     |0
-    let storage_id = string(record, "ID");
-    // F=DESCR    |object description  |C   |50     |0
-    let storage_descr = string(record, "DESCR");
+    // SC2717 Справочник Материалы
+    let mut materials = HashMap::with_capacity(1_000_000);
 
-    storages.insert(storage_id, storage_descr);
-  }
-  println!("Справочник МестаХранения {:?}", count);
-  count = 0;
+    let mut reader = dbase::Reader::from_path_with_encoding(
+      "./import/1S/SC2717.dbf",
+      dbase::yore::code_pages::CP1251,
+    )
+    .unwrap();
+    for record in reader.iter_records() {
+      let record = &record.unwrap();
+      count += 1;
 
-  // SC725 Справочник ЕдиницыИзмерений
-  let mut uoms = HashMap::with_capacity(1_000_000);
+      if count % 50_000 == 0 {
+        println!("SC2717 {:?}", count);
+      }
 
-  let mut reader =
-    dbase::Reader::from_path_with_encoding("./import/1S/SC725.dbf", dbase::yore::code_pages::CP1251)
-      .unwrap();
-  for record in reader.iter_records() {
-    let record = &record.unwrap();
-    count += 1;
+      // F=ID       |ID object           |C   |9     |0
+      let goods_id = string(record, "ID");
+      // F=DESCR    |object description  |C   |50     |0
+      let goods_descr = string(record, "DESCR");
+      // F=SP7816   |(P)Артикул          |C   |10    |0
+      // let goods_code = string(record, "SP7816");
+      // F=CODE     |object code         |C   |7     |0
+      let goods_code = string(record, "CODE");
+      // F=SP2721   |(P)ЕдИзм            |C   |9     |0
+      let goods_uom = string(record, "SP2721");
 
-    if count % 50_000 == 0 {
-      println!("SC725 {:?}", count);
+      materials.insert(goods_id, (goods_descr, goods_code, goods_uom));
     }
+    println!("Справочник Материалы {:?}", count);
+    count = 0;
 
-    // F=ID       |ID object           |C   |9     |0
-    let uom_id = string(record, "ID");
-    // F=DESCR    |object description  |C   |50     |0
-    let uom_descr = string(record, "DESCR");
+    let mut documents = HashMap::with_capacity(1_000_000);
 
-    uoms.insert(uom_id, uom_descr);
-  }
-  println!("Справочник ЕдиницыИзмерений {:?}", count);
-  count = 0;
+    // DH2726 Документ МатериалыПоступлениеОтПоставщиков
+    let mut reader = dbase::Reader::from_path("./import/1S/DH2726.dbf").unwrap();
+    for record in reader.iter_records() {
+      let record = &record.unwrap();
+      count += 1;
 
-  // SC2717 Справочник Материалы
-  let mut materials = HashMap::with_capacity(1_000_000);
+      if count % 50_000 == 0 {
+        println!("DH2726 {:?}", count);
+      }
 
-  let mut reader = dbase::Reader::from_path_with_encoding(
-    "./import/1S/SC2717.dbf",
-    dbase::yore::code_pages::CP1251,
-  )
-  .unwrap();
-  for record in reader.iter_records() {
-    let record = &record.unwrap();
-    count += 1;
+      // F=IDDOC     |ID Document's       |C   |9     |0
+      let doc_id = string(record, "IDDOC");
+      // F=SP2754    |(P)СкладПриема      |C   |9     |0
+      let store_id = string(record, "SP2754");
+      // F=SP2730    |(P)Корреспондент    |C   |9     |0
+      let supplier_id = string(record, "SP2730");
 
-    if count % 50_000 == 0 {
-      println!("SC2717 {:?}", count);
+      documents.insert(doc_id, (store_id, supplier_id));
     }
+    println!("Head of МатериалыПоступлениеОтПоставщиков {:?}", count);
+    count = 0;
 
-    // F=ID       |ID object           |C   |9     |0
-    let goods_id = string(record, "ID");
-    // F=DESCR    |object description  |C   |50     |0
-    let goods_descr = string(record, "DESCR");
-    // F=SP7816   |(P)Артикул          |C   |10    |0
-    // let goods_code = string(record, "SP7816");
-    // F=CODE     |object code         |C   |7     |0
-    let goods_code = string(record, "CODE");
-    // F=SP2721   |(P)ЕдИзм            |C   |9     |0
-    let goods_uom = string(record, "SP2721");
+    let f = File::create("./import/receive_1s.csv").expect("Unable to create file");
+    let mut f = BufWriter::new(f);
 
-    materials.insert(goods_id, (goods_descr, goods_code, goods_uom));
-  }
-  println!("Справочник Материалы {:?}", count);
-  count = 0;
+    // DT2726 Документ (Мн.ч.) МатериалыПоступлениеОтПоставщиков
+    let mut reader = dbase::Reader::from_path("./import/1S/DT2726.dbf").unwrap();
+    for record in reader.iter_records() {
+      let record = &record.unwrap();
+      count += 1;
 
-  let mut documents = HashMap::with_capacity(1_000_000);
+      if count % 5_000 == 0 {
+        println!("DT2726 {:?}", count);
+      }
 
-  // DH2726 Документ МатериалыПоступлениеОтПоставщиков
-  let mut reader = dbase::Reader::from_path("./import/1S/DH2726.dbf").unwrap();
-  for record in reader.iter_records() {
-    let record = &record.unwrap();
-    count += 1;
+      // F=IDDOC     |ID Document's       |C   |9     |0
+      let doc_id = string(record, "IDDOC");
+      // F=LINENO    |LineNo              |N   |4     |0
+      // let line_id = number(record, "LINENO").to_string();
+      // F=SP2733    |(P)Материал         |C   |9     |0
+      let goods_id = string(record, "SP2733");
+      // F=SP2736    |(P)Количество       |N   |16    |3
+      let qty = number(record, "SP2736");
+      // F=SP2737    |(P)Сумма            |N   |20    |2
+      // let cost = number(record, "SP2737");
 
-    if count % 50_000 == 0 {
-      println!("DH2726 {:?}", count);
-    }
+      let date = doc_date.get(doc_id.as_str()).unwrap().clone();
 
-    // F=IDDOC     |ID Document's       |C   |9     |0
-    let doc_id = string(record, "IDDOC");
-    // F=SP2754    |(P)СкладПриема      |C   |9     |0
-    let store_id = string(record, "SP2754");
-    // F=SP2730    |(P)Корреспондент    |C   |9     |0
-    let supplier_id = string(record, "SP2730");
+      if let Some((store_id, supplier_id)) = documents.get(&doc_id) {
+        // println!("store_id: {store_id}");
+        // println!("storages: {storages:?}");
+        let default_storage = String::from("склад");
+        let store_name = storages.get(store_id).unwrap_or(&default_storage);
+        let supplier_name = counterparties.get(supplier_id).unwrap();
 
-    documents.insert(doc_id, (store_id, supplier_id));
-  }
-  println!("Head of МатериалыПоступлениеОтПоставщиков {:?}", count);
-  count = 0;
+        if let Some((goods_descr, goods_code, goods_uom)) = materials.get(&goods_id) {
+          let uom_name = uoms.get(goods_uom).unwrap();
 
-  let f = File::create("./import/receive_1s.csv").expect("Unable to create file");
-  let mut f = BufWriter::new(f);
-
-  // DT2726 Документ (Мн.ч.) МатериалыПоступлениеОтПоставщиков
-  let mut reader = dbase::Reader::from_path("./import/1S/DT2726.dbf").unwrap();
-  for record in reader.iter_records() {
-    let record = &record.unwrap();
-    count += 1;
-
-    if count % 5_000 == 0 {
-      println!("DT2726 {:?}", count);
-    }
-
-    // F=IDDOC     |ID Document's       |C   |9     |0
-    let doc_id = string(record, "IDDOC");
-    // F=LINENO    |LineNo              |N   |4     |0
-    // let line_id = number(record, "LINENO").to_string();
-    // F=SP2733    |(P)Материал         |C   |9     |0
-    let goods_id = string(record, "SP2733");
-    // F=SP2736    |(P)Количество       |N   |16    |3
-    let qty = number(record, "SP2736");
-    // F=SP2737    |(P)Сумма            |N   |20    |2
-    // let cost = number(record, "SP2737");
-
-    let date = doc_date.get(doc_id.as_str()).unwrap().clone();
-
-    if let Some((store_id, supplier_id)) = documents.get(&doc_id) {
-      // println!("store_id: {store_id}");
-      // println!("storages: {storages:?}");
-      let default_storage = String::from("склад");
-      let store_name = storages.get(store_id).unwrap_or(&default_storage);
-      let supplier_name = counterparties.get(supplier_id).unwrap();
-
-      if let Some((goods_descr, goods_code, goods_uom)) = materials.get(&goods_id) {
-        let uom_name = uoms.get(goods_uom).unwrap();
-
-        let data = format!(
-          "{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},\n",
-          doc_id, goods_descr, goods_code, uom_name, qty, date, supplier_name, store_name
-        );
-        f.write_all(data.as_bytes()).expect("Unable to write data");
+          let data = format!(
+            "{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},\n",
+            doc_id, goods_descr, goods_code, uom_name, qty, date, supplier_name, store_name
+          );
+          f.write_all(data.as_bytes()).expect("Unable to write data");
+        }
       }
     }
-  }
 
-  println!("Lines of МатериалыПоступлениеОтПоставщиков {:?}", count);
+    println!("Lines of МатериалыПоступлениеОтПоставщиков {:?}", count);
+  } else {
+    println!("path ./import/receive_1s.csv already exists. Uploading from existing file to db...")
+  }
 
   crate::use_cases::csv::receive_csv_to_json(
     app,
