@@ -180,13 +180,18 @@ pub(crate) fn receive_csv_to_json(
         }
       })?;
 
-    let unit = &record[3];
+    let unit = match &record[3] {
+      "пач." => "Пачк.",
+      "пар." => "Пар",
+      str => str,
+    };
     let uom = json(app, object! {name: unit}, UOM.to_vec(), &|| object! { name: unit })?;
 
+    let goods_name = record[1].replace("\\", "").replace("\"", "");
     let vendor_code = &record[2];
-    let item = json(app, object! { vendor_code: vendor_code }, GOODS.to_vec(), &|| {
+    let item = json(app, object! { name: goods_name.clone() }, GOODS.to_vec(), &|| {
       object! {
-          name: record[1].replace("\\", "").replace("\"", ""),
+          name: goods_name.clone(),
           vendor_code: vendor_code,
           uom: uom["_id"].clone(),
       }
