@@ -29,7 +29,7 @@ pub(crate) fn import(app: &Application) {
         FieldValue::Character(data) => match data {
           Some(str) => {
             println!("FIELD: {name} {str}");
-            str.clone().replace(',', "-")
+            str.clone().replace(',', ".")
           },
           None => unreachable!("internal errors"),
         },
