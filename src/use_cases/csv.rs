@@ -136,7 +136,7 @@ pub(crate) fn receive_csv_to_json(
       "Администрация" => continue,
       "Кухня" => continue,
       "Топливо в баках" => continue,
-      _ => continue,
+      str => str,
     };
     let into = if into_name.is_empty() {
       JsonValue::String("".to_string())
