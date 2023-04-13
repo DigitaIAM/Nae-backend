@@ -112,11 +112,16 @@ pub(crate) fn receive_csv_to_json(
     } else {
       COUNTERPARTY.to_vec()
     };
-    let from_name = &record[6];
+    let from_name = &record[6].replace("\\", "").replace("\"", "");
     let from = if from_name.is_empty() {
       JsonValue::String("".to_string())
     } else {
-      json(app, object! { name: from_name }, from_ctx, &|| object! { name: from_name })?
+      json(
+        app,
+        object! { name: from_name.to_string() },
+        from_ctx,
+        &|| object! { name: from_name.to_string() },
+      )?
     };
 
     let into_ctx = if ctx.get(1) == Some(&"transfer") || &record[7] == "склад" {
@@ -181,7 +186,7 @@ pub(crate) fn receive_csv_to_json(
     let vendor_code = &record[2];
     let item = json(app, object! { vendor_code: vendor_code }, GOODS.to_vec(), &|| {
       object! {
-          name: &record[1],
+          name: record[1].replace("\\", "").replace("\"", ""),
           vendor_code: vendor_code,
           uom: uom["_id"].clone(),
       }
