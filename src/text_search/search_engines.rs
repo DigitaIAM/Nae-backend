@@ -41,7 +41,6 @@ pub struct TantivyEngine {
 }
 
 impl TantivyEngine {
-// Создаем новый индекс в памяти с полями body и id
   pub fn new() -> Self {
 // Создаем схему индекса с полями body и id
     // let mut schema_builder = Schema::builder();
@@ -52,7 +51,7 @@ impl TantivyEngine {
 // Чиатем индекс с диска 
     let directory_path = "./tantivy";
     let index = Index::open_in_dir(directory_path).unwrap();
-// Возвращаем структуру TantivySearch
+
     Self {
       index,
     }
@@ -77,7 +76,7 @@ impl Search for TantivyEngine {
 
   fn delete(&mut self, id: Uuid) {
     let mut index_writer = self.index.writer(3_000_000).unwrap();
-
+// Получаем поле uuid из схемы индекса
     let uuid = self.index.schema().get_field("uuid").unwrap();
 // Удаляем по условию: поле должно равняться нужному uuid
     index_writer.delete_term(Term::from_field_text(uuid, &id.to_string()));
@@ -86,18 +85,19 @@ impl Search for TantivyEngine {
   }
 
   fn search(&self, input: &str) -> Vec<Uuid> {
+// Создаём штуку для чтения из индекса
     let reader = self
       .index
       .reader_builder()
       .reload_policy(ReloadPolicy::OnCommit)
       .try_into()
       .unwrap();
-
+// Создаём штуку для поиска по индексу
     let searcher = reader.searcher();
-
+// Получаем поля из схемы индекса
     let uuid = self.index.schema().get_field("uuid").unwrap();
     let name = self.index.schema().get_field("name").unwrap();
-
+// Создаём парсер запросов и передаём ему поля, по которым мы будем искать
     let parser = QueryParser::for_index(&self.index, vec![ name ]);
 
     let query = parser.parse_query(input).unwrap();
@@ -107,9 +107,10 @@ impl Search for TantivyEngine {
     top_docs.iter().map(|(_score, doc_address)| {
 // Получаем документ по адресу из результата поиска по индексу searcher
       let retrieved_doc = searcher.doc(*doc_address).unwrap();
-
+// Получаем значение поля uuid из документа retrieved_doc
       let id = retrieved_doc.get_first(uuid).unwrap();
       let id = id.as_text().unwrap();
+// Парсим строку в Uuid и возвращаем вектор из Uuid
       Uuid::parse_str(id).unwrap()
     }).collect()
   }
