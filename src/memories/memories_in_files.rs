@@ -11,6 +11,7 @@ use std::sync::Arc;
 use store::balance::BalanceForGoods;
 use store::elements::ToJson;
 use store::GetWarehouse;
+// use tantivy::aggregation::agg_result::BucketEntries::HashMap;
 use tantivy::HasLen;
 use uuid::Uuid;
 
@@ -70,7 +71,10 @@ impl Service for MemoriesInFiles {
 
       let org = self.wss.get(&wsid);
 
-      let mut list = vec![];
+      // let mut categories: HashMap<String, Vec<JsonValue>> = HashMap::new();
+
+      let mut categories = JsonValue::new_object();
+
       for (store, sb) in balances {
         for (goods, gb) in sb {
           for (batch, bb) in gb {
@@ -89,22 +93,39 @@ impl Service for MemoriesInFiles {
 
             let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
 
-            list.push(json::object! {
+            let _goods = goods.resolve_to_json_object(&org);
+
+            // println!("_goods: {_goods:?}");
+
+            let category = _goods["category"].to_string();
+
+            // let mut list = categories.entry(category).or_insert(Vec::new());
+
+            let record = json::object! {
               _id: id.to_json(),
               storage: store.resolve_to_json_object(&org),
-              goods: goods.resolve_to_json_object(&org),
+              goods: _goods,
               batch: batch.to_json(),
               qty: json::object! { number: bb.qty.to_json() },
               cost: json::object! { number: bb.cost.to_json() },
-            })
+            };
+
+            let mut list = if categories.has_key(&category) {
+              categories[&category].push(record);
+            } else {
+              categories[&category] = JsonValue::new_array();
+              categories[&category].push(record);
+            };
           }
         }
       }
 
-      let total = list.len();
+      println!("categories: {categories:?}");
+
+      let total = categories.len();
 
       return Ok(json::object! {
-        data: JsonValue::Array(list),
+        data: categories,
         total: total,
         "$skip": skip,
       });
