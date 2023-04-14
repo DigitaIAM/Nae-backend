@@ -130,9 +130,9 @@ pub(crate) fn receive_csv_to_json(
       COUNTERPARTY.to_vec()
     };
     let into_name = match &record[7] {
-      "Гагарина 36" => "склад",
-      "Склад" => "склад",
-      "Материалы в пути" => "склад",
+      "Гагарина 36" => "Снабжение Бегбудиев Носир",
+      "Склад" => "Снабжение Бегбудиев Носир",
+      "Материалы в пути" => "Снабжение Бегбудиев Носир",
       "Администрация" => continue,
       "Кухня" => continue,
       "Топливо в баках" => continue,
@@ -189,10 +189,12 @@ pub(crate) fn receive_csv_to_json(
 
     let goods_name = record[1].replace("\\", "").replace("\"", "");
     let vendor_code = &record[2];
+    let goods_category = &record[8];
     let item = json(app, object! { name: goods_name.clone() }, GOODS.to_vec(), &|| {
       object! {
           name: goods_name.clone(),
           vendor_code: vendor_code,
+          category: goods_category,
           uom: uom["_id"].clone(),
       }
     })?;
