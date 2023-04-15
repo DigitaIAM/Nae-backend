@@ -1,29 +1,14 @@
-
-
-
 use json::JsonValue;
 
-
-
-
-use std::sync::{Arc};
-
-use tantivy::HasLen;
-
-
+use std::sync::Arc;
 
 use crate::services::JsonData;
 use crate::services::{Data, Params};
 
-
-use crate::{
-  animo::memory::{ID},
-  commutator::Application,
-  storage::Workspaces,
-};
+use crate::{animo::memory::ID, commutator::Application, storage::Workspaces};
 use service::error::Error;
-use service::{Service};
-pub(crate) struct Companies {
+use service::Service;
+pub struct Companies {
   app: Application,
   name: String,
 

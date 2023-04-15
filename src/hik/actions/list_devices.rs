@@ -1,28 +1,19 @@
-
 use crate::hik::auth::{digest_auth, RequestGenerator, WithDigestAuth};
 use crate::hik::error::Error;
 use crate::hik::ConfigCamera;
 use crate::services::Mutation;
 
-use crate::{commutator::Application, animo::memory::ID};
+use crate::{animo::memory::ID, commutator::Application};
 use actix::prelude::*;
 use async_trait::async_trait;
 use json::JsonValue;
 use reqwest::{multipart, Client, RequestBuilder, Response, Url};
-use std::io::{Read};
 use std::path::PathBuf;
-
 
 use tokio::fs::File;
 
-
-
-
-
 use chrono::{Datelike, Utc};
 use rand::Rng;
-
-
 
 #[async_trait]
 trait ToHttpRequest {
