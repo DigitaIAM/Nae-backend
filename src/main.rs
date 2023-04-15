@@ -1,4 +1,3 @@
-#![allow(dead_code, unused)]
 extern crate core;
 
 #[macro_use]

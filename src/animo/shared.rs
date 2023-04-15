@@ -44,7 +44,6 @@ lazy_static::lazy_static! {
 
     pub(crate) static ref STORE: ID = ID::for_constant("store");
     pub(crate) static ref GOODS: ID = ID::for_constant("goods");
-    pub(crate) static ref GOODS_CODE: ID = ID::for_constant("goods_code");
     pub(crate) static ref DATE: ID = ID::for_constant("date");
     pub(crate) static ref QTY: ID = ID::for_constant("qty");
     pub(crate) static ref PRICE: ID = ID::for_constant("price");
