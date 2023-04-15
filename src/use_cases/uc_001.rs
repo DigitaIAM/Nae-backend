@@ -13,7 +13,7 @@ use crate::animo::{
 };
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 
-pub(crate) fn import(db: &AnimoDB) {
+pub fn import(db: &AnimoDB) {
   println!("running import");
 
   let string = |record: &Record, name| -> String {
@@ -295,12 +295,11 @@ pub(crate) fn import(db: &AnimoDB) {
   let _changes = super::write(db, changes);
 
   println!("Lines of ТоварРасход {:?}", count);
-  count = 0;
 
   super::join();
 }
 
-pub(crate) fn report(db: &AnimoDB) {
+pub fn report(db: &AnimoDB) {
   let interval = TimeInterval::new("2021-06-01", "2021-06-30").unwrap();
 
   let ts = std::time::Instant::now();

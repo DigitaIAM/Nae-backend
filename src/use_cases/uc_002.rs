@@ -12,7 +12,7 @@ use crate::animo::{
 use crate::use_cases::write;
 use crate::warehouse::primitives::Decimal;
 
-pub(crate) fn import(db: &AnimoDB) {
+pub fn import(db: &AnimoDB) {
   let mut changes = Vec::with_capacity(1_000_000);
 
   let mut reader = ReaderBuilder::new()
@@ -98,4 +98,4 @@ pub(crate) fn import(db: &AnimoDB) {
   write(db, changes);
 }
 
-pub(crate) fn report(_db: &AnimoDB) {}
+pub fn report(_db: &AnimoDB) {}

@@ -1,7 +1,6 @@
 use csv::{ReaderBuilder, Trim};
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
-use tantivy::HasLen;
 
 use store::elements::ToJson;
 
