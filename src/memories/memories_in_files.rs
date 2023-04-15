@@ -11,8 +11,6 @@ use std::sync::Arc;
 use store::balance::BalanceForGoods;
 use store::elements::ToJson;
 use store::GetWarehouse;
-// use tantivy::aggregation::agg_result::BucketEntries::HashMap;
-use tantivy::HasLen;
 use uuid::Uuid;
 
 use crate::services::{Data, Params};
@@ -69,11 +67,9 @@ impl Service for MemoriesInFiles {
         .get_balance_for_all(Utc::now())
         .map_err(|e| Error::GeneralError(e.message()))?;
 
-      let org = self.wss.get(&wsid);
+      let ws = self.wss.get(&wsid);
 
-      // let mut categories: HashMap<String, Vec<JsonValue>> = HashMap::new();
-
-      let mut categories = JsonValue::new_object();
+      let mut categories = HashMap::new();
 
       for (store, sb) in balances {
         for (goods, gb) in sb {
@@ -93,39 +89,48 @@ impl Service for MemoriesInFiles {
 
             let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
 
-            let _goods = goods.resolve_to_json_object(&org);
-
-            // println!("_goods: {_goods:?}");
-
+            let _goods = goods.resolve_to_json_object(&ws);
             let category = _goods["category"].to_string();
-
-            // let mut list = categories.entry(category).or_insert(Vec::new());
 
             let record = json::object! {
               _id: id.to_json(),
-              storage: store.resolve_to_json_object(&org),
+              storage: store.resolve_to_json_object(&ws),
               goods: _goods,
               batch: batch.to_json(),
               qty: json::object! { number: bb.qty.to_json() },
               cost: json::object! { number: bb.cost.to_json() },
             };
 
-            let mut list = if categories.has_key(&category) {
-              categories[&category].push(record);
-            } else {
-              categories[&category] = JsonValue::new_array();
-              categories[&category].push(record);
-            };
+            categories.entry(category).or_insert(Vec::new()).push(record);
           }
         }
       }
 
-      println!("categories: {categories:?}");
+      // order categories
+      let mut items: Vec<JsonValue> = categories
+        .keys()
+        .map(|id| id.clone())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|id| (id.resolve_to_json_object(&ws), id))
+        .map(|(mut o, id)| {
+          let list = categories.remove(&id).unwrap_or_default();
+          o["_list"] = JsonValue::Array(list);
+          o
+        })
+        .collect();
 
-      let total = categories.len();
+      items.sort_by(|a, b| {
+        let a = a["name"].as_str().unwrap_or_default();
+        let b = b["name"].as_str().unwrap_or_default();
+
+        a.cmp(b)
+      });
+
+      let total = items.len();
 
       return Ok(json::object! {
-        data: categories,
+        data: items,
         total: total,
         "$skip": skip,
       });

@@ -5,7 +5,6 @@ use tantivy::HasLen;
 
 use store::elements::ToJson;
 
-use crate::animo::memory::ID;
 use crate::commutator::Application;
 use service::error::Error;
 use service::Services;
