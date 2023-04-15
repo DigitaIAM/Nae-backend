@@ -79,7 +79,12 @@ impl Application {
           match r.recv() {
             Ok(mutation) => {
               println!("mutation {:?}", mutation);
-              a.handle(mutation);
+              match a.handle(mutation) {
+                Ok(_) => {},
+                Err(e) => {
+                  println!("error at dispatcher thread {}", e);
+                },
+              }
             },
             Err(e) => {
               println!("exist dispatcher thread because of {}", e);

@@ -1,13 +1,10 @@
-
-
 use csv::{ReaderBuilder, Trim};
 use json::JsonValue;
-
 
 use crate::commutator::Application;
 use service::Services;
 
-pub(crate) fn import(app: &Application) {
+pub fn import(app: &Application) {
   let mut reader = ReaderBuilder::new()
     .delimiter(b';')
     .trim(Trim::All)
@@ -63,4 +60,4 @@ pub(crate) fn import(app: &Application) {
   println!("write {:?}", count);
 }
 
-pub(crate) fn report(_app: &Application) {}
+pub fn report(_app: &Application) {}

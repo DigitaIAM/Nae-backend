@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader};
 
 use rsfbclient::{prelude::*, FbError};
 
-pub(crate) fn import(app: &Application) {
+pub fn import(app: &Application) {
   // #[cfg(feature = "linking")]
   let mut conn = rsfbclient::builder_native()
     .with_dyn_link()
@@ -38,4 +38,4 @@ pub(crate) fn import(app: &Application) {
   }
 }
 
-pub(crate) fn report(app: &Application) {}
+pub fn report(app: &Application) {}

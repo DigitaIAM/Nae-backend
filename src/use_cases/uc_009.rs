@@ -6,14 +6,11 @@ use std::path::Path;
 use crate::commutator::Application;
 use dbase::{FieldValue, Record};
 
+use crate::animo::db::AnimoDB;
 use crate::animo::TimeInterval;
-use crate::animo::{
-  db::AnimoDB,
-  memory::{create, Context, Value, ID},
-};
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 
-pub(crate) fn import(app: &Application) {
+pub fn import(app: &Application) {
   if !Path::new("./import/receive_1s.csv").is_file() {
     println!("running import");
 
@@ -285,7 +282,7 @@ pub(crate) fn import(app: &Application) {
   super::join();
 }
 
-pub(crate) fn report(db: &AnimoDB) {
+pub fn report(db: &AnimoDB) {
   let interval = TimeInterval::new("2021-06-01", "2021-06-30").unwrap();
 
   let ts = std::time::Instant::now();
