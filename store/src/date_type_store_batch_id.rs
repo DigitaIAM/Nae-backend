@@ -2,7 +2,7 @@ use super::{
   balance::BalanceForGoods,
   db::Db,
   elements::{
-    first_day_current_month, new_get_aggregations, Balance, Batch, InternalOperation, Mode, Op,
+    first_day_current_month, new_get_aggregations, Balance, Batch, InternalOperation, Op,
     OpMutation, OrderedTopology, Report, Store, UUID_MAX, UUID_NIL,
   },
   error::WHError,
@@ -84,7 +84,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
         continue;
       }
 
-      let (op, balance) = self.from_bytes(&v)?;
+      let (_, balance) = self.from_bytes(&v)?;
       return Ok(balance);
     }
 
@@ -383,10 +383,10 @@ impl OrderedTopology for DateTypeStoreBatchId {
   ) -> Result<Vec<Op>, WHError> {
     // let goods: Vec<[u8; 16]> = goods.into_iter().as_slice().iter().map(|b| *b).collect();
 
-    let mut byte_goods: Vec<Vec<u8>> = Vec::new();
-    goods
+    let byte_goods: Vec<Vec<u8>> = goods
       .iter()
-      .map(|g: &Goods| byte_goods.push(g.as_bytes().iter().map(|b| *b).collect()));
+      .map(|g: &Goods| g.as_bytes().iter().map(|b| *b).collect())
+      .collect();
 
     let ts_from = u64::try_from(from_date.timestamp()).unwrap_or_default();
     let from: Vec<u8> = ts_from
@@ -423,7 +423,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
       let (k, value) = item?;
 
       if byte_goods.contains(&k[25..41].to_vec()) {
-        let (op, b) = self.from_bytes(&value)?;
+        let (op, _) = self.from_bytes(&value)?;
         res.push(op);
       }
     }
