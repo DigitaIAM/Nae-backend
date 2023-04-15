@@ -16,6 +16,7 @@ const TRANSFER_DOCUMENT: [&str; 3] = ["warehouse", "transfer", "document"];
 const DISPATCH_DOCUMENT: [&str; 3] = ["warehouse", "dispatch", "document"];
 const UOM: [&str; 1] = ["uom"];
 const GOODS: [&str; 1] = ["goods"];
+const CATEGORY: [&str; 2] = ["goods", "category"];
 const CURRENCY: [&str; 1] = ["currency"];
 
 struct Quantity {
@@ -187,12 +188,18 @@ pub(crate) fn receive_csv_to_json(
 
     let goods_name = record[1].replace("\\", "").replace("\"", "");
     let vendor_code = &record[2];
-    let goods_category = &record[8];
+
+    let category_name = &record[8];
+    let goods_category =
+      json(app, object! { name: category_name.clone() }, CATEGORY.to_vec(), &|| {
+        object! { name: category_name.clone() }
+      })?;
+
     let item = json(app, object! { name: goods_name.clone() }, GOODS.to_vec(), &|| {
       object! {
           name: goods_name.clone(),
           vendor_code: vendor_code,
-          category: goods_category,
+          category: goods_category.clone(),
           uom: uom["_id"].clone(),
       }
     })?;
