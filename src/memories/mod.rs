@@ -18,12 +18,12 @@ impl Enrich for JsonValue {
     let mut processing = &mut data["qty"];
     while processing.is_object() {
       if let Some(uom) = processing["in"].as_str() {
-        processing["in"] = id_into_object(ws, uom);
+        processing["in"] = uom.resolve_to_json_object(ws);
       }
 
       let node = &processing["uom"];
       if let Some(uom) = node.as_str() {
-        processing["uom"] = id_into_object(ws, uom);
+        processing["uom"] = uom.resolve_to_json_object(ws);
         break;
       } else if node.is_object() {
         processing = &mut processing["uom"];
@@ -34,30 +34,30 @@ impl Enrich for JsonValue {
 
     // workaround for uom
     if let Some(uom) = data["uom"].as_str() {
-      data["uom"] = id_into_object(ws, uom);
+      data["uom"] = uom.resolve_to_json_object(ws);
     }
 
     // workaround for goods
     if let Some(goods) = data["goods"].as_str() {
-      data["goods"] = id_into_object(ws, goods);
+      data["goods"] = goods.resolve_to_json_object(ws);
     }
 
     // workaround for from and into
     if let Some(from) = data["from"].as_str() {
-      data["from"] = id_into_object(ws, from);
+      data["from"] = from.resolve_to_json_object(ws);
     }
 
     if let Some(into) = data["into"].as_str() {
-      data["into"] = id_into_object(ws, into);
+      data["into"] = into.resolve_to_json_object(ws);
     }
 
     // workaround for counterparty and storage
     if let Some(counterparty) = data["counterparty"].as_str() {
-      data["counterparty"] = id_into_object(ws, counterparty);
+      data["counterparty"] = counterparty.resolve_to_json_object(ws);
     }
 
     if let Some(storage) = data["storage"].as_str() {
-      data["storage"] = id_into_object(ws, storage);
+      data["storage"] = storage.resolve_to_json_object(ws);
     }
 
     data
@@ -65,17 +65,11 @@ impl Enrich for JsonValue {
 }
 
 pub trait Resolve {
-  fn resolve_to_json_object(
-    &self,
-    org: &crate::storage::organizations::Workspace,
-  ) -> json::JsonValue;
+  fn resolve_to_json_object(&self, ws: &Workspace) -> JsonValue;
 }
 
 impl Resolve for uuid::Uuid {
-  fn resolve_to_json_object(
-    &self,
-    ws: &crate::storage::organizations::Workspace,
-  ) -> json::JsonValue {
+  fn resolve_to_json_object(&self, ws: &Workspace) -> json::JsonValue {
     ws.resolve_uuid(self)
       .and_then(|s| s.json().ok())
       .and_then(|mut data| Some(data.enrich(ws)))
@@ -88,19 +82,33 @@ impl Resolve for uuid::Uuid {
   }
 }
 
-fn id_into_object(ws: &crate::storage::organizations::Workspace, id: &str) -> JsonValue {
-  if let Some(doc) = ws.resolve_id(id) {
-    match doc.json() {
-      Ok(o) => o,
-      Err(e) => json::object! {
-        "_id": id,
-        "_err": e.to_string(),
-      },
-    }
-  } else {
-    json::object! {
-      "_id": id,
-      "_status": "not_found",
+impl Resolve for String {
+  fn resolve_to_json_object(&self, ws: &Workspace) -> JsonValue {
+    self.as_str().resolve_to_json_object(ws)
+  }
+}
+
+impl Resolve for &String {
+  fn resolve_to_json_object(&self, ws: &Workspace) -> JsonValue {
+    self.as_str().resolve_to_json_object(ws)
+  }
+}
+
+impl Resolve for &str {
+  fn resolve_to_json_object(&self, ws: &Workspace) -> JsonValue {
+    if let Some(doc) = ws.resolve_id(self) {
+      match doc.json() {
+        Ok(o) => o,
+        Err(e) => json::object! {
+          "_id": self.to_string(),
+          "_err": e.to_string(),
+        },
+      }
+    } else {
+      json::object! {
+        "_id": self.to_string(),
+        "_status": "not_found",
+      }
     }
   }
 }

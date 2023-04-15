@@ -163,7 +163,7 @@ impl Services for Application {
 }
 
 #[derive(Clone)]
-pub(crate) struct Commutator {
+pub struct Commutator {
   app: Application,
   sessions: Arc<RwLock<HashMap<Uuid, Socket>>>,
   stop: Arc<AtomicBool>,

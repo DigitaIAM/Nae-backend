@@ -1,35 +1,22 @@
-
 use chrono::{DateTime, SecondsFormat, Utc};
-
 
 use json::JsonValue;
 
-use std::collections::{HashMap};
-
+use std::collections::HashMap;
 
 use std::ops::Sub;
 
-use std::sync::{Arc};
-
-use tantivy::HasLen;
-
-
-
+use std::sync::Arc;
 
 use crate::services::{Data, Params};
-use crate::storage::{SCamera};
+use crate::storage::SCamera;
 
-
-use crate::{
-  animo::memory::{ID},
-  commutator::Application,
-  storage::Workspaces,
-};
+use crate::{animo::memory::ID, commutator::Application, storage::Workspaces};
 use service::error::Error;
-use service::utils::{json::JsonParams};
-use service::{Service};
+use service::utils::json::JsonParams;
+use service::Service;
 
-pub(crate) struct AttendanceReport {
+pub struct AttendanceReport {
   app: Application,
   name: String,
 

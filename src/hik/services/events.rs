@@ -1,32 +1,16 @@
-
 use chrono::{SecondsFormat, Utc};
-
 
 use json::JsonValue;
 
-
-
-
-
-
-
-use std::sync::{Arc};
-
-use tantivy::HasLen;
-
-
-
+use std::sync::Arc;
 
 use crate::services::{Data, Params};
 use crate::storage::SEvent;
 
-use crate::{
-  commutator::Application,
-  storage::Workspaces,
-};
+use crate::{commutator::Application, storage::Workspaces};
 use service::error::Error;
 use service::utils::time::string_to_time;
-use service::{Service};
+use service::Service;
 pub struct Events {
   app: Application,
   path: Arc<String>,

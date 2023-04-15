@@ -1,14 +1,13 @@
 use json::JsonValue;
 use std::sync::Arc;
 
-use crate::services::JsonData;
 use crate::services::{Data, Params};
 
 use crate::{animo::memory::ID, commutator::Application, storage::Workspaces};
 use service::error::Error;
 use service::Service;
 
-pub(crate) struct Departments {
+pub struct Departments {
   app: Application,
   name: String,
 
