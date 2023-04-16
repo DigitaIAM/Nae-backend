@@ -105,7 +105,7 @@ pub trait Service: Send + Sync {
     };
 
     if let Some(limit) = params["$limit"].as_number() {
-      usize::try_from(limit).unwrap_or(10).max(100)
+      usize::try_from(limit).unwrap_or(10).min(100)
     } else {
       10
     }
