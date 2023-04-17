@@ -152,7 +152,7 @@ async fn server(
 }
 
 async fn startup() -> std::io::Result<()> {
-  std::env::set_var("RUST_LOG", "debug,actix_web=debug,actix_server=debug");
+  // std::env::set_var("RUST_LOG", "debug,actix_web=debug,actix_server=debug");
   env_logger::init();
 
   let opt = Opt::from_args();

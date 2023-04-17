@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Workspaces {
   folder: PathBuf,
 }

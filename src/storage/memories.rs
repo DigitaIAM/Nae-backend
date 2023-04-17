@@ -125,14 +125,14 @@ fn remove_prefix(id: &String) -> String {
 }
 
 pub(crate) fn build_folder_path(id: &String, folder: &PathBuf) -> PathBuf {
-  println!("before: {id}");
+  // println!("before: {id}");
   let id = remove_prefix(id);
-  println!("after: {id}");
+  // println!("after: {id}");
 
   let year = &id[0..4];
   let month = &id[5..7];
 
-  println!("create id {id} year {year} month {month}");
+  // println!("create id {id} year {year} month {month}");
 
   // 2023/01/2023-01-06T12:43:15Z/
   let mut folder = folder.clone();
@@ -156,12 +156,12 @@ impl Memories {
           return Err(Error::IOError(format!("fail to allocate free id: {}", time_to_string(time))));
         }
         let id = format!("{}/{}", self.ctx.join("/"), time_to_string(time));
-        println!("id: {id}");
+        // println!("id: {id}");
 
         // context/2023/01/2023-01-06T12:43:15Z/
         let folder = build_folder_path(&id, &self.folder);
 
-        println!("creating folder {folder:?}");
+        // println!("creating folder {folder:?}");
 
         std::fs::create_dir_all(&folder).map_err(|e| {
           Error::IOError(format!("can't create folder {}: {}", folder.to_string_lossy(), e))
