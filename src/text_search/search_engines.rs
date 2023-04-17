@@ -1,4 +1,4 @@
-// use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use std::path::Path;
 
@@ -7,7 +7,7 @@ use tantivy::schema::{
   Schema, STORED, TEXT, 
   // Value
 };
-use tantivy::{Index, ReloadPolicy, Term, doc};
+use tantivy::{Index, ReloadPolicy, Term, doc, IndexWriter};
 use tantivy::query::QueryParser;
 use tantivy::collector::TopDocs;
 // use tantivy::{doc, Document};
@@ -68,6 +68,7 @@ impl TantivyEngine {
 impl Search for TantivyEngine {
   fn insert(&mut self, id: Uuid, text: &str) {
     let mut index_writer = self.index.writer(3_000_000).unwrap();
+    let index_writer_2: Arc<Mutex<IndexWriter>> = Arc::new(Mutex::new(self.index.writer(3_000_000).unwrap()));
 
     let uuid = self.index.schema().get_field("uuid").unwrap();
     let name = self.index.schema().get_field("name").unwrap(); 
