@@ -6,17 +6,20 @@ use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
 use service::Service;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use store::balance::BalanceForGoods;
-use store::elements::ToJson;
+use store::elements::{Batch, ToJson};
 use store::GetWarehouse;
+use tantivy::HasLen;
 use uuid::Uuid;
 
 use crate::services::{Data, Params};
 use crate::storage::Workspaces;
 
 use crate::commutator::Application;
+
+use store::elements::{Goods, Store};
 
 // warehouse: { receiving, Put-away, transfer,  }
 // production: { manufacturing }
@@ -46,6 +49,8 @@ impl Service for MemoriesInFiles {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
+    let filter = self.params(&params)["filter"].clone();
+
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
 
     // workaround
@@ -61,79 +66,97 @@ impl Service for MemoriesInFiles {
         });
       }
 
+      let ws = self.wss.get(&wsid);
+
       let warehouse = self.app.warehouse().database;
 
       let balances = warehouse
         .get_balance_for_all(Utc::now())
         .map_err(|e| Error::GeneralError(e.message()))?;
 
-      let ws = self.wss.get(&wsid);
+      if filter.is_empty() {
+        find_items(&ws, &balances, &filter)
+      } else {
+        let mut categories = HashMap::new();
 
-      let mut categories = HashMap::new();
+        for (store, sb) in balances {
+          for (goods, gb) in sb {
+            for (batch, bb) in gb {
+              // workaround until get_balance_for_all remove zero balances
+              if bb.is_zero() {
+                continue;
+              }
 
-      for (store, sb) in balances {
-        for (goods, gb) in sb {
-          for (batch, bb) in gb {
-            // workaround until get_balance_for_all remove zero balances
-            if bb.is_zero() {
-              continue;
+              // TODO: add date into this id
+              let bytes: Vec<u8> = store
+                .as_bytes()
+                .into_iter()
+                .zip(goods.as_bytes().into_iter().zip(batch.id.as_bytes().into_iter()))
+                .map(|(a, (b, c))| a ^ b ^ c)
+                .collect();
+
+              let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
+
+              let _goods = goods.resolve_to_json_object(&ws);
+              let category = _goods["category"].to_string();
+
+              let record = json::object! {
+                _id: id.to_json(),
+                storage: store.resolve_to_json_object(&ws),
+                goods: _goods,
+                batch: batch.to_json(),
+                qty: json::object! { number: bb.qty.to_json() },
+                cost: json::object! { number: bb.cost.to_json() },
+              };
+
+              // categories.entry(category).or_insert(Vec::new()).push(record);
+              categories
+                .entry(category)
+                .or_insert(HashMap::new())
+                .entry(store.to_string())
+                .or_insert(Vec::new())
+                .push(record);
             }
-
-            // TODO: add date into this id
-            let bytes: Vec<u8> = store
-              .as_bytes()
-              .into_iter()
-              .zip(goods.as_bytes().into_iter().zip(batch.id.as_bytes().into_iter()))
-              .map(|(a, (b, c))| a ^ b ^ c)
-              .collect();
-
-            let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
-
-            let _goods = goods.resolve_to_json_object(&ws);
-            let category = _goods["category"].to_string();
-
-            let record = json::object! {
-              _id: id.to_json(),
-              storage: store.resolve_to_json_object(&ws),
-              goods: _goods,
-              batch: batch.to_json(),
-              qty: json::object! { number: bb.qty.to_json() },
-              cost: json::object! { number: bb.cost.to_json() },
-            };
-
-            categories.entry(category).or_insert(Vec::new()).push(record);
           }
         }
-      }
 
-      // order categories
-      let mut items: Vec<JsonValue> = categories
-        .keys()
-        .map(|id| id.clone())
-        .collect::<Vec<_>>()
-        .into_iter()
-        .map(|id| (id.resolve_to_json_object(&ws), id))
-        .map(|(mut o, id)| {
-          let list = categories.remove(&id).unwrap_or_default();
-          o["_list"] = JsonValue::Array(list);
-          o
-        })
-        .collect();
+        println!("warehouse_stock categories: {categories:?}");
 
-      items.sort_by(|a, b| {
-        let a = a["name"].as_str().unwrap_or_default();
-        let b = b["name"].as_str().unwrap_or_default();
+        // return Ok(json::object! {
+        //   data: categories,
+        //   total: 1,
+        //   "$skip": skip,
+        // });
 
-        a.cmp(b)
-      });
+        // order categories
+        let mut items: Vec<JsonValue> = categories
+          .keys()
+          .map(|id| id.clone())
+          .collect::<Vec<_>>()
+          .into_iter()
+          .map(|id| (id.resolve_to_json_object(&ws), id))
+          .map(|(mut o, id)| {
+            let list = categories.remove(&id).unwrap_or_default();
+            o["_list"] = JsonValue::Array(list);
+            o
+          })
+          .collect();
 
-      let total = items.len();
+        items.sort_by(|a, b| {
+          let a = a["name"].as_str().unwrap_or_default();
+          let b = b["name"].as_str().unwrap_or_default();
 
-      return Ok(json::object! {
+          a.cmp(b)
+        });
+
+        let total = items.len();
+
+        return Ok(json::object! {
         data: items,
         total: total,
         "$skip": skip,
-      });
+        });
+      }
     }
 
     let ws = self.wss.get(&wsid);
@@ -358,4 +381,169 @@ impl Service for MemoriesInFiles {
   fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
+}
+
+fn find_items(
+  ws: &Workspace,
+  balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
+  filter: &JsonValue,
+) -> crate::services::Result {
+  if filter["category"].is_null() && filter["warehouse"].is_null() {
+    find_wh_and_categories(balances, ws)
+  } else if filter["category"].is_null() && filter["warehouse"].is_string() {
+    find_categories(balances, &filter["warehouse"], ws)
+  } else if filter["category"].is_string() && filter["warehouse"].is_null() {
+    find_warehouses(balances, &filter["category"], ws)
+  } else if filter["category"].is_string() && filter["warehouse"].is_string() {
+    find_goods(balances, filter, ws)
+  }
+}
+
+fn find_wh_and_categories(
+  balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
+  ws: &Workspace,
+) -> crate::services::Result {
+  let mut elements = Vec::new();
+  let mut categories = HashSet::new();
+  for (store, sb) in balances {
+    elements.push(store.resolve_to_json_object(&ws));
+    for (goods, gb) in sb {
+      for (batch, bb) in gb {
+        // workaround until get_balance_for_all remove zero balances
+        if bb.is_zero() {
+          continue;
+        }
+        let _goods = goods.resolve_to_json_object(&ws);
+        let category = _goods["category"].to_string();
+        categories.insert(category.resolve_to_json_object(&ws));
+      }
+    }
+  }
+  elements.sort_by(|a, b| {
+    let a = a["name"].as_str().unwrap_or_default();
+    let b = b["name"].as_str().unwrap_or_default();
+
+    a.cmp(b)
+  });
+
+  let mut cat_iter = categories.into_iter();
+
+  while let Some(c) = cat_iter.next() {
+    elements.push(c);
+  }
+
+  Ok(JsonValue::Array(elements))
+}
+
+fn find_categories(
+  balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
+  filter: &JsonValue,
+  ws: &Workspace,
+) -> crate::services::Result {
+  let warehouse_filter = filter.to_string();
+
+  let mut categories = HashSet::new();
+  for (store, sb) in balances {
+    if store.to_string() != warehouse_filter {
+      continue;
+    }
+    for (goods, gb) in sb {
+      for (batch, bb) in gb {
+        // workaround until get_balance_for_all remove zero balances
+        if bb.is_zero() {
+          continue;
+        }
+        let _goods = goods.resolve_to_json_object(&ws);
+        let category = _goods["category"].to_string();
+        categories.insert(category.resolve_to_json_object(&ws));
+      }
+    }
+  }
+
+  let mut v: Vec<JsonValue> = categories.into_iter().collect();
+
+  Ok(JsonValue::Array(v))
+}
+
+fn find_warehouses(
+  balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
+  filter: &JsonValue,
+  ws: &Workspace,
+) -> crate::services::Result {
+  let mut storages = HashSet::new();
+
+  let category_filter = filter.to_string();
+
+  for (store, sb) in balances {
+    for (goods, gb) in sb {
+      for (batch, bb) in gb {
+        // workaround until get_balance_for_all remove zero balances
+        if bb.is_zero() {
+          continue;
+        }
+        let _goods = goods.resolve_to_json_object(&ws);
+        let category = _goods["category"].to_string();
+
+        if category == category_filter {
+          storages.insert(store);
+        }
+      }
+    }
+  }
+
+  let mut v: Vec<JsonValue> = storages.into_iter().collect();
+
+  Ok(JsonValue::Array(v))
+}
+
+fn find_goods(
+  balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
+  filter: &JsonValue,
+  ws: &Workspace,
+) -> crate::services::Result {
+  let mut goods_list = Vec::new();
+
+  let warehouse_filter = filter["warehouse"].to_string();
+  let category_filter = filter["category"].to_string();
+
+  for (store, sb) in balances {
+    if store.to_string() != warehouse_filter {
+      continue;
+    }
+    for (goods, gb) in sb {
+      for (batch, bb) in gb {
+        // workaround until get_balance_for_all remove zero balances
+        if bb.is_zero() {
+          continue;
+        }
+        let _goods = goods.resolve_to_json_object(&ws);
+        let category = _goods["category"].to_string();
+
+        if category == category_filter {
+          // TODO: add date into this id
+          let bytes: Vec<u8> = store
+            .as_bytes()
+            .into_iter()
+            .zip(goods.as_bytes().into_iter().zip(batch.id.as_bytes().into_iter()))
+            .map(|(a, (b, c))| a ^ b ^ c)
+            .collect();
+
+          let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
+
+          let _goods = goods.resolve_to_json_object(&ws);
+
+          let record = json::object! {
+                _id: id.to_json(),
+                storage: store.resolve_to_json_object(&ws),
+                goods: _goods,
+                batch: batch.to_json(),
+                qty: json::object! { number: bb.qty.to_json() },
+                cost: json::object! { number: bb.cost.to_json() },
+          };
+          goods_list.push(record);
+        }
+      }
+    }
+  }
+  Ok(JsonValue::Array(goods_list))
 }

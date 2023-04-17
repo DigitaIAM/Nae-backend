@@ -37,8 +37,8 @@ use service::Services;
 use service::utils::json::JsonParams;
 use std::cmp::max;
 
-pub(crate) type Goods = Uuid;
-pub(crate) type Store = Uuid;
+pub type Goods = Uuid;
+pub type Store = Uuid;
 pub(crate) type Qty = Decimal;
 pub(crate) type Cost = Decimal;
 
