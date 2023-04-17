@@ -14,6 +14,7 @@ use tantivy::collector::TopDocs;
 use uuid::Uuid;
 
 pub trait Search {
+  fn index_writer(&mut self) -> Arc<Mutex<IndexWriter>>;
   fn insert(&mut self, id: Uuid, text: &str);
   fn delete(&mut self, id: Uuid);
   fn search(&self, input: &str) -> Vec<Uuid>;
@@ -65,20 +66,24 @@ impl TantivyEngine {
   }
 }
 
+
 impl Search for TantivyEngine {
+  fn index_writer(&mut self) -> Arc<Mutex<IndexWriter>> {
+    Arc::new(Mutex::new(self.index.writer(3_000_000).unwrap()))
+  }
+
   fn insert(&mut self, id: Uuid, text: &str) {
-    let mut index_writer = self.index.writer(3_000_000).unwrap();
-    let index_writer_2: Arc<Mutex<IndexWriter>> = Arc::new(Mutex::new(self.index.writer(3_000_000).unwrap()));
+    // let mut index_writer = self.index.writer(3_000_000).unwrap();
 
     let uuid = self.index.schema().get_field("uuid").unwrap();
     let name = self.index.schema().get_field("name").unwrap(); 
 
-    index_writer.add_document(doc!{
-      uuid => id.to_string(),
-      name => text,
-    }).unwrap(); 
-// reduce the number of commits
-    index_writer.commit().unwrap();
+    // index_writer.add_document(doc!{
+    //   uuid => id.to_string(),
+    //   name => text,
+    // }).unwrap();
+    
+    self.index_writer().lock().unwrap().commit().unwrap();
   }
 
   fn delete(&mut self, id: Uuid) {
