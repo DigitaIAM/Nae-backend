@@ -1,19 +1,12 @@
-use std::io::Error;
 use json::JsonValue;
 use simsearch::SimSearch;
+use std::io::Error;
 use uuid::Uuid;
 
 use crate::{
-  commutator::Application, storage::Workspaces, 
-  // text_search::search_engines::SimSearchEngine,
-  text_search::search_engines::TantivyEngine,
-  text_search::search_engines::Search,
+  commutator::Application, storage::Workspaces, text_search::engine_tantivy::TantivyEngine,
+  text_search::Search,
 };
-
-pub trait SearchTrait {
-  // fn load(&mut self, catalog: Vec<(Uuid, String)>);
-  fn search(&self, input: &str) -> Vec<Uuid>;
-}
 
 #[derive(Clone)]
 pub struct SearchEngine {
@@ -23,12 +16,9 @@ pub struct SearchEngine {
 
 impl SearchEngine {
   pub fn new() -> Self {
-    Self { 
-      sim: SimSearch::new(),
-      tan: TantivyEngine::new(),
-    }
+    Self { sim: SimSearch::new(), tan: TantivyEngine::new() }
   }
-// SIMSEARCH индексирует базу, т.к хранит индекс не на диске, а в памяти.
+
   pub fn load(&mut self, workspaces: Workspaces) -> Result<(), service::error::Error> {
     for ws in workspaces.list()? {
       let memories = ws.memories(vec!["drugs".to_string()]);
@@ -64,17 +54,17 @@ impl SearchEngine {
   pub fn search(&mut self, text: &str) -> Vec<Uuid> {
     let mut result_sim = self.sim.search(text);
     let result_tan = self.tan.search(text);
-    
-    println!("result_tan.len() = {}", result_tan.len());
-    println!("result_sim.len() = {}", result_sim.len());
+
+    // println!("result_tan.len() = {}", result_tan.len());
+    // println!("result_sim.len() = {}", result_sim.len());
 
     result_sim.extend(result_tan);
-    println!("sim + tan = {}", result_sim.len());
+
     result_sim
   }
 }
 
-pub fn process_text_search(
+pub fn handle_mutation(
   app: &Application,
   ctx: &Vec<String>,
   before: &JsonValue,
@@ -96,7 +86,7 @@ pub fn process_text_search(
         }
       } else {
         let mut search = app.search.write().unwrap();
-        search.delete(&id); 
+        search.delete(&id);
       }
     } else {
       if let Some(after_name) = after_name {

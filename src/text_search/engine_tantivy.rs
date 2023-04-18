@@ -2,22 +2,13 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-// use simsearch::{SimSearch, SearchOptions};
-use tantivy::schema::{
-  Schema, STORED, TEXT, 
-  // Value
-};
-use tantivy::{Index, ReloadPolicy, Term, doc, IndexWriter, IndexReader};
-use tantivy::query::QueryParser;
 use tantivy::collector::TopDocs;
-// use tantivy::{doc, Document};
+use tantivy::query::QueryParser;
+use tantivy::schema::{Schema, STORED, TEXT};
+use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy, Term};
 use uuid::Uuid;
 
-pub trait Search {
-  fn insert(&mut self, id: Uuid, text: &str);
-  fn delete(&mut self, id: Uuid);
-  fn search(&self, input: &str) -> Vec<Uuid>;
-}
+use crate::text_search::Search;
 
 #[derive(Clone)]
 pub struct TantivyEngine {
@@ -44,18 +35,12 @@ impl TantivyEngine {
       Index::create_in_dir(directory_path, schema).unwrap()
     };
 
-    let writer = Arc::new(
-      Mutex::new(index.writer(3_000_000).unwrap())
-    );
-    let reader = Arc::new(
-      Mutex::new(index.reader_builder().reload_policy(ReloadPolicy::OnCommit).try_into().unwrap())
-    );
+    let writer = Arc::new(Mutex::new(index.writer(3_000_000).unwrap()));
+    let reader = Arc::new(Mutex::new(
+      index.reader_builder().reload_policy(ReloadPolicy::OnCommit).try_into().unwrap(),
+    ));
 
-    Self {
-      writer,
-      reader,
-      index,
-    }
+    Self { writer, reader, index }
   }
 }
 
@@ -63,14 +48,16 @@ impl Search for TantivyEngine {
   fn insert(&mut self, id: Uuid, text: &str) {
     let schema = self.index.schema();
     let uuid = schema.get_field("uuid").unwrap();
-    let name = schema.get_field("name").unwrap(); 
-    
+    let name = schema.get_field("name").unwrap();
+
     let mut writer = self.writer.lock().unwrap();
-    
-    writer.add_document(doc!{
-      uuid => id.to_string(),
-      name => text,
-    }).unwrap();
+
+    writer
+      .add_document(doc! {
+        uuid => id.to_string(),
+        name => text,
+      })
+      .unwrap();
 
     writer.commit().unwrap();
   }
@@ -90,20 +77,23 @@ impl Search for TantivyEngine {
 
     let schema = self.index.schema();
     let uuid = schema.get_field("uuid").unwrap();
-    let name = schema.get_field("name").unwrap(); 
+    let name = schema.get_field("name").unwrap();
 
-    let parser = QueryParser::for_index(&self.index, vec![ name ]);
+    let parser = QueryParser::for_index(&self.index, vec![name]);
     let query = parser.parse_query(input).unwrap();
 
     let top_docs = searcher.search(&query, &TopDocs::with_limit(10)).unwrap();
 
-    top_docs.iter().map(|(_score, doc_address)| {
-      let retrieved_doc = searcher.doc(*doc_address).unwrap();
+    top_docs
+      .iter()
+      .map(|(_score, doc_address)| {
+        let retrieved_doc = searcher.doc(*doc_address).unwrap();
 
-      let id = retrieved_doc.get_first(uuid).unwrap();
-      let id = id.as_text().unwrap();
+        let id = retrieved_doc.get_first(uuid).unwrap();
+        let id = id.as_text().unwrap();
 
-      Uuid::parse_str(id).unwrap()
-    }).collect()
+        Uuid::parse_str(id).unwrap()
+      })
+      .collect()
   }
 }

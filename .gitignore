@@ -16,12 +16,12 @@ Cargo.lock
 # Ignore data folder
 /data/
 
+# Ignore import folder
+/import/
+
 .idea/
+.vscode/
 
 .DS_Store
 
 **/*.zip
-
-/utf8_dbo.GOOD.Table.sql
-
-tantivy/
