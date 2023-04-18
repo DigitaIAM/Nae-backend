@@ -1,4 +1,5 @@
 mod memories_in_files;
+pub(crate) mod stock;
 
 use crate::storage::memories::Document;
 use crate::storage::organizations::Workspace;

@@ -469,7 +469,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
-    let balances = db.get_checkpoints_before_date(storage, from_date)?;
+    let balances = db.get_checkpoints_for_one_storage_before_date(storage, from_date)?;
 
     let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
 

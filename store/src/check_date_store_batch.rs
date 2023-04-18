@@ -329,7 +329,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
     Ok((checkpoint_date, result))
   }
 
-  fn get_checkpoints_before_date(
+  fn get_checkpoints_for_one_storage_before_date(
     &self,
     store: Store,
     date: DateTime<Utc>,
@@ -357,6 +357,55 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .to_be_bytes()
       .iter()
       .chain(store.as_bytes().iter())
+      .chain(max_batch().iter())
+      .map(|b| *b)
+      .collect();
+
+    let mut opts = ReadOptions::default();
+    opts.set_iterate_range(from..till);
+
+    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+
+    while let Some(res) = iter.next() {
+      let (k, v) = res?;
+      let b: BalanceForGoods = serde_json::from_slice(&v)?;
+      // println!("BAL: {b:#?}");
+      let (date, store, goods, batch) = CheckDateStoreBatch::key_to_data(k.to_vec())?;
+
+      let balance = Balance { date, store, goods, batch, number: b };
+      balances.push(balance);
+    }
+
+    Ok(balances)
+  }
+
+  fn get_checkpoints_for_all_storages_before_date(
+    &self,
+    date: DateTime<Utc>,
+  ) -> Result<Vec<Balance>, WHError> {
+    let mut balances = Vec::new();
+
+    let current_date = first_day_current_month(date);
+
+    let latest_checkpoint_date = self.get_latest_checkpoint_date()?;
+
+    let ts = if current_date > latest_checkpoint_date {
+      u64::try_from(latest_checkpoint_date.timestamp()).unwrap_or_default()
+    } else {
+      u64::try_from(current_date.timestamp()).unwrap_or_default()
+    };
+
+    let from: Vec<u8> = ts
+      .to_be_bytes()
+      .iter()
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(min_batch().iter())
+      .map(|b| *b)
+      .collect();
+    let till: Vec<u8> = ts
+      .to_be_bytes()
+      .iter()
+      .chain(UUID_MAX.as_bytes().iter())
       .chain(max_batch().iter())
       .map(|b| *b)
       .collect();

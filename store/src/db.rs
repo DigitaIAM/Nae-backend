@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc, NaiveDateTime};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rocksdb::DB;
 
 use super::{
@@ -11,9 +11,9 @@ use super::{
   error::WHError,
 };
 use crate::elements::{Batch, Goods};
+use json::JsonValue;
 use std::collections::HashMap;
 use uuid::Uuid;
-use json::JsonValue;
 
 #[derive(Clone)]
 pub struct Db {
@@ -133,13 +133,13 @@ impl Db {
     Err(WHError::new("can't get checkpoint before date"))
   }
 
-  pub fn get_checkpoints_before_date(
+  pub fn get_checkpoints_for_one_storage_before_date(
     &self,
     store: Store,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError> {
     for checkpoint_topology in self.checkpoint_topologies.iter() {
-      match checkpoint_topology.get_checkpoints_before_date(store, date) {
+      match checkpoint_topology.get_checkpoints_for_one_storage_before_date(store, date) {
         Ok(result) => return Ok(result),
         Err(e) => {
           if e.message() == "Not supported".to_string() {
@@ -162,7 +162,8 @@ impl Db {
     till_date: DateTime<Utc>,
   ) -> Result<JsonValue, WHError> {
     for ordered_topology in self.ordered_topologies.iter() {
-      match ordered_topology.get_report_for_goods(&self, storage, goods, batch, from_date, till_date) {
+      match ordered_topology.get_report_for_goods(&self, storage, goods, batch, from_date, till_date)
+      {
         Ok(report) => return Ok(report),
         Err(_) => {}, // ignore
       }
@@ -190,7 +191,7 @@ impl Db {
   pub fn get_balance(
     &self,
     date: DateTime<Utc>,
-    goods: &Vec<Goods>
+    goods: &Vec<Goods>,
   ) -> Result<HashMap<Uuid, BalanceForGoods>, WHError> {
     let mut it = self.checkpoint_topologies.iter();
     let (from_date, checkpoints) = loop {
@@ -205,12 +206,15 @@ impl Db {
           },
         }
       } else {
-        break (DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp_millis(0).unwrap(), Utc), HashMap::new());
+        break (
+          DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp_millis(0).unwrap(), Utc),
+          HashMap::new(),
+        );
       }
     };
 
     for ordered_topology in self.ordered_topologies.iter() {
-      match ordered_topology.get_balances(from_date,date, goods, checkpoints.clone()) {
+      match ordered_topology.get_balances(from_date, date, goods, checkpoints.clone()) {
         Ok(res) => return Ok(res),
         Err(_) => {}, // ignore
       }
@@ -236,7 +240,10 @@ impl Db {
           },
         }
       } else {
-        break (DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp_millis(0).unwrap(), Utc), HashMap::new());
+        break (
+          DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp_millis(0).unwrap(), Utc),
+          HashMap::new(),
+        );
       }
     };
 

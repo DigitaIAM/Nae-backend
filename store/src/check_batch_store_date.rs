@@ -64,7 +64,7 @@ impl CheckpointTopology for CheckBatchStoreDate {
     Ok(())
   }
 
-  fn get_checkpoints_before_date(
+  fn get_checkpoints_for_one_storage_before_date(
     &self,
     _store: Store,
     _date: DateTime<Utc>,
@@ -140,6 +140,13 @@ impl CheckpointTopology for CheckBatchStoreDate {
     _batch: &Batch,
     _date: DateTime<Utc>,
   ) -> Result<Option<Balance>, WHError> {
+    unimplemented!()
+  }
+
+  fn get_checkpoints_for_all_storages_before_date(
+    &self,
+    date: DateTime<Utc>,
+  ) -> Result<Vec<Balance>, WHError> {
     unimplemented!()
   }
 }

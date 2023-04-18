@@ -40,7 +40,7 @@ use std::cmp::max;
 pub type Goods = Uuid;
 pub type Store = Uuid;
 pub(crate) type Qty = Decimal;
-pub(crate) type Cost = Decimal;
+pub type Cost = Decimal;
 
 pub(crate) const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
 pub(crate) const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
@@ -566,7 +566,8 @@ pub trait CheckpointTopology {
       let mut last_checkpoint_date = self.get_latest_checkpoint_date()?;
 
       if last_checkpoint_date <= op.date {
-        let old_checkpoints = self.get_checkpoints_before_date(op.store, last_checkpoint_date)?;
+        let old_checkpoints =
+          self.get_checkpoints_for_all_storages_before_date(last_checkpoint_date)?;
 
         last_checkpoint_date = first_day_next_month(op.date);
 
@@ -611,9 +612,14 @@ pub trait CheckpointTopology {
     Ok(())
   }
 
-  fn get_checkpoints_before_date(
+  fn get_checkpoints_for_one_storage_before_date(
     &self,
     store: Store,
+    date: DateTime<Utc>,
+  ) -> Result<Vec<Balance>, WHError>;
+
+  fn get_checkpoints_for_all_storages_before_date(
+    &self,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError>;
 }
