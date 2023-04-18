@@ -3,9 +3,10 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use tantivy::collector::TopDocs;
+use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
 use tantivy::schema::{Schema, STORED, TEXT};
-use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy, Term};
+use tantivy::{doc, Directory, Index, IndexReader, IndexWriter, ReloadPolicy, Term};
 use uuid::Uuid;
 
 use crate::text_search::Search;
@@ -26,14 +27,11 @@ impl TantivyEngine {
     let schema = schema_builder.build();
     // schema_builder.build();
 
-    let directory_path = "./data/tantivy";
-    fs::create_dir_all(directory_path).unwrap();
+    let path = "./data/tantivy";
+    fs::create_dir_all(path).unwrap();
 
-    let index = if Path::new(directory_path).is_dir() {
-      Index::open_in_dir(directory_path).unwrap()
-    } else {
-      Index::create_in_dir(directory_path, schema).unwrap()
-    };
+    let directory: Box<dyn Directory> = Box::new(MmapDirectory::open(path).unwrap());
+    let index = Index::open_or_create(directory, schema).unwrap();
 
     let writer = Arc::new(Mutex::new(index.writer(3_000_000).unwrap()));
     let reader = Arc::new(Mutex::new(
