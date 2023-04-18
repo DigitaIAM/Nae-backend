@@ -6,7 +6,7 @@ use std::time::Duration;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
-use tantivy::schema::{Schema, STORED, TEXT};
+use tantivy::schema::{Schema, STORED, TEXT, Field};
 use tantivy::{doc, Directory, Index, IndexReader, IndexWriter, ReloadPolicy, Term};
 use uuid::Uuid;
 
@@ -81,9 +81,7 @@ impl Search for TantivyEngine {
     }
   }
   fn insert(&mut self, id: Uuid, text: &str) {
-    let schema = self.index.schema();
-    let uuid = schema.get_field("uuid").unwrap();
-    let name = schema.get_field("name").unwrap();
+    let (uuid, name) = self.schematic();
 
     let mut writer = self.writer.lock().unwrap();
 
@@ -113,12 +111,10 @@ impl Search for TantivyEngine {
   }
 
   fn search(&self, input: &str) -> Vec<Uuid> {
+    let (uuid, name) = self.schematic();
+    
     let reader = self.reader.lock().unwrap();
     let searcher = reader.searcher();
-
-    let schema = self.index.schema();
-    let uuid = schema.get_field("uuid").unwrap();
-    let name = schema.get_field("name").unwrap();
 
     let parser = QueryParser::for_index(&self.index, vec![name]);
     let query = parser.parse_query(input).unwrap();
@@ -136,5 +132,12 @@ impl Search for TantivyEngine {
         Uuid::parse_str(id).unwrap()
       })
       .collect()
+  }
+
+  fn schematic(&self) -> (Field, Field) {
+    let schema = self.index.schema();
+    let uuid = schema.get_field("uuid").unwrap();
+    let name = schema.get_field("name").unwrap();
+    (uuid, name)
   }
 }
