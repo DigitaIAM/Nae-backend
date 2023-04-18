@@ -51,7 +51,7 @@ pub(crate) fn report(
   println!("report: {:#?}", result);
 }
 
-fn memories_find(
+pub(crate) fn memories_find(
   app: &Application,
   filter: JsonValue,
   ctx: Vec<&str>,
@@ -62,7 +62,11 @@ fn memories_find(
   Ok(result["data"].members().map(|o| o.clone()).collect())
 }
 
-fn memories_create(app: &Application, data: JsonValue, ctx: Vec<&str>) -> Result<JsonValue, Error> {
+pub(crate) fn memories_create(
+  app: &Application,
+  data: JsonValue,
+  ctx: Vec<&str>,
+) -> Result<JsonValue, Error> {
   let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
   let result = app.service("memories").create(data, object! {oid: oid, ctx: ctx })?;
 

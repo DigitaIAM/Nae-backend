@@ -152,7 +152,7 @@ async fn server(
 }
 
 async fn startup() -> std::io::Result<()> {
-  std::env::set_var("RUST_LOG", "debug,actix_web=debug,actix_server=debug");
+  // std::env::set_var("RUST_LOG", "debug,actix_web=debug,actix_server=debug");
   env_logger::init();
 
   let opt = Opt::from_args();
@@ -169,6 +169,11 @@ async fn startup() -> std::io::Result<()> {
 
   let storage = Workspaces::new("./data/companies/");
   app.storage = Some(storage.clone());
+
+  {
+    let mut engine = app.search.write().unwrap();
+    engine.load(storage.clone());
+  }
 
   app.register(Actions::new(app.clone(), "actions", storage.clone()));
 
@@ -205,6 +210,7 @@ async fn startup() -> std::io::Result<()> {
         "007" => use_cases::uc_007::import(&app),
         "008" => use_cases::uc_008::import(&app),
         "009" => use_cases::uc_009::import(&app),
+        "010" => use_cases::uc_010::import(&app),
         _ => unreachable!(),
       }
       Ok(())
@@ -219,6 +225,7 @@ async fn startup() -> std::io::Result<()> {
         "007" => use_cases::uc_007::report(&app),
         "008" => use_cases::uc_008::report(&app),
         "009" => use_cases::uc_009::report(&app.db),
+        "010" => use_cases::uc_010::report(&app),
         _ => unreachable!(),
       }
       Ok(())

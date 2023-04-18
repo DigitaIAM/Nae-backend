@@ -49,6 +49,31 @@ impl Service for MemoriesInFiles {
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
 
     // workaround
+    if ctx == vec!["drugs"] { 
+      let ws = self.wss.get(&wsid);
+
+      let search = self.params(&params)["search"].as_str().unwrap_or_default();
+
+      println!("memories_in_files.rs FN FIND: {search}");
+
+      let result = {
+        let mut engine = self.app.search.write().unwrap();
+        engine.search(search)
+      };
+
+      let total = result.len();
+      
+      let list: Vec<JsonValue> = result.into_iter().skip(skip).take(limit).map(|id| id.resolve_to_json_object(&ws)).collect();
+
+      return Ok(json::object! {
+        data: JsonValue::Array(list),
+        total: total,
+        "$skip": skip,
+      });
+
+    }
+
+    // workaround
     if ctx == vec!["warehouse", "stock"] {
       if skip != 0 {
         let list = vec![];

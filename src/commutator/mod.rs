@@ -1,20 +1,23 @@
-use crate::services::{Event, Mutation};
-use crate::ws::{engine_io, socket_io, Connect, Disconnect, WsMessage};
-use crate::{animo::db::AnimoDB, settings::Settings};
-use crate::{storage::Workspaces, ws};
-use actix::prelude::*;
-use crossbeam::channel::{Receiver, Sender};
-use json::{array, JsonValue};
-use service::error::Error;
-use service::{Service, Services};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
-use store::wh_storage::WHStorage;
-use store::GetWarehouse;
+
+use actix::prelude::*;
+use crossbeam::channel::{Receiver, Sender};
+use json::{array, JsonValue};
 use tokio_cron_scheduler::JobScheduler;
 use uuid::Uuid;
+
+use crate::services::{Event, Mutation};
+use crate::text_search::SearchEngine;
+use crate::ws::{engine_io, socket_io, Connect, Disconnect, WsMessage};
+use crate::{animo::db::AnimoDB, settings::Settings};
+use crate::{storage::Workspaces, ws};
+use service::error::Error;
+use service::{Service, Services};
+use store::wh_storage::WHStorage;
+use store::GetWarehouse;
 
 type Socket = Recipient<WsMessage>;
 
@@ -32,6 +35,9 @@ pub struct Application {
   stop: Arc<AtomicBool>,
   pub(crate) events: Sender<Event>,
   pub(crate) sender: Sender<Mutation>,
+
+  // search
+  pub search: Arc<RwLock<SearchEngine>>,
 }
 
 impl GetWarehouse for Application {
@@ -68,6 +74,7 @@ impl Application {
       stop: stop.clone(),
       events: events_sender,
       sender,
+      search: Arc::new(RwLock::new(SearchEngine::new())),
     };
 
     thread::spawn({
