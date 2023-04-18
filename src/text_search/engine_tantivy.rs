@@ -26,7 +26,7 @@ impl TantivyEngine {
     let schema = schema_builder.build();
     // schema_builder.build();
 
-    let directory_path = "./tantivy";
+    let directory_path = "./data/tantivy";
     fs::create_dir_all(directory_path).unwrap();
 
     let index = if Path::new(directory_path).is_dir() {
