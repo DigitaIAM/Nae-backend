@@ -25,7 +25,7 @@ impl WHStorage {
     let mut opts = Options::default();
     let mut cfs = Vec::new();
 
-    let mut cf_names: Vec<&str> = vec![
+    let cf_names: Vec<&str> = vec![
       StoreDateTypeBatchId::cf_name(),
       DateTypeStoreBatchId::cf_name(),
       CheckDateStoreBatch::cf_name(),

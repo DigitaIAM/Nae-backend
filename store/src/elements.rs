@@ -1575,7 +1575,7 @@ impl ToJson for Report {
 
 fn time_to_naive_string(time: DateTime<Utc>) -> String {
   let mut res = time.to_string();
-  res.split_off(10);
+  let _ = res.split_off(10);
   res
 }
 
@@ -1717,7 +1717,7 @@ pub fn receive_data(
   let mut new_data = data.clone();
   let mut new_before = before.clone();
 
-  let mut before = match json_to_ops(app, &mut new_before, time.clone(), ctx) {
+  let before = match json_to_ops(app, &mut new_before, time.clone(), ctx) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ BEFORE: {}", e.message());

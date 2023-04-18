@@ -3,7 +3,7 @@ use super::{
   db::Db,
   elements::{
     first_day_current_month, new_get_aggregations, Balance, Batch, InternalOperation, Op,
-    OpMutation, OrderedTopology, Report, Store, UUID_MAX, UUID_NIL,
+    OrderedTopology, Report, Store, UUID_MAX, UUID_NIL,
   },
   error::WHError,
 };
