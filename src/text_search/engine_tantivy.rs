@@ -15,13 +15,76 @@ use crate::text_search::Search;
 const COMMIT_RATE: usize = 500;
 const COMMIT_TIME: Duration = Duration::from_secs(1);
 
+pub struct Writer {
+  writer: Arc<Mutex<IndexWriter>>,
+  added_events: usize,
+  commit_timestamp: std::time::Instant,
+}
+
+impl Writer {
+  pub fn new(writer: Arc<Mutex<IndexWriter>>) -> Self {
+    Self {
+      writer,
+      added_events: 0,
+      commit_timestamp: std::time::Instant::now(),
+    }
+  }
+
+  pub fn add_event(&mut self, id: Uuid, text: &str) {
+    let schema = TantivyEngine::new().index.schema();
+    let uuid = schema.get_field("uuid").unwrap();
+    let name = schema.get_field("name").unwrap();
+
+    let mut writer = self.writer.lock().unwrap();
+
+    writer
+      .add_document(doc! {
+        uuid => id.to_string(),
+        name => text,
+      })
+      .unwrap();
+
+    self.added_events += 1;
+
+    if self.added_events >= COMMIT_RATE
+      || self.commit_timestamp.elapsed() >= COMMIT_TIME
+    {
+      writer.commit().unwrap();
+      self.added_events = 0;
+      self.commit_timestamp = std::time::Instant::now();
+    }
+  }
+
+  pub fn commit(&mut self) -> Result<bool, tantivy::TantivyError> {
+    self.commit_helper(false)
+  }
+
+  pub fn force_commit(&mut self) -> Result<bool, tantivy::TantivyError> {
+    self.commit_helper(true)?;
+    Ok(true)
+  }
+
+  fn commit_helper(&mut self, force: bool) -> Result<bool, tantivy::TantivyError> {
+    if self.added_events > 0
+      && (force
+        || self.added_events >= COMMIT_RATE
+        || self.commit_timestamp.elapsed() >= COMMIT_TIME)
+    {
+      self.writer.lock().unwrap().commit().unwrap();
+      self.added_events = 0;
+      self.commit_timestamp = std::time::Instant::now();
+      Ok(true)
+    } else {
+      Ok(false)
+    }
+  }
+}
+
 #[derive(Clone)]
 pub struct TantivyEngine {
   index: Index,
   writer: Arc<Mutex<IndexWriter>>,
   reader: Arc<Mutex<IndexReader>>,
-  added_events: usize,
-  commit_timestamp: std::time::Instant,
 }
 
 impl TantivyEngine {
@@ -49,33 +112,8 @@ impl TantivyEngine {
       writer: Arc::new(Mutex::new(writer)),
       reader: Arc::new(Mutex::new(reader)),
       index,
-      added_events: 0,
-      commit_timestamp: std::time::Instant::now(),
     }
   }
-
-  pub fn commit(&mut self) -> Result<bool, tantivy::TantivyError> {
-    self.commit_helper(false)
-  }
-
-  pub fn commit_force(&mut self) -> Result<bool, tantivy::TantivyError> {
-    self.commit_helper(true)
-  }
-
-  fn commit_helper(&mut self, force: bool) -> Result<bool, tantivy::TantivyError> {
-    if self.added_events > 0
-      && (force
-        || self.added_events >= COMMIT_RATE
-        || self.commit_timestamp.elapsed() >= COMMIT_TIME)
-    {
-      self.writer.lock().unwrap().commit()?;
-      self.added_events = 0;
-      self.commit_timestamp = std::time::Instant::now();
-      Ok(true)
-    } else {
-      Ok(false)
-    }
-}
 }
 
 impl Search for TantivyEngine {
