@@ -31,9 +31,9 @@ pub(crate) fn report(app: &Application) {
   let result = app.service("memories").find(object! {oid: oid, ctx: ctx, search: "ПЛАКВЕНИЛ"}).unwrap();
   println!("report:\n{}\nend of report", result.dump());
 
-  use std::backtrace;
-  use backtrace::Backtrace;
-  println!("Custom backtrace: {}", Backtrace::force_capture());
+  // use std::backtrace;
+  // use backtrace::Backtrace;
+  // println!("Custom backtrace: {}", Backtrace::force_capture());
 }
 
 fn load() -> Vec<JsonValue> {

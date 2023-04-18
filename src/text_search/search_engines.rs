@@ -33,15 +33,21 @@ impl TantivyEngine {
     schema_builder.add_text_field("uuid", TEXT | STORED);
     schema_builder.add_text_field("name", TEXT);
 
-    let schema = schema_builder.build();
+    // let schema = schema_builder.build();
+    schema_builder.build();
 
     let directory_path = "./tantivy";
     fs::create_dir_all(directory_path).unwrap();
     
-    let index = Index::create_in_dir(directory_path, schema).unwrap();
+    // let index = Index::create_in_dir(directory_path, schema).unwrap();
+    let index = Index::open_in_dir(directory_path).unwrap();
 
-    let writer = Arc::new(Mutex::new(index.writer(3_000_000).unwrap()));
-    let reader = Arc::new(Mutex::new(index.reader_builder().reload_policy(ReloadPolicy::OnCommit).try_into().unwrap()));
+    let writer = Arc::new(
+      Mutex::new(index.writer(3_000_000).unwrap())
+    );
+    let reader = Arc::new(
+      Mutex::new(index.reader_builder().reload_policy(ReloadPolicy::OnCommit).try_into().unwrap())
+    );
 
     Self {
       writer,
