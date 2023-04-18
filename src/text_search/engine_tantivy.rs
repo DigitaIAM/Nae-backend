@@ -54,6 +54,14 @@ impl TantivyEngine {
     }
   }
 
+  pub fn commit(&mut self) -> Result<bool, tantivy::TantivyError> {
+    self.commit_helper(false)
+  }
+
+  pub fn commit_force(&mut self) -> Result<bool, tantivy::TantivyError> {
+    self.commit_helper(true)
+  }
+
   fn commit_helper(&mut self, force: bool) -> Result<bool, tantivy::TantivyError> {
     if self.added_events > 0
       && (force
