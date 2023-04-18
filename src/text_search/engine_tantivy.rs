@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
@@ -10,6 +11,9 @@ use tantivy::{doc, Directory, Index, IndexReader, IndexWriter, ReloadPolicy, Ter
 use uuid::Uuid;
 
 use crate::text_search::Search;
+
+const COMMIT_RATE: usize = 500;
+const COMMIT_TIME: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
 pub struct TantivyEngine {
@@ -25,7 +29,6 @@ impl TantivyEngine {
     schema_builder.add_text_field("name", TEXT);
 
     let schema = schema_builder.build();
-    // schema_builder.build();
 
     let path = "./data/tantivy";
     fs::create_dir_all(path).unwrap();
@@ -33,12 +36,18 @@ impl TantivyEngine {
     let directory: Box<dyn Directory> = Box::new(MmapDirectory::open(path).unwrap());
     let index = Index::open_or_create(directory, schema).unwrap();
 
-    let writer = Arc::new(Mutex::new(index.writer(3_000_000).unwrap()));
-    let reader = Arc::new(Mutex::new(
-      index.reader_builder().reload_policy(ReloadPolicy::OnCommit).try_into().unwrap(),
-    ));
+    let writer = index.writer(3_000_000).unwrap();
+    let reader = index
+      .reader_builder()
+      .reload_policy(ReloadPolicy::OnCommit)
+      .try_into()
+      .unwrap();
 
-    Self { writer, reader, index }
+    Self {
+      writer: Arc::new(Mutex::new(writer)),
+      reader: Arc::new(Mutex::new(reader)),
+      index
+    }
   }
 }
 
