@@ -75,7 +75,7 @@ base64 = "0.21"
 #ckb-rocksdb have transaction
 rocksdb = { version = "0.20", default-features = false, features = ["lz4", "multi-threaded-cf"] }
 
-tantivy = "0.19"
+tantivy = { version = "0.19", features = ["mmap"] }
 simsearch = "0.2.4"
 
 #Firebird Client
