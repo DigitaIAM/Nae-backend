@@ -72,6 +72,7 @@ fn find_wh_and_categories(
     .map(|(mut o, id)| {
       let cost = storages.remove(&id).unwrap_or_default();
       o["_cost"] = cost.to_json();
+      o["_category"] = JsonValue::String("storage".to_string());
       o
     })
     .collect();
@@ -92,6 +93,7 @@ fn find_wh_and_categories(
     .map(|(mut o, id)| {
       let cost = categories.remove(&id).unwrap_or_default();
       o["_cost"] = cost.to_json();
+      o["_category"] = JsonValue::String("category".to_string());
       o
     })
     .collect();
