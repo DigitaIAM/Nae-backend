@@ -18,9 +18,9 @@ const COMMIT_TIME: Duration = Duration::from_secs(1);
 #[derive(Clone)]
 pub struct TantivyEngine {
   index: Index,
+  added_events: usize,
   writer: Arc<Mutex<IndexWriter>>,
   reader: Arc<Mutex<IndexReader>>,
-  added_events: usize,
   commit_timestamp: std::time::Instant,
 }
 
@@ -35,7 +35,8 @@ impl TantivyEngine {
     let path = "./data/tantivy";
     fs::create_dir_all(path).unwrap();
 
-    let directory: Box<dyn Directory> = Box::new(MmapDirectory::open(path).unwrap());
+    let directory = MmapDirectory::open(path).unwrap();
+    let directory: Box<dyn Directory> = Box::new(directory);
     let index = Index::open_or_create(directory, schema).unwrap();
 
     let writer = index.writer(3_000_000).unwrap();
@@ -66,10 +67,10 @@ impl Search for TantivyEngine {
   }
 
   fn commit_helper(&mut self, force: bool) -> Result<bool, tantivy::TantivyError> {
-    if self.added_events > 0
-      && (force
-        || self.added_events >= COMMIT_RATE
-        || self.commit_timestamp.elapsed() >= COMMIT_TIME)
+    if self.added_events > 0 &&
+      (force
+      || self.added_events >= COMMIT_RATE
+      || self.commit_timestamp.elapsed() >= COMMIT_TIME)
     {
       self.writer.lock().unwrap().commit().unwrap();
       self.added_events = 0;
@@ -95,9 +96,7 @@ impl Search for TantivyEngine {
 
     self.added_events += 1;
 
-    if self.added_events >= COMMIT_RATE
-      || self.commit_timestamp.elapsed() >= COMMIT_TIME
-    {
+    if self.added_events >= COMMIT_RATE || self.commit_timestamp.elapsed() >= COMMIT_TIME {
       writer.commit().unwrap();
       self.added_events = 0;
       self.commit_timestamp = std::time::Instant::now();
