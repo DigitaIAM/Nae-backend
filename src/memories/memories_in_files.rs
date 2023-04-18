@@ -49,7 +49,7 @@ impl Service for MemoriesInFiles {
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
 
     // workaround
-    if ctx == vec!["drugs"] { 
+    if ctx == vec!["drugs"] {
       let ws = self.wss.get(&wsid);
 
       let search = self.params(&params)["search"].as_str().unwrap_or_default();
@@ -62,15 +62,19 @@ impl Service for MemoriesInFiles {
       };
 
       let total = result.len();
-      
-      let list: Vec<JsonValue> = result.into_iter().skip(skip).take(limit).map(|id| id.resolve_to_json_object(&ws)).collect();
+
+      let list: Vec<JsonValue> = result
+        .into_iter()
+        .skip(skip)
+        .take(limit)
+        .map(|id| id.resolve_to_json_object(&ws))
+        .collect();
 
       return Ok(json::object! {
         data: JsonValue::Array(list),
         total: total,
         "$skip": skip,
       });
-
     }
 
     // workaround
@@ -252,6 +256,7 @@ impl Service for MemoriesInFiles {
           })
           .sum();
 
+        // TODO rolls - kg, caps - piece
         order["produced"] = json::object! { "piece": sum.to_json(), "box": boxes.to_string() };
       }
     }
