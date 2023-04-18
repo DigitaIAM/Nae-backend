@@ -47,11 +47,11 @@ impl TantivyEngine {
       .unwrap();
 
     Self {
-      writer: Arc::new(Mutex::new(writer)),
-      reader: Arc::new(Mutex::new(reader)),
       index,
       added_events: 0,
       commit_timestamp: std::time::Instant::now(),
+      writer: Arc::new(Mutex::new(writer)),
+      reader: Arc::new(Mutex::new(reader)),
     }
   }
 }
