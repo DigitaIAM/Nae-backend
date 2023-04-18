@@ -20,6 +20,8 @@ pub struct TantivyEngine {
   index: Index,
   writer: Arc<Mutex<IndexWriter>>,
   reader: Arc<Mutex<IndexReader>>,
+  added_events: usize,
+  commit_timestamp: std::time::Instant,
 }
 
 impl TantivyEngine {
@@ -46,9 +48,26 @@ impl TantivyEngine {
     Self {
       writer: Arc::new(Mutex::new(writer)),
       reader: Arc::new(Mutex::new(reader)),
-      index
+      index,
+      added_events: 0,
+      commit_timestamp: std::time::Instant::now(),
     }
   }
+
+  fn commit_helper(&mut self, force: bool) -> Result<bool, tantivy::TantivyError> {
+    if self.added_events > 0
+      && (force
+        || self.added_events >= COMMIT_RATE
+        || self.commit_timestamp.elapsed() >= COMMIT_TIME)
+    {
+      self.writer.lock().unwrap().commit()?;
+      self.added_events = 0;
+      self.commit_timestamp = std::time::Instant::now();
+      Ok(true)
+    } else {
+      Ok(false)
+    }
+}
 }
 
 impl Search for TantivyEngine {
