@@ -1,5 +1,4 @@
 use std::fs;
-use std::ops::DerefMut;
 // use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -66,10 +65,9 @@ impl TantivyEngine {
   }
 
   fn commit_helper(&mut self, force: bool) -> Result<bool, tantivy::TantivyError> {
-    if self.added_events > 0 &&
-      (force
+    if force
       || self.added_events >= COMMIT_RATE
-      || self.commit_timestamp.elapsed() >= COMMIT_TIME)
+      || self.commit_timestamp.elapsed() >= COMMIT_TIME
     {
       self.writer.lock().unwrap().commit().unwrap();
       self.added_events = 0;
@@ -86,7 +84,7 @@ impl Search for TantivyEngine {
   fn insert(&mut self, id: Uuid, text: &str) {
     let (uuid, name) = self.schematic();
 
-    let mut writer = self.writer.lock().unwrap();
+    let writer = self.writer.lock().unwrap();
 
     writer
       .add_document(doc! {
@@ -101,7 +99,7 @@ impl Search for TantivyEngine {
   fn delete(&mut self, id: Uuid) {
     let uuid = self.index.schema().get_field("uuid").unwrap();
 
-    let mut writer = self.writer.lock().unwrap();
+    let writer = self.writer.lock().unwrap();
 
     writer.delete_term(Term::from_field_text(uuid, &id.to_string()));
 
