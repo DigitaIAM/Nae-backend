@@ -1,6 +1,7 @@
 use std::fs;
+use std::ops::DerefMut;
 // use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use tantivy::collector::TopDocs;
@@ -54,9 +55,7 @@ impl TantivyEngine {
       reader: Arc::new(Mutex::new(reader)),
     }
   }
-}
 
-impl Search for TantivyEngine {
   fn commit(&mut self) -> Result<bool, tantivy::TantivyError> {
     self.commit_helper(false)
   }
@@ -77,9 +76,13 @@ impl Search for TantivyEngine {
       self.commit_timestamp = std::time::Instant::now();
       Ok(true)
     } else {
+      self.added_events += 1;
       Ok(false)
     }
   }
+}
+
+impl Search for TantivyEngine {
   fn insert(&mut self, id: Uuid, text: &str) {
     let (uuid, name) = self.schematic();
 
@@ -92,13 +95,7 @@ impl Search for TantivyEngine {
       })
       .unwrap();
 
-    self.added_events += 1;
-
-    if self.added_events >= COMMIT_RATE || self.commit_timestamp.elapsed() >= COMMIT_TIME {
-      writer.commit().unwrap();
-      self.added_events = 0;
-      self.commit_timestamp = std::time::Instant::now();
-    }
+    self.clone().commit();
   }
 
   fn delete(&mut self, id: Uuid) {
@@ -107,7 +104,8 @@ impl Search for TantivyEngine {
     let mut writer = self.writer.lock().unwrap();
 
     writer.delete_term(Term::from_field_text(uuid, &id.to_string()));
-    writer.commit().unwrap();
+
+    self.clone().force_commit();
   }
 
   fn search(&self, input: &str) -> Vec<Uuid> {
