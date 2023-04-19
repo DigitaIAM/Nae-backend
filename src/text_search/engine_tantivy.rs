@@ -1,6 +1,7 @@
 use std::fs;
 // use std::path::Path;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
+// use std::sync::MutexGuard;
 use std::time::Duration;
 
 use tantivy::collector::TopDocs;
