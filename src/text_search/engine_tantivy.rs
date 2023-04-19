@@ -11,8 +11,6 @@ use tantivy::schema::{Schema, STORED, TEXT, Field};
 use tantivy::{doc, Directory, Index, IndexReader, IndexWriter, ReloadPolicy, Term};
 use uuid::Uuid;
 
-use crate::text_search::Search;
-
 const COMMIT_RATE: usize = 500;
 const COMMIT_TIME: Duration = Duration::from_secs(1);
 
@@ -61,8 +59,7 @@ impl TantivyEngine {
   }
 
   fn force_commit(&mut self) -> Result<bool, tantivy::TantivyError> {
-    self.commit_helper(true)?;
-    Ok(true)
+    self.commit_helper(true)
   }
 
   fn commit_helper(&mut self, force: bool) -> Result<bool, tantivy::TantivyError> {
@@ -81,39 +78,35 @@ impl TantivyEngine {
       Ok(false)
     }
   }
-}
 
-impl Search for TantivyEngine {
-  fn insert(&mut self, id: Uuid, text: &str) {
+  pub fn insert(&mut self, id: Uuid, text: &str) -> Result<bool, tantivy::TantivyError> {
     let (uuid, name) = self.schematic();
 
     {
-    let writer = self.writer.lock().unwrap();
-
-    writer
-      .add_document(doc! {
-        uuid => id.to_string(),
-        name => text,
-      })
-      .unwrap();
+      let writer = self.writer.lock().unwrap();
+      writer
+        .add_document(doc! {
+          uuid => id.to_string(),
+          name => text,
+        })
+        .unwrap();
     }
 
-    self.commit();
+    self.commit()
   }
 
-  fn delete(&mut self, id: Uuid) {
+  pub fn delete(&mut self, id: Uuid) -> Result<bool, tantivy::TantivyError> {
     let uuid = self.index.schema().get_field("uuid").unwrap();
 
     {
-    let writer = self.writer.lock().unwrap();
-
-    writer.delete_term(Term::from_field_text(uuid, &id.to_string()));
+      let writer = self.writer.lock().unwrap();
+      writer.delete_term(Term::from_field_text(uuid, &id.to_string()));
     }
 
-    self.force_commit();
+    self.force_commit()
   }
 
-  fn search(&self, input: &str) -> Vec<Uuid> {
+  pub fn search(&self, input: &str) -> Vec<Uuid> {
     let (uuid, name) = self.schematic();
     
     let reader = self.reader.lock().unwrap();

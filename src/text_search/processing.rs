@@ -1,12 +1,37 @@
 use json::JsonValue;
 use simsearch::SimSearch;
-use std::io::Error;
+// use std::io::Error;
 use uuid::Uuid;
 
 use crate::{
   commutator::Application, storage::Workspaces, text_search::engine_tantivy::TantivyEngine,
-  text_search::Search,
+  // text_search::Search,
 };
+
+#[derive(Debug)]
+pub enum Error {
+  Tantivy(tantivy::TantivyError),
+  Service(service::error::Error),
+  IO(std::io::Error),
+}
+
+impl From<tantivy::TantivyError> for Error {
+  fn from(err: tantivy::TantivyError) -> Self {
+    Error::Tantivy(err)
+  }
+}
+
+impl From<service::error::Error> for Error {
+  fn from(err: service::error::Error) -> Self {
+    Error::Service(err)
+  }
+}
+    
+impl From<std::io::Error> for Error {
+  fn from(err: std::io::Error) -> Self {
+    Error::IO(err)
+  }
+}
 
 #[derive(Clone)]
 pub struct SearchEngine {
@@ -36,27 +61,30 @@ impl SearchEngine {
     Ok(())
   }
 
-  pub fn create(&mut self, id: Uuid, text: &str) {
+  pub fn create(&mut self, id: Uuid, text: &str) -> Result<(), tantivy::TantivyError> {
     self.sim.insert(id, text);
-    self.tan.insert(id, text);
+    self.tan.insert(id, text)?;
+    Ok(())
   }
 
-  pub fn change(&mut self, id: Uuid, _before: &str, after: &str) {
-    self.delete(&id);
-    self.create(id, after);
+  pub fn change(&mut self, id: Uuid, _before: &str, after: &str) -> Result<(), tantivy::TantivyError> {
+    self.delete(&id)?;
+    self.create(id, after)?;
+    Ok(())
   }
 
-  pub fn delete(&mut self, id: &Uuid) {
+  pub fn delete(&mut self, id: &Uuid) -> Result<(), tantivy::TantivyError> {
     self.sim.delete(id);
-    self.tan.delete(*id);
+    self.tan.delete(*id)?;
+    Ok(())
   }
 
   pub fn search(&mut self, text: &str) -> Vec<Uuid> {
     let mut result_sim = self.sim.search(text);
     let result_tan = self.tan.search(text);
 
-    // println!("result_tan.len() = {}", result_tan.len());
-    // println!("result_sim.len() = {}", result_sim.len());
+    println!("result_tan.len() = {}", result_tan.len());
+    println!("result_sim.len() = {}", result_sim.len());
 
     result_sim.extend(result_tan);
 
@@ -82,16 +110,16 @@ pub fn handle_mutation(
           // IGNORE
         } else {
           let mut search = app.search.write().unwrap();
-          search.change(id, before_name, after_name);
+          search.change(id, before_name, after_name)?;
         }
       } else {
         let mut search = app.search.write().unwrap();
-        search.delete(&id);
+        search.delete(&id)?;
       }
     } else {
       if let Some(after_name) = after_name {
         let mut search = app.search.write().unwrap();
-        search.create(id, after_name);
+        search.create(id, after_name)?;
       } else {
         // IGNORE
       }
