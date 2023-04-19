@@ -14,14 +14,26 @@ pub(crate) fn find_items(
   filter: &JsonValue,
   skip: usize,
 ) -> crate::services::Result {
-  let items = if filter["category"].is_null() && filter["warehouse"].is_null() {
+  println!("find_items filter: {filter:?}");
+  let items = if filter["category"].is_null() && filter["storage"].is_null() {
+    println!("find_wh_and_categories");
     find_wh_and_categories(balances, ws)
-  } else if filter["category"].is_null() && filter["warehouse"].is_string() {
-    find_categories(balances, &filter["warehouse"], ws)
-  } else if filter["category"].is_string() && filter["warehouse"].is_null() {
-    find_warehouses(balances, &filter["category"], ws)
-  } else if filter["category"].is_string() && filter["warehouse"].is_string() {
-    find_goods(balances, filter, ws)
+  } else if filter["category"].is_null() && filter["storage"].is_string() {
+    println!("find_categories");
+
+    let filter_by_store = filter["storage"].uuid()?;
+    find_categories(balances, filter_by_store, ws)
+  } else if filter["category"].is_string() && filter["storage"].is_null() {
+    println!("find_warehouses");
+
+    let filter_by_category = filter["category"].string();
+    find_warehouses(balances, filter_by_category, ws)
+  } else if filter["category"].is_string() && filter["storage"].is_string() {
+    println!("find_goods");
+
+    let filter_by_category = filter["category"].string();
+    let filter_by_store = filter["storage"].uuid()?;
+    find_goods(balances, filter_by_category, filter_by_store, ws)
   } else {
     return Err(Error::GeneralError("Wrong filter parameters".to_string()));
   };
@@ -72,7 +84,7 @@ fn find_wh_and_categories(
     .map(|(mut o, id)| {
       let cost = storages.remove(&id).unwrap_or_default();
       o["_cost"] = cost.to_json();
-      o["_category"] = JsonValue::String("storage".to_string());
+      o["_category"] = "storage".into();
       o
     })
     .collect();
@@ -93,7 +105,7 @@ fn find_wh_and_categories(
     .map(|(mut o, id)| {
       let cost = categories.remove(&id).unwrap_or_default();
       o["_cost"] = cost.to_json();
-      o["_category"] = JsonValue::String("category".to_string());
+      o["_category"] = "category".into();
       o
     })
     .collect();
@@ -112,14 +124,12 @@ fn find_wh_and_categories(
 
 fn find_categories(
   balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
-  filter: &JsonValue,
+  filter_by_store: Store,
   ws: &Workspace,
 ) -> Vec<JsonValue> {
-  let warehouse_filter = filter.to_string();
-
   let mut categories = HashMap::new();
   for (store, sb) in balances {
-    if store.to_string() != warehouse_filter {
+    if *store != filter_by_store {
       continue;
     }
     for (goods, gb) in sb {
@@ -148,6 +158,7 @@ fn find_categories(
     .map(|(mut o, id)| {
       let cost = categories.remove(&id).unwrap_or_default();
       o["_cost"] = cost.to_json();
+      o["_category"] = "category".into();
       o
     })
     .collect();
@@ -164,12 +175,10 @@ fn find_categories(
 
 fn find_warehouses(
   balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
-  filter: &JsonValue,
+  filter_by_category: String,
   ws: &Workspace,
 ) -> Vec<JsonValue> {
   let mut storages = HashMap::new();
-
-  let category_filter = filter.to_string();
 
   for (store, sb) in balances {
     for (goods, gb) in sb {
@@ -181,7 +190,7 @@ fn find_warehouses(
         let _goods = goods.resolve_to_json_object(&ws);
         let category = _goods["category"].string();
 
-        if category != category_filter {
+        if category != filter_by_category {
           continue;
         }
 
@@ -200,6 +209,7 @@ fn find_warehouses(
     .map(|(mut o, id)| {
       let cost = storages.remove(&id).unwrap_or_default();
       o["_cost"] = cost.to_json();
+      o["_category"] = "storage".into();
       o
     })
     .collect();
@@ -216,16 +226,14 @@ fn find_warehouses(
 
 fn find_goods(
   balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
-  filter: &JsonValue,
+  filter_by_category: String,
+  filter_by_storage: Uuid,
   ws: &Workspace,
 ) -> Vec<JsonValue> {
   let mut goods_list = Vec::new();
 
-  let warehouse_filter = filter["warehouse"].to_string();
-  let category_filter = filter["category"].to_string();
-
   for (store, sb) in balances {
-    if store.to_string() != warehouse_filter {
+    if *store != filter_by_storage {
       continue;
     }
     for (goods, gb) in sb {
@@ -237,7 +245,7 @@ fn find_goods(
         let _goods = goods.resolve_to_json_object(&ws);
         let category = _goods["category"].string();
 
-        if category != category_filter {
+        if category != filter_by_category {
           continue;
         }
         // TODO: add date into this id
@@ -253,12 +261,13 @@ fn find_goods(
         let _goods = goods.resolve_to_json_object(&ws);
 
         let record = json::object! {
-              _id: id.to_json(),
-              storage: store.resolve_to_json_object(&ws),
-              goods: _goods,
-              batch: batch.to_json(),
-              qty: json::object! { number: bb.qty.to_json() },
-              cost: json::object! { number: bb.cost.to_json() },
+          _id: id.to_json(),
+          storage: store.resolve_to_json_object(&ws),
+          goods: _goods,
+          batch: batch.to_json(),
+          qty: json::object! { number: bb.qty.to_json() },
+          cost: json::object! { number: bb.cost.to_json() },
+          _category: "stock",
         };
         goods_list.push(record);
       }
