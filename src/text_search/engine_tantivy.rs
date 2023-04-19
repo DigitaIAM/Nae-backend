@@ -71,6 +71,7 @@ impl TantivyEngine {
       || self.added_events >= COMMIT_RATE
       || self.commit_timestamp.elapsed() >= COMMIT_TIME)
     {
+      println!("TantivyEngine: commit, {} {:?}", self.added_events, self.commit_timestamp.elapsed());
       self.writer.lock().unwrap().commit().unwrap();
       self.added_events = 0;
       self.commit_timestamp = std::time::Instant::now();
@@ -86,6 +87,7 @@ impl Search for TantivyEngine {
   fn insert(&mut self, id: Uuid, text: &str) {
     let (uuid, name) = self.schematic();
 
+    {
     let writer = self.writer.lock().unwrap();
 
     writer
@@ -94,18 +96,21 @@ impl Search for TantivyEngine {
         name => text,
       })
       .unwrap();
+    }
 
-    self.clone().commit();
+    self.commit();
   }
 
   fn delete(&mut self, id: Uuid) {
     let uuid = self.index.schema().get_field("uuid").unwrap();
 
+    {
     let writer = self.writer.lock().unwrap();
 
     writer.delete_term(Term::from_field_text(uuid, &id.to_string()));
+    }
 
-    self.clone().force_commit();
+    self.force_commit();
   }
 
   fn search(&self, input: &str) -> Vec<Uuid> {
