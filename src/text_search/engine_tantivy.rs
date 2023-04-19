@@ -65,9 +65,10 @@ impl TantivyEngine {
   }
 
   fn commit_helper(&mut self, force: bool) -> Result<bool, tantivy::TantivyError> {
-    if force
+    if self.added_events > 0 &&
+      (force
       || self.added_events >= COMMIT_RATE
-      || self.commit_timestamp.elapsed() >= COMMIT_TIME
+      || self.commit_timestamp.elapsed() >= COMMIT_TIME)
     {
       self.writer.lock().unwrap().commit().unwrap();
       self.added_events = 0;
