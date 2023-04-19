@@ -54,22 +54,20 @@ impl TantivyEngine {
     }
   }
 
-  fn commit(&mut self) -> Result<bool, tantivy::TantivyError> {
+  pub(crate) fn commit(&mut self) -> Result<bool, tantivy::TantivyError> {
     self.commit_helper(false)
   }
 
-  fn force_commit(&mut self) -> Result<bool, tantivy::TantivyError> {
+  pub(crate) fn force_commit(&mut self) -> Result<bool, tantivy::TantivyError> {
     self.commit_helper(true)
   }
 
   fn commit_helper(&mut self, force: bool) -> Result<bool, tantivy::TantivyError> {
-    if self.added_events > 0 &&
-      (force
-      || self.added_events >= COMMIT_RATE
-      || self.commit_timestamp.elapsed() >= COMMIT_TIME)
+    if force || (self.added_events > 0 &&
+      (self.added_events >= COMMIT_RATE || self.commit_timestamp.elapsed() >= COMMIT_TIME))
     {
       println!("TantivyEngine: commit, {} {:?}", self.added_events, self.commit_timestamp.elapsed());
-      self.writer.lock().unwrap().commit().unwrap();
+      self.writer.lock().unwrap().commit()?;
       self.added_events = 0;
       self.commit_timestamp = std::time::Instant::now();
       Ok(true)
@@ -83,7 +81,7 @@ impl TantivyEngine {
     let (uuid, name) = self.schematic();
 
     {
-      let writer = self.writer.lock().unwrap();
+      let writer = self.writer.lock()?;
       writer
         .add_document(doc! {
           uuid => id.to_string(),

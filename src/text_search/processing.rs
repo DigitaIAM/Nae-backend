@@ -1,6 +1,5 @@
 use json::JsonValue;
 use simsearch::SimSearch;
-// use std::io::Error;
 use uuid::Uuid;
 
 use crate::{
@@ -89,6 +88,11 @@ impl SearchEngine {
     result_sim.extend(result_tan);
 
     result_sim
+  }
+
+  pub fn commit(&mut self) -> Result<(), Error> {
+    self.tan.force_commit()?;
+    Ok(())
   }
 }
 
