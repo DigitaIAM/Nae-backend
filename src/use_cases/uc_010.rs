@@ -36,22 +36,6 @@ pub(crate) fn report(app: &Application) {
 }
 
 fn sort_json_value(json: &mut JsonValue) -> JsonValue {
-  match json {
-    JsonValue::Object(obj) => {
-      let mut sorted = object! {};
-      for (key, mut value) in obj.iter() {
-        let value = &mut value.clone();
-        sorted[key] = sort_json_value(value);
-      }
-      sorted
-    }
-    JsonValue::Array(arr) => {
-      let mut sorted = arr.clone();
-      sorted.sort_by(|a, b| sort_json_value(&mut a).dump().cmp(&sort_json_value(&mut b).dump()));
-      json::JsonValue::Array(sorted)
-    }
-    _ => json.clone(),
-  }
 }
 
 fn load() -> Vec<JsonValue> {
