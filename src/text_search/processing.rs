@@ -82,7 +82,7 @@ impl SearchEngine {
     let mut result_sim = self.sim.search(text);
     let mut result_tan = self.tan.search(text);
 
-// + убрать дубликаты и объединить в сет
+// (+) убрать дубликаты и (-) объединить в сет
 // метрика схожести
 // сортировка по метрике
 
@@ -90,9 +90,10 @@ impl SearchEngine {
     println!("result_sim.len() = {}", result_sim.len());
 
     result_sim.append(&mut result_tan);
-    result_sim.sort();
+    // result_sim.sort();
     result_sim.dedup();
     println!("COMBINED = {}", result_sim.len());
+
 
     result_sim
   }
