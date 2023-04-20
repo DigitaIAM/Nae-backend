@@ -6,10 +6,9 @@ use std::io::{BufRead, BufReader};
 use std::time::Instant;
 
 const DRUGS: [&str; 1] = ["drugs"];
-const SEARCH: &str = "ТОНУС";
+const SEARCH: &str = "ПОЯС";
 
 pub(crate) fn import(app: &Application) {
-  // println!("IMPORT");
   let items = load();
   let ctx = DRUGS.to_vec();
 
@@ -43,7 +42,6 @@ fn sort_json_value(json: &str) -> JsonValue {
   vektor.sort();
   let vektor_2 = compare_strings(vektor.clone());
   print_only_name(vektor.clone(), vektor_2.clone());
-  // print_only_name();
 
   JsonValue::String(vektor.join("{"))
 }
