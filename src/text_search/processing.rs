@@ -80,12 +80,19 @@ impl SearchEngine {
 
   pub fn search(&mut self, text: &str) -> Vec<Uuid> {
     let mut result_sim = self.sim.search(text);
-    let result_tan = self.tan.search(text);
+    let mut result_tan = self.tan.search(text);
+
+// + убрать дубликаты и объединить в сет
+// метрика схожести
+// сортировка по метрике
 
     println!("result_tan.len() = {}", result_tan.len());
     println!("result_sim.len() = {}", result_sim.len());
 
-    result_sim.extend(result_tan);
+    result_sim.append(&mut result_tan);
+    result_sim.sort();
+    result_sim.dedup();
+    println!("COMBINED = {}", result_sim.len());
 
     result_sim
   }
