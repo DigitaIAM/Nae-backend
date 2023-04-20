@@ -51,7 +51,7 @@ fn print_only_name(alphabet: Vec<&str>, leven: Vec<&str>) {
   let mut namevek: Vec<&str> = Vec::new();
   for i in 1..alphabet.len() {
     let name = alphabet[i].split("manufacturer").nth(0).unwrap();
-    namevek.push(&name);
+    namevek.push(&name[7..]);
   }
   for i in namevek {
     println!("\tALPHABET: {}", i)
@@ -59,7 +59,7 @@ fn print_only_name(alphabet: Vec<&str>, leven: Vec<&str>) {
   let mut namevek: Vec<&str> = Vec::new();
   for i in 1..leven.len() {
     let name = leven[i].split("manufacturer").nth(0).unwrap();
-    namevek.push(&name);
+    namevek.push(&name[7..]);
   } 
   for i in namevek {
     println!("\tLEVENSHTEIN: {}", i)
