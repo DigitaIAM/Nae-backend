@@ -33,9 +33,17 @@ pub(crate) fn report(app: &Application) {
   println!("report:\n{}\nend of report", result.dump());
 
   let json_to_string = result.dump();
+  println!("SORTED ITEMS");
+  for i in sort_json_value(&json_to_string) {
+    println!("{}", i);
+  }
 }
 
-fn sort_json_value(json: &mut JsonValue) -> JsonValue {
+fn sort_json_value(json: &str) -> Vec<&str> {
+  let mut vektor: Vec<&str> = json.split('{').collect();
+  vektor.remove(0);
+  vektor.sort();
+  vektor
 }
 
 fn load() -> Vec<JsonValue> {
