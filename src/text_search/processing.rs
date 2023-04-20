@@ -3,8 +3,8 @@ use simsearch::SimSearch;
 use uuid::Uuid;
 
 use crate::{
-  commutator::Application, storage::Workspaces, text_search::engine_tantivy::TantivyEngine,
-  // text_search::Search,
+  commutator::Application, storage::Workspaces, 
+  text_search::engine_tantivy::TantivyEngine,
 };
 
 #[derive(Debug)]
@@ -82,7 +82,7 @@ impl SearchEngine {
     let mut result_sim = self.sim.search(text);
     let mut result_tan = self.tan.search(text);
 
-// (+) убрать дубликаты и (-) объединить в сет
+// (+) убрать дубликаты и (+) объединить в сет
 // метрика схожести
 // сортировка по метрике
 

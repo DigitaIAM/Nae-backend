@@ -114,6 +114,7 @@ yore = "1.0.1"
 csv = "1.1.6"
 
 profiling = "1.0.6"
+levenshtein = "1.0.5"
 
 #rust_decimal_macros = "1.26"
 

@@ -6,6 +6,7 @@ use std::io::{BufRead, BufReader};
 use std::time::Instant;
 
 const DRUGS: [&str; 1] = ["drugs"];
+const SEARCH: &str = "ПОЯС";
 
 pub(crate) fn import(app: &Application) {
   // println!("IMPORT");
@@ -28,24 +29,37 @@ pub(crate) fn report(app: &Application) {
   println!("CTX\t{ctx:?}");
   let result = app
     .service("memories")
-    .find(object! {oid: oid, ctx: ctx, search: "ПОЯС"})
+    .find(object! {oid: oid, ctx: ctx, search: SEARCH})
     .unwrap();
   println!("report:\n{}\nend of report", result.dump());
 
   let json_to_string = result.dump();
-  println!("JSON SORTED: \n{}", sort_json_value(&json_to_string));
-  // println!("SORTED ITEMS");
-  // for i in sort_json_value(&json_to_string) {
-  //   println!("{}", i);
-  // }
+  println!("\tJSON SORTED: \n{}", sort_json_value(&json_to_string));
 }
 
 fn sort_json_value(json: &str) -> JsonValue {
   let mut vektor: Vec<&str> = json.split('{').collect();
   vektor.remove(0);
   vektor.sort();
+
   JsonValue::String(vektor.join("{"))
-  // vektor
+}
+
+use levenshtein::levenshtein;
+fn compare_strings(vektor: Vec<&str>) -> Vec<&str> {
+  let mut result: Vec<(usize, &str)> = Vec::new();
+  let search = SEARCH;
+  
+  for i in 0..vektor.len() {
+    let mut distance = levenshtein(search, vektor[i]);
+    result.push((distance, vektor[i]));
+  }
+  result.sort();
+  let mut result_2: Vec<&str> = Vec::new();
+  for i in 0..result.len() {
+    result_2.push(result[i].1);
+  }
+  result_2
 }
 
 fn load() -> Vec<JsonValue> {
