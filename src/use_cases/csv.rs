@@ -128,7 +128,8 @@ pub(crate) fn receive_csv_to_json(
     } else {
       COUNTERPARTY.to_vec()
     };
-    let into_name = match &record[8] {
+    let into_name = &record[8].replace("\\", "").replace("\"", "");
+    let into_name = match into_name.as_str() {
       "Гагарина 36" => "Снабжение Бегбудиев Носир",
       "Склад" => "Снабжение Бегбудиев Носир",
       "Материалы в пути" => "Снабжение Бегбудиев Носир",
