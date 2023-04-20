@@ -102,7 +102,7 @@ pub(crate) fn receive_csv_to_json(
   for record in reader.records() {
     let record = record.unwrap();
 
-    let date = &record[5];
+    let date = &record[6];
     let date = format!("{}-{}-{}", &date[6..=9], &date[3..=4], &date[0..=1]);
 
     let number = &record[0];
@@ -110,12 +110,12 @@ pub(crate) fn receive_csv_to_json(
       continue;
     }
 
-    let from_ctx = if ctx.get(1) == Some(&"transfer") || &record[6] == "склад" {
+    let from_ctx = if ctx.get(1) == Some(&"transfer") || &record[7] == "склад" {
       STORAGE.to_vec()
     } else {
       COUNTERPARTY.to_vec()
     };
-    let from_name = &record[6].replace("\\", "").replace("\"", "");
+    let from_name = &record[7].replace("\\", "").replace("\"", "");
     let from = if from_name.is_empty() {
       JsonValue::String("".to_string())
     } else {
@@ -127,12 +127,13 @@ pub(crate) fn receive_csv_to_json(
       )?
     };
 
-    let into_ctx = if ctx.get(1) == Some(&"transfer") || &record[7] == "склад" {
+    let into_ctx = if ctx.get(1) == Some(&"transfer") || &record[8] == "склад" {
       STORAGE.to_vec()
     } else {
       COUNTERPARTY.to_vec()
     };
-    let into_name = match &record[7] {
+    let into_name = &record[8].replace("\\", "").replace("\"", "");
+    let into_name = match into_name.as_str() {
       "Гагарина 36" => "Снабжение Бегбудиев Носир",
       "Склад" => "Снабжение Бегбудиев Носир",
       "Материалы в пути" => "Снабжение Бегбудиев Носир",
@@ -183,17 +184,21 @@ pub(crate) fn receive_csv_to_json(
         }
       })?;
 
-    let unit = match &record[3] {
+    let unit = match &record[4] {
       "пач." => "Пачк.",
       "пар." => "Пар",
       str => str,
     };
     let uom = json(app, object! {name: unit}, UOM.to_vec(), &|| object! { name: unit })?;
 
-    let goods_name = record[1].replace("\\", "").replace("\"", "");
-    let vendor_code = &record[2];
+    let goods_name = record[2].replace("\\", "").replace("\"", "");
+    let vendor_code = &record[3];
 
-    let category_name = &record[8];
+    let category_name = match &record[1] {
+      "" => "Другое",
+      str => str,
+    };
+
     let goods_category =
       json(app, object! { name: category_name.clone() }, CATEGORY.to_vec(), &|| {
         object! { name: category_name.clone() }
@@ -203,27 +208,13 @@ pub(crate) fn receive_csv_to_json(
       object! {
           name: goods_name.clone(),
           vendor_code: vendor_code,
-          category: goods_category.clone(),
+          category: goods_category["_id"].clone(),
           uom: uom["_id"].clone(),
       }
     })?;
 
     // cells at the warehouse
     let cell_from: Option<JsonValue> = if ctx.get(1) == Some(&"transfer") {
-      match &record[8] {
-        "" => None,
-        _ => Some(json(
-          app,
-          object! { name: &record[8] },
-          STORAGE.to_vec(),
-          &|| object! { name: &record[8] },
-        )?),
-      }
-    } else {
-      None
-    };
-
-    let cell_into: Option<JsonValue> = if ctx.get(1) == Some(&"transfer") {
       match &record[9] {
         "" => None,
         _ => Some(json(
@@ -237,9 +228,23 @@ pub(crate) fn receive_csv_to_json(
       None
     };
 
+    let cell_into: Option<JsonValue> = if ctx.get(1) == Some(&"transfer") {
+      match &record[10] {
+        "" => None,
+        _ => Some(json(
+          app,
+          object! { name: &record[10] },
+          STORAGE.to_vec(),
+          &|| object! { name: &record[10] },
+        )?),
+      }
+    } else {
+      None
+    };
+
     let price: Decimal = 0.into();
 
-    let float_number = &record[4].replace(",", ".");
+    let float_number = &record[5].replace(",", ".");
 
     let number = float_number.parse::<Decimal>().unwrap();
 

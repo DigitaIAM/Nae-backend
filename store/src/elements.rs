@@ -37,10 +37,10 @@ use service::Services;
 use service::utils::json::JsonParams;
 use std::cmp::max;
 
-pub(crate) type Goods = Uuid;
-pub(crate) type Store = Uuid;
+pub type Goods = Uuid;
+pub type Store = Uuid;
 pub(crate) type Qty = Decimal;
-pub(crate) type Cost = Decimal;
+pub type Cost = Decimal;
 
 pub(crate) const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
 pub(crate) const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
@@ -566,7 +566,8 @@ pub trait CheckpointTopology {
       let mut last_checkpoint_date = self.get_latest_checkpoint_date()?;
 
       if last_checkpoint_date <= op.date {
-        let old_checkpoints = self.get_checkpoints_before_date(op.store, last_checkpoint_date)?;
+        let old_checkpoints =
+          self.get_checkpoints_for_all_storages_before_date(last_checkpoint_date)?;
 
         last_checkpoint_date = first_day_next_month(op.date);
 
@@ -611,9 +612,14 @@ pub trait CheckpointTopology {
     Ok(())
   }
 
-  fn get_checkpoints_before_date(
+  fn get_checkpoints_for_one_storage_before_date(
     &self,
     store: Store,
+    date: DateTime<Utc>,
+  ) -> Result<Vec<Balance>, WHError>;
+
+  fn get_checkpoints_for_all_storages_before_date(
+    &self,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError>;
 }
@@ -1569,7 +1575,7 @@ impl ToJson for Report {
 
 fn time_to_naive_string(time: DateTime<Utc>) -> String {
   let mut res = time.to_string();
-  res.split_off(10);
+  let _ = res.split_off(10);
   res
 }
 
@@ -1711,7 +1717,7 @@ pub fn receive_data(
   let mut new_data = data.clone();
   let mut new_before = before.clone();
 
-  let mut before = match json_to_ops(app, &mut new_before, time.clone(), ctx) {
+  let before = match json_to_ops(app, &mut new_before, time.clone(), ctx) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ BEFORE: {}", e.message());

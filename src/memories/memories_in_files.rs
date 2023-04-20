@@ -18,6 +18,8 @@ use crate::storage::Workspaces;
 
 use crate::commutator::Application;
 
+use stock::find_items;
+
 // warehouse: { receiving, Put-away, transfer,  }
 // production: { manufacturing }
 
@@ -45,6 +47,8 @@ impl Service for MemoriesInFiles {
 
     let limit = self.limit(&params);
     let skip = self.skip(&params);
+
+    let filter = self.params(&params)["filter"].clone();
 
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
 
@@ -90,79 +94,16 @@ impl Service for MemoriesInFiles {
         });
       }
 
+      let ws = self.wss.get(&wsid);
+
       let warehouse = self.app.warehouse().database;
 
       let balances = warehouse
         .get_balance_for_all(Utc::now())
         .map_err(|e| Error::GeneralError(e.message()))?;
+      log::debug!("balances: {balances:?}");
 
-      let ws = self.wss.get(&wsid);
-
-      let mut categories = HashMap::new();
-
-      for (store, sb) in balances {
-        for (goods, gb) in sb {
-          for (batch, bb) in gb {
-            // workaround until get_balance_for_all remove zero balances
-            if bb.is_zero() {
-              continue;
-            }
-
-            // TODO: add date into this id
-            let bytes: Vec<u8> = store
-              .as_bytes()
-              .into_iter()
-              .zip(goods.as_bytes().into_iter().zip(batch.id.as_bytes().into_iter()))
-              .map(|(a, (b, c))| a ^ b ^ c)
-              .collect();
-
-            let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
-
-            let _goods = goods.resolve_to_json_object(&ws);
-            let category = _goods["category"].to_string();
-
-            let record = json::object! {
-              _id: id.to_json(),
-              storage: store.resolve_to_json_object(&ws),
-              goods: _goods,
-              batch: batch.to_json(),
-              qty: json::object! { number: bb.qty.to_json() },
-              cost: json::object! { number: bb.cost.to_json() },
-            };
-
-            categories.entry(category).or_insert(Vec::new()).push(record);
-          }
-        }
-      }
-
-      // order categories
-      let mut items: Vec<JsonValue> = categories
-        .keys()
-        .map(|id| id.clone())
-        .collect::<Vec<_>>()
-        .into_iter()
-        .map(|id| (id.resolve_to_json_object(&ws), id))
-        .map(|(mut o, id)| {
-          let list = categories.remove(&id).unwrap_or_default();
-          o["_list"] = JsonValue::Array(list);
-          o
-        })
-        .collect();
-
-      items.sort_by(|a, b| {
-        let a = a["name"].as_str().unwrap_or_default();
-        let b = b["name"].as_str().unwrap_or_default();
-
-        a.cmp(b)
-      });
-
-      let total = items.len();
-
-      return Ok(json::object! {
-        data: items,
-        total: total,
-        "$skip": skip,
-      });
+      return find_items(&ws, &balances, &filter, skip);
     }
 
     let ws = self.wss.get(&wsid);

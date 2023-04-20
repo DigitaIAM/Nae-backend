@@ -1,10 +1,9 @@
 mod memories_in_files;
+pub(crate) mod stock;
 
-use crate::storage::memories::Document;
 use crate::storage::organizations::Workspace;
 use json::JsonValue;
 pub use memories_in_files::MemoriesInFiles;
-use service::error::Error;
 
 pub trait Enrich {
   fn enrich(&self, ws: &crate::storage::organizations::Workspace) -> JsonValue;

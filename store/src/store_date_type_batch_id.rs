@@ -14,7 +14,6 @@ use crate::elements::{Batch, UUID_MAX, UUID_NIL};
 use chrono::{DateTime, Utc};
 use json::JsonValue;
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
-use std::collections::hash_map::RandomState;
 use std::sync::Arc;
 
 const CF_NAME: &str = "cf_store_date_type_batch_id";
@@ -77,7 +76,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
         continue;
       }
 
-      let (op, balance) = self.from_bytes(&v)?;
+      let (_, balance) = self.from_bytes(&v)?;
 
       return Ok(balance);
     }
@@ -189,7 +188,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
         continue;
       }
 
-      let (op, b) = self.from_bytes(&value)?;
+      let (op, _) = self.from_bytes(&value)?;
 
       // log::debug!("k {k:?}");
       // log::debug!("o {op:?}");
@@ -335,7 +334,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
     // let goods: Vec<[u8; 16]> = goods.into_iter().as_slice().iter().map(|b| *b).collect();
 
     let mut byte_goods: Vec<Vec<u8>> = Vec::new();
-    goods
+    let _ = goods
       .iter()
       .map(|g: &Goods| byte_goods.push(g.as_bytes().iter().map(|b| *b).collect()));
 
@@ -374,7 +373,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
       let (k, value) = item?;
 
       if byte_goods.contains(&k[25..41].to_vec()) {
-        let (op, b) = self.from_bytes(&value)?;
+        let (op, _) = self.from_bytes(&value)?;
         res.push(op);
       }
     }
@@ -418,7 +417,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
     // log::debug!("STORE_DATE_TYPE_BATCH.get_report");
-    let balances = db.get_checkpoints_before_date(storage, from_date)?;
+    let balances = db.get_checkpoints_for_one_storage_before_date(storage, from_date)?;
 
     let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
 
