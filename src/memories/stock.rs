@@ -57,7 +57,7 @@ fn find_elements(
       'batch: for (batch, bb) in gb {
         // workaround until get_balance_for_all remove zero balances
         if bb.is_zero() {
-          continue;
+          continue 'batch;
         }
 
         let _goods = goods.resolve_to_json_object(&ws);

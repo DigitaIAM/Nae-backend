@@ -102,20 +102,28 @@ pub(crate) fn receive_csv_to_json(
   for record in reader.records() {
     let record = record.unwrap();
 
+    let category_name = match &record[1] {
+      "Производство" => "Производство",
+      _ => continue,
+    };
+
     let date = &record[6];
     let date = format!("{}-{}-{}", &date[6..=9], &date[3..=4], &date[0..=1]);
 
-    let number = &record[0];
-    if number.is_empty() {
-      continue;
-    }
+    let number = match &record[0] {
+      "" => "-1",
+      n => n,
+    };
+    // if number.is_empty() {
+    //   continue;
+    // }
 
-    let from_ctx = if ctx.get(1) == Some(&"transfer") || &record[7] == "склад" {
+    let from_ctx = if ctx.get(1) == Some(&"transfer") || ctx.get(1) == Some(&"dispatch") {
       STORAGE.to_vec()
     } else {
       COUNTERPARTY.to_vec()
     };
-    let from_name = &record[7].replace("\\", "").replace("\"", "");
+    let from_name = &record[7].replace("\\", "").replace("\"", "").replace(",,", ",");
     let from = if from_name.is_empty() {
       JsonValue::String("".to_string())
     } else {
@@ -127,12 +135,15 @@ pub(crate) fn receive_csv_to_json(
       )?
     };
 
-    let into_ctx = if ctx.get(1) == Some(&"transfer") || &record[8] == "склад" {
+    let into_ctx = if ctx.get(1) == Some(&"transfer")
+      || ctx.get(1) == Some(&"receive")
+      || ctx.get(1) == Some(&"inventory")
+    {
       STORAGE.to_vec()
     } else {
       COUNTERPARTY.to_vec()
     };
-    let into_name = &record[8].replace("\\", "").replace("\"", "");
+    let into_name = &record[8].replace("\\", "").replace("\"", "").replace(",,", ",");
     let into_name = match into_name.as_str() {
       "Гагарина 36" => "Снабжение Бегбудиев Носир",
       "Склад" => "склад",
@@ -158,31 +169,49 @@ pub(crate) fn receive_csv_to_json(
       DISPATCH_DOCUMENT.to_vec()
     };
 
-    let document =
-      json(app, object! {number: number, date: date.clone()}, doc_ctx.clone(), &|| {
-        if &doc_ctx == &TRANSFER_DOCUMENT.to_vec() {
+    let document = if &doc_ctx == &TRANSFER_DOCUMENT.to_vec() {
+      json(
+        app,
+        object! {number: number, from: from["_id"].clone(), into: into["_id"].clone(), date: date.clone()},
+        doc_ctx.clone(),
+        &|| {
           object! {
             date: date.clone(),
             from: from["_id"].clone(),
             into: into["_id"].clone(),
             number: number,
           }
-        } else if &doc_ctx == &DISPATCH_DOCUMENT.to_vec() {
+        },
+      )?
+    } else if &doc_ctx == &DISPATCH_DOCUMENT.to_vec() {
+      json(
+        app,
+        object! {number: number, storage: from["_id"].clone(), counterparty: into["_id"].clone(), date: date.clone()},
+        doc_ctx.clone(),
+        &|| {
           object! {
             date: date.clone(),
             storage: from["_id"].clone(),
             counterparty: into["_id"].clone(),
             number: number,
           }
-        } else {
+        },
+      )?
+    } else {
+      json(
+        app,
+        object! {number: number, counterparty: from["_id"].clone(), storage: into["_id"].clone(), date: date.clone()},
+        doc_ctx.clone(),
+        &|| {
           object! {
             date: date.clone(),
             counterparty: from["_id"].clone(),
             storage: into["_id"].clone(),
             number: number,
           }
-        }
-      })?;
+        },
+      )?
+    };
 
     let unit = match &record[4] {
       "пач." => "Пачк.",
@@ -193,11 +222,6 @@ pub(crate) fn receive_csv_to_json(
 
     let goods_name = record[2].replace("\\", "").replace("\"", "");
     let vendor_code = &record[3];
-
-    let category_name = match &record[1] {
-      "" => "Другое",
-      str => str,
-    };
 
     let goods_category =
       json(app, object! { name: category_name.clone() }, CATEGORY.to_vec(), &|| {
@@ -242,29 +266,56 @@ pub(crate) fn receive_csv_to_json(
       None
     };
 
-    let price: Decimal = 0.into();
+    let float_qty_str = &record[5].replace(",", ".");
 
-    let float_number = &record[5].replace(",", ".");
+    let qty = float_qty_str.parse::<Decimal>().unwrap();
 
-    let number = float_number.parse::<Decimal>().unwrap();
+    // let currency = json(app, object! {name: "uzd"}, CURRENCY.to_vec(), &|| {
+    //   object! {name: "uzd"}
+    // })?;
+    // let price: Decimal = 0.into();
 
-    let currency = json(app, object! {name: "uzd"}, CURRENCY.to_vec(), &|| {
-      object! {name: "uzd"}
-    })?;
-
-    let data = object! {
+    let data = if cell_from.is_some() && cell_into.is_some() {
+      object! {
         document: document["_id"].clone(),
         goods: item["_id"].clone(),
-        storage_from: cell_from,
-        storage_into: cell_into,
-        qty: object! { number: number.to_json(), uom: uom["_id"].clone() },
-        price: price.to_json(),
-        cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
+        storage_from: cell_from.unwrap()["_id"].clone(),
+        storage_into: cell_into.unwrap()["_id"].clone(),
+        qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
+        // price: price.to_json(),
+        // cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
+      }
+    } else if cell_from.is_some() && cell_into.is_none() {
+      object! {
+        document: document["_id"].clone(),
+        goods: item["_id"].clone(),
+        storage_from: cell_from.unwrap()["_id"].clone(),
+        qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
+        // price: price.to_json(),
+        // cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
+      }
+    } else if cell_from.is_none() && cell_into.is_some() {
+      object! {
+        document: document["_id"].clone(),
+        goods: item["_id"].clone(),
+        storage_into: cell_into.unwrap()["_id"].clone(),
+        qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
+        // price: price.to_json(),
+        // cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
+      }
+    } else {
+      object! {
+        document: document["_id"].clone(),
+        goods: item["_id"].clone(),
+        qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
+        // price: price.to_json(),
+        // cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
+      }
     };
 
     let _res = memories_create(app, data, ctx.clone())?;
 
-    // println!("data: {res:?}");
+    // println!("data: {_res:?}");
   }
 
   Ok(())
