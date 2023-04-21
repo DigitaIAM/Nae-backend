@@ -79,23 +79,21 @@ impl SearchEngine {
   }
 
   pub fn search(&mut self, text: &str) -> Vec<Uuid> {
-    let mut result_sim = self.sim.search(text);
     let mut result_tan = self.tan.search(text);
+    let mut result_sim = self.sim.search(text);
 
-// (+) убрать дубликаты и (+) объединить в сет
+// (-) убрать дубликаты и (-) объединить в сет
 // метрика схожести
 // сортировка по метрике
 
     println!("result_tan.len() = {}", result_tan.len());
     println!("result_sim.len() = {}", result_sim.len());
 
-    result_sim.append(&mut result_tan);
-    // result_sim.sort();
-    result_sim.dedup();
-    println!("COMBINED = {}", result_sim.len());
+    result_tan.append(&mut result_sim);
+    result_tan.dedup();
+    println!("COMBINED = {}", result_tan.len());
 
-
-    result_sim
+    result_tan
   }
 
   pub fn commit(&mut self) -> Result<(), Error> {
