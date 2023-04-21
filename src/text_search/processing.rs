@@ -89,9 +89,11 @@ impl SearchEngine {
     println!("result_tan.len() = {}", result_tan.len());
     println!("result_sim.len() = {}", result_sim.len());
 
-    result_tan.append(&mut result_sim);
-    result_tan.dedup();
-    println!("COMBINED = {}", result_tan.len());
+    let result_sim = remove_duplicates(&mut result_sim, result_tan.clone());
+
+    // result_tan.append(&mut result_sim);
+    // result_tan.dedup();
+    // println!("COMBINED = {}", result_tan.len());
 
     result_tan
   }
@@ -100,6 +102,12 @@ impl SearchEngine {
     self.tan.force_commit()?;
     Ok(())
   }
+}
+use std::{collections::BTreeSet, iter::FromIterator};
+fn remove_duplicates(result_sim: &mut Vec<Uuid>, result_tan: Vec<Uuid>) -> Vec<Uuid> {
+  let to_remove = BTreeSet::from_iter(result_tan);
+  result_sim.retain(|e| !to_remove.contains(e));
+  result_sim.clone()
 }
 
 pub fn handle_mutation(
