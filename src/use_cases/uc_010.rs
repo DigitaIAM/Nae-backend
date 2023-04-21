@@ -40,47 +40,22 @@ fn sort_json_value(json: &str) -> JsonValue {
   let mut vektor: Vec<&str> = json.split('{').collect();
   vektor.remove(0);
   vektor.sort();
-  let vektor_2 = compare_strings(vektor.clone());
-  print_only_name(vektor.clone(), vektor_2.clone());
+  print_only_name(vektor.clone());
 
   JsonValue::String(vektor.join("{"))
 }
 
-fn print_only_name(alphabet: Vec<&str>, leven: Vec<&str>) {
+fn print_only_name(alphabet: Vec<&str>) {
   println!("Поисковый запрос: {SEARCH}");
   let mut namevek: Vec<&str> = Vec::new();
   for i in 1..alphabet.len() {
     let name = alphabet[i].split("manufacturer").nth(0).unwrap();
     namevek.push(&name[7..]);
   }
-  for i in namevek {
+
+  for i in namevek.clone() {
     println!("\tALPHABET: {}", i)
   }
-  let mut namevek: Vec<&str> = Vec::new();
-  for i in 1..leven.len() {
-    let name = leven[i].split("manufacturer").nth(0).unwrap();
-    namevek.push(&name[7..]);
-  } 
-  for i in namevek {
-    println!("\tLEVENSHTEIN: {}", i)
-  }
-}
-
-use levenshtein::levenshtein;
-fn compare_strings(vektor: Vec<&str>) -> Vec<&str> {
-  let mut result: Vec<(usize, &str)> = Vec::new();
-  let search = SEARCH;
-  
-  for i in 0..vektor.len() {
-    let mut distance = levenshtein(search, vektor[i]);
-    result.push((distance, vektor[i]));
-  }
-  result.sort();
-  let mut result_2: Vec<&str> = Vec::new();
-  for i in 0..result.len() {
-    result_2.push(result[i].1);
-  }
-  result_2
 }
 
 fn load() -> Vec<JsonValue> {
