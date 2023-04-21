@@ -1,6 +1,7 @@
 use json::JsonValue;
 use simsearch::SimSearch;
 use uuid::Uuid;
+use regex::Regex;
 
 use crate::{
   commutator::Application, storage::Workspaces, 
@@ -53,7 +54,7 @@ impl SearchEngine {
         let uuid = jdoc["_uuid"].as_str().unwrap();
         let uuid = Uuid::parse_str(uuid).unwrap();
 
-        self.sim.insert(uuid, name);
+        self.sim.insert(uuid, &name);
       }
     }
 
@@ -82,7 +83,7 @@ impl SearchEngine {
     let mut result_tan = self.tan.search(text);
     let mut result_sim = self.sim.search(text);
 
-// (-) убрать дубликаты и (-) объединить в сет
+// (+) убрать дубликаты и (+) объединить в сет
 // метрика схожести
 // сортировка по метрике
 
@@ -122,7 +123,7 @@ pub fn handle_mutation(
   before: &JsonValue,
   data: &JsonValue,
 ) -> Result<(), Error> {
-  // dbg!(&ctx, &before, &data);
+  // dbg!(&ctx, &before, &data);ИМУРАН ТАБ 25 МГ №100
   if ctx == &vec!["drugs"] {
     let id = data["_uuid"].as_str().map(|data| Uuid::parse_str(data).unwrap()).unwrap();
     let before_name = before["name"].as_str();
@@ -143,6 +144,13 @@ pub fn handle_mutation(
     } else {
       if let Some(after_name) = after_name {
         let mut search = app.search.write().unwrap();
+        // try replace_all
+        // let re = Regex::new(r#"""#).unwrap();
+        // after_name.replace_all(re, "");
+        let letter_e_1 = Regex::new(r#"ё"#).unwrap();
+        let letter_e_2 = Regex::new(r#"Ё"#).unwrap();
+        let after_name = letter_e_1.replace_all(after_name, "е");
+        let after_name = letter_e_2.replace_all(&after_name, "Е");
         search.create(id, after_name)?;
       } else {
         // IGNORE

@@ -62,11 +62,11 @@ fn sort_json_value(json: &str) -> JsonValue {
 }
 
 fn print_only_name(alphabet: Vec<&str>) {
-  // println!("Поисковый запрос: {SEARCH}");
   let mut namevek: Vec<&str> = Vec::new();
   for i in 1..alphabet.len() {
     let name = alphabet[i].split("manufacturer").nth(0).unwrap();
-    namevek.push(&name[7..]);
+    let end = name.len() - 2;
+    namevek.push(&name[7..end]);
   }
 
   for i in namevek.clone() {
@@ -77,8 +77,6 @@ fn print_only_name(alphabet: Vec<&str>) {
 fn load() -> Vec<JsonValue> {
   let text_file = "./import/utf8_dbo.GOOD.Table.sql";
   let file = File::open(text_file).unwrap();
-
-  // let mut search_id = 0;
 
   BufReader::new(file)
     .lines()
@@ -91,9 +89,6 @@ fn load() -> Vec<JsonValue> {
 
       name.truncate((name.len() as isize - 3).max(0) as usize);
       manufacturer.truncate((manufacturer.len() as isize - 3).max(0) as usize);
-
-      // println!("AFTER NAME: {name}");
-      // println!("AFTER MANU: {manufacturer}");
 
       json::object! {
         name: name,
