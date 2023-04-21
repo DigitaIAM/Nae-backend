@@ -40,6 +40,7 @@ pub(crate) fn report(app: &Application) {
       .unwrap();
     let json_to_string = result.dump();
     sort_json_value(&json_to_string);
+    // println!("\tRESULT: \n{}", json_to_string);
   }
 
   // let result = app
