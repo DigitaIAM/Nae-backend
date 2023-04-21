@@ -345,20 +345,46 @@ impl OrderedTopology for DateTypeStoreBatchId {
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
 
-    let expected: Vec<u8> = store.as_bytes().iter().map(|b| *b).collect();
+    let expected_store: Vec<u8> = store.as_bytes().iter().map(|b| *b).collect();
+    let expected_goods: Vec<u8> = goods.as_bytes().iter().map(|b| *b).collect();
+    let expected_batch_date: Vec<u8> = ts_batch.to_be_bytes().iter().map(|b| *b).collect();
+    let expected_batch_id: Vec<u8> = batch.id.as_bytes().iter().map(|b| *b).collect();
 
     let mut res = Vec::new();
 
     for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
       let (k, value) = item?;
 
-      if k[9..25] != expected {
+      if k[9..25] != expected_store
+        || k[25..41] != expected_goods
+        || k[41..49] != expected_batch_date
+        || k[49..65] != expected_batch_id
+      {
         continue;
       }
 
       let (op, _) = self.from_bytes(&value)?;
 
-      res.push(op);
+      // if op.op.is_zero() {
+      //   println!("zero operation {:?}", op);
+      // }
+      if !op.op.is_zero() {
+        res.push(op.clone());
+      }
+
+      for batch in op.batches {
+        // println!("loading batch {:?}", batch);
+        if let Some(bs) = self.db.get_cf(
+          &self.cf()?,
+          self.key_build(&op.id, &op.date, &op.store, &op.goods, &batch, &op.op.clone()),
+        )? {
+          let (dop, _) = self.from_bytes(&bs)?;
+          // println!("dependant operation {:?}", dop);
+          res.push(dop);
+        } else {
+          // TODO raise exception?
+        }
+      }
     }
 
     Ok(res)
