@@ -89,9 +89,15 @@ impl SearchEngine {
     println!("result_tan.len() = {}", result_tan.len());
     println!("result_sim.len() = {}", result_sim.len());
 
-    let result_sim = remove_duplicates(&mut result_sim, result_tan.clone());
+    let mut result_sim = remove_duplicates(&mut result_sim, result_tan.clone());
+    if result_sim.len() > 5 {
+      result_sim = result_sim.split_off(5);
+    }
+    if result_tan.len() > 5 {
+      result_tan = result_tan.split_off(5);
+    }
 
-    // result_tan.append(&mut result_sim);
+    result_tan.append(&mut result_sim);
     // result_tan.dedup();
     // println!("COMBINED = {}", result_tan.len());
 

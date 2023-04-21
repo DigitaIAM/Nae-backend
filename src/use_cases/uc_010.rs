@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader};
 use std::time::Instant;
 
 const DRUGS: [&str; 1] = ["drugs"];
-const SEARCH: &str = "ПОЯС";
+const SEARCH: &str = "УТЕПЛЕННЫЙ";
 
 pub(crate) fn import(app: &Application) {
   let items = load();
@@ -30,16 +30,16 @@ pub(crate) fn report(app: &Application) {
     .service("memories")
     .find(object! {oid: oid, ctx: ctx, search: SEARCH})
     .unwrap();
-  println!("report:\n{}\nend of report", result.dump());
+  // println!("report:\n{}\nend of report", result.dump());
 
   let json_to_string = result.dump();
-  println!("\tJSON SORTED: \n{}", sort_json_value(&json_to_string));
+  println!("\tRESULT: \n{}", sort_json_value(&json_to_string));
 }
 
 fn sort_json_value(json: &str) -> JsonValue {
   let mut vektor: Vec<&str> = json.split('{').collect();
   vektor.remove(0);
-  vektor.sort();
+  // vektor.sort();
   print_only_name(vektor.clone());
 
   JsonValue::String(vektor.join("{"))
@@ -54,7 +54,7 @@ fn print_only_name(alphabet: Vec<&str>) {
   }
 
   for i in namevek.clone() {
-    println!("\tALPHABET: {}", i)
+    println!("\t{}", i)
   }
 }
 
