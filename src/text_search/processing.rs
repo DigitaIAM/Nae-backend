@@ -147,10 +147,8 @@ pub fn handle_mutation(
         // try replace_all
         // let re = Regex::new(r#"""#).unwrap();
         // after_name.replace_all(re, "");
-        let letter_e_1 = Regex::new(r#"ё"#).unwrap();
-        let letter_e_2 = Regex::new(r#"Ё"#).unwrap();
-        let after_name = letter_e_1.replace_all(after_name, "е");
-        let after_name = letter_e_2.replace_all(&after_name, "Е");
+        let letter_e = Regex::new(r#"Ё"#).unwrap();
+        let after_name = letter_e.replace_all(after_name, "Е");
         search.create(id, after_name)?;
       } else {
         // IGNORE
