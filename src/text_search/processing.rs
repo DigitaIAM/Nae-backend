@@ -1,7 +1,6 @@
 use json::JsonValue;
 use simsearch::SimSearch;
 use uuid::Uuid;
-use regex::Regex;
 
 use crate::{
   commutator::Application, storage::Workspaces, 
@@ -80,6 +79,8 @@ impl SearchEngine {
   }
 
   pub fn search(&mut self, text: &str) -> Vec<Uuid> {
+    dbg!(text);
+    let text = &format!("\"{}\"", text);
     let mut result_tan = self.tan.search(text);
     let mut result_sim = self.sim.search(text);
 
