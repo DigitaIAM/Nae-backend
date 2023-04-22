@@ -55,14 +55,8 @@ impl Service for MemoriesInFiles {
 
       let search = self.params(&params)["search"].as_str().unwrap_or_default();
       
-      let re = Regex::new("[ёЁ]").unwrap();
-      let search = re.replace_all(search, |caps: &regex::Captures| {
-          match &caps[0] {
-              "ё" => "е",
-              "Ё" => "Е",
-              _ => unreachable!(),
-          }
-      }).to_string();
+      let letter_e = Regex::new(r#"ё"#).unwrap();
+      let search = letter_e.replace_all(search, "е").to_string();
 
       println!("memories_in_files.rs FN FIND: {search}");
 
