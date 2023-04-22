@@ -1,9 +1,11 @@
 use crate::memories::Resolve;
 use crate::storage::organizations::Workspace;
 use json::{object, JsonValue};
+use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::JsonParams;
 use std::collections::HashMap;
+use std::str::FromStr;
 use store::balance::BalanceForGoods;
 use store::elements::{Batch, Cost, Goods, Store, ToJson};
 use uuid::Uuid;
@@ -42,7 +44,7 @@ fn find_elements(
 ) -> Vec<JsonValue> {
   let mut storages = HashMap::new();
   let mut categories = HashMap::new();
-  let mut goods_list = Vec::new();
+  let mut goods_map = HashMap::new();
   let mut batches_list = Vec::new();
 
   'store: for (store, sb) in balances {
@@ -64,16 +66,18 @@ fn find_elements(
         let _goods = goods.resolve_to_json_object(&ws);
         let category = _goods["category"].string();
 
-        for (label, value) in filter.entries() {
+        println!("filter_entries: {filter:?}");
+        'label: for (label, value) in filter.entries() {
+          // println!("label: {label} value: {value:?}");
           if label == "storage" {
             if filter.len() == 1 {
-              let mut category_cost = categories.entry(category).or_insert(Cost::ZERO);
+              let mut category_cost = categories.entry(category.clone()).or_insert(Cost::ZERO);
               category_cost += bb.cost;
             }
 
-            let record = create_goods(ws, store, goods, _goods, batch, bb);
-            goods_list.push(record);
-            continue 'batch;
+            // let record = create_goods(ws, store, goods, _goods, batch, bb);
+            // goods_list.push(record);
+            // continue 'batch;
           } else if label == "category" {
             let cat = value.string();
             if cat != "" {
@@ -85,30 +89,49 @@ fn find_elements(
                   store_cost += bb.cost;
                 }
 
-                let record = create_goods(ws, store, goods, _goods, batch, bb);
-                goods_list.push(record);
-                continue 'batch;
+                // let record = create_goods(ws, store, goods, _goods, batch, bb);
+                // goods_list.push(record);
+                // continue 'batch;
               }
             }
           } else if label == "stock" {
             let requested_goods = value.uuid().unwrap(); // TODO Handle Error?
+            println!("requested_goods: {requested_goods:?}, goods: {goods:?}");
             if requested_goods != *goods {
               continue 'goods;
-            } else {
-              let b = object! {
-                id: batch.id.to_json(),
-                date: batch.date.to_json(),
-                _category: "batch",
-              };
-              batches_list.push(b);
-              continue 'batch;
             }
+
+            let mut b =
+              create_goods_with_category(ws, store, goods, _goods.clone(), batch, bb, "batch");
+
+            batches_list.push(b);
+            continue 'label;
           }
+
+          let record =
+            // create_goods_with_category(ws, store, goods, _goods.clone(), batch, bb, "stock");
+          create_empty_goods(ws, store, goods, _goods.clone());
+
+          // let _ = goods_map.entry(record["_id"].to_string()).or_insert(record);
+
+          let mut g = goods_map.entry(record["_id"].to_string()).or_insert(record);
+          g["qty"]["number"] =
+            (Decimal::from_str(&g["qty"]["number"].string()).unwrap_or_default() + bb.qty).to_json();
+          g["cost"]["number"] =
+            (Decimal::from_str(&g["cost"]["number"].string()).unwrap_or_default() + bb.cost)
+              .to_json();
         }
       }
     }
   }
   let mut items: Vec<JsonValue> = Vec::new();
+
+  if !batches_list.is_empty() {
+    // println!("_batches: {batches_list:?}");
+    items.append(&mut batches_list);
+    // println!("_items1: {items:?}");
+    return items;
+  }
 
   if !storages.is_empty() {
     let mut storages_items: Vec<JsonValue> = storages
@@ -160,24 +183,53 @@ fn find_elements(
     items.append(&mut category_items);
   }
 
-  if !goods_list.is_empty() {
-    items.append(&mut goods_list);
+  if !goods_map.is_empty() {
+    println!("goods_map: {goods_map:?}");
+    let mut goods_items: Vec<JsonValue> = goods_map.into_iter().map(|(_, v)| v).collect();
+
+    goods_items.sort_by(|a, b| {
+      let a = a["name"].as_str().unwrap_or_default();
+      let b = b["name"].as_str().unwrap_or_default();
+
+      a.cmp(b)
+    });
+
+    items.append(&mut goods_items);
   }
 
-  if !batches_list.is_empty() {
-    items.append(&mut batches_list`);
-  }
-
+  // println!("_items2: {items:?}");
   items
 }
 
-fn create_goods(
+fn create_empty_goods(ws: &Workspace, store: &Store, goods: &Goods, _goods: JsonValue) -> JsonValue {
+  // TODO: add date into this id
+  let bytes: Vec<u8> = store
+    .as_bytes()
+    .into_iter()
+    .zip(goods.as_bytes().into_iter())
+    .map(|(a, (b))| a ^ b)
+    .collect();
+
+  let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
+
+  json::object! {
+    _id: id.to_json(),
+    storage: store.resolve_to_json_object(ws),
+    goods: _goods,
+    qty: json::object! { number: Decimal::ZERO.to_json() },
+    cost: json::object! { number: Decimal::ZERO.to_json() },
+    _category: "stock",
+  }
+}
+
+fn create_goods_with_category(
   ws: &Workspace,
   store: &Store,
   goods: &Goods,
   _goods: JsonValue,
   batch: &Batch,
   bb: &BalanceForGoods,
+  category: &str,
 ) -> JsonValue {
   // TODO: add date into this id
   let bytes: Vec<u8> = store
@@ -196,7 +248,7 @@ fn create_goods(
     batch: batch.to_json(),
     qty: json::object! { number: bb.qty.to_json() },
     cost: json::object! { number: bb.cost.to_json() },
-    _category: "stock",
+    _category: category,
   }
 }
 
