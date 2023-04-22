@@ -6,7 +6,6 @@ use std::io::{BufRead, BufReader, self, Write};
 use std::time::Instant;
 
 const DRUGS: [&str; 1] = ["drugs"];
-const SEARCH: &str = "ЗЕЛЕНЫЙ";
 
 pub(crate) fn import(app: &Application) {
   let items = load();
@@ -40,15 +39,6 @@ pub(crate) fn report(app: &Application) {
     let json_to_string = result.dump();
     print_only_name(&json_to_string);
   }
-
-  // let result = app
-  //   .service("memories")
-  //   .find(object! {oid: oid, ctx: ctx, search: SEARCH})
-  //   .unwrap();
-  // println!("report:\n{}\nend of report", result.dump());
-
-  // let json_to_string = result.dump();
-  // println!("\tRESULT: \n{}", sort_json_value(&json_to_string));
 }
 
 fn print_only_name(json: &str) {

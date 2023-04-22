@@ -1,5 +1,4 @@
 use json::JsonValue;
-use regex::Regex;
 use simsearch::SimSearch;
 use uuid::Uuid;
 
@@ -79,30 +78,27 @@ impl SearchEngine {
     Ok(())
   }
 
-  pub fn search(&mut self, text: &str) -> Vec<Uuid> {
+  pub fn search(&self, text: &str) -> Vec<Uuid> {
     dbg!(text);
-    let text_2 = &format!("\"{}\"", text);
-    let mut result_tan = self.tan.search(text_2);
-    let mut result_sim = self.sim.search(text);
+    let result_full = self.tan.search(&format!("\"{}\"", text));
+    let result_tan = self.tan.search(text);
+    let result_sim = self.sim.search(text);
 
-// (+) убрать дубликаты и (+) объединить в сет
-// метрика схожести
-// сортировка по метрике
-
+    println!("result_full.len() = {}", result_full.len());
     println!("result_tan.len() = {}", result_tan.len());
     println!("result_sim.len() = {}", result_sim.len());
 
-    let mut result_sim = remove_duplicates(&mut result_sim, result_tan.clone());
-    if result_sim.len() > 5 {
-      result_sim = result_sim.split_off(5);
-    }
-    if result_tan.len() > 5 {
-      result_tan = result_tan.split_off(5);
-    }
+    let result_tan = remove_duplicates(result_tan, &result_full);
+    let result_sim = remove_duplicates(result_sim, &result_tan);
+    let result_sim = remove_duplicates(result_sim, &result_full);
 
-    result_tan.append(&mut result_sim);
+    let mut result: Vec<Uuid> = Vec::with_capacity(10);
 
-    result_tan
+    result.extend(result_full.iter().take(5));
+    result.extend(result_tan.iter().take(5 - result.len()));
+    result.extend(result_sim.iter().take(10 - result.len()));
+
+    result
   }
 
   pub fn commit(&mut self) -> Result<(), Error> {
@@ -110,11 +106,10 @@ impl SearchEngine {
     Ok(())
   }
 }
-use std::{collections::BTreeSet, iter::FromIterator};
-fn remove_duplicates(result_sim: &mut Vec<Uuid>, result_tan: Vec<Uuid>) -> Vec<Uuid> {
-  let to_remove = BTreeSet::from_iter(result_tan);
-  result_sim.retain(|e| !to_remove.contains(e));
-  result_sim.clone()
+
+fn remove_duplicates(mut result_sim: Vec<Uuid>, result_tan: &Vec<Uuid>) -> Vec<Uuid> {
+  result_sim.retain(|e| !result_tan.contains(e));
+  result_sim
 }
 
 pub fn handle_mutation(
@@ -123,8 +118,6 @@ pub fn handle_mutation(
   before: &JsonValue,
   data: &JsonValue,
 ) -> Result<(), Error> {
-  // dbg!(&ctx, &before, &data);
-  let letter_e = Regex::new(r#"Ё"#).unwrap();
   if ctx == &vec!["drugs"] {
     let id = data["_uuid"].as_str().map(|data| Uuid::parse_str(data).unwrap()).unwrap();
     let before_name = before["name"].as_str();
@@ -136,7 +129,7 @@ pub fn handle_mutation(
           // IGNORE
         } else {
           let mut search = app.search.write().unwrap();
-          let after_name = letter_e.replace_all(after_name.clone(), "Е").to_string();
+          let after_name = after_name.to_uppercase().replace("ё", "е");
           search.change(id, before_name, after_name.as_str())?;
         }
       } else {
@@ -146,7 +139,7 @@ pub fn handle_mutation(
     } else {
       if let Some(after_name) = after_name {
         let mut search = app.search.write().unwrap();
-        let after_name = letter_e.replace_all(after_name.clone(), "Е").to_string();
+        let after_name = after_name.to_uppercase().replace("ё", "е");
         search.create(id, after_name.as_str())?;
       } else {
         // IGNORE
