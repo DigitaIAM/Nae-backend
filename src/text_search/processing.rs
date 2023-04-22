@@ -81,8 +81,8 @@ impl SearchEngine {
 
   pub fn search(&mut self, text: &str) -> Vec<Uuid> {
     dbg!(text);
-    let text = &format!("\"{}\"", text);
-    let mut result_tan = self.tan.search(text);
+    let text_2 = &format!("\"{}\"", text);
+    let mut result_tan = self.tan.search(text_2);
     let mut result_sim = self.sim.search(text);
 
 // (+) убрать дубликаты и (+) объединить в сет
@@ -101,8 +101,6 @@ impl SearchEngine {
     }
 
     result_tan.append(&mut result_sim);
-    // result_tan.dedup();
-    // println!("COMBINED = {}", result_tan.len());
 
     result_tan
   }

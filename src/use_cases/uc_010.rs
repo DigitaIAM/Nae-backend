@@ -23,7 +23,6 @@ pub(crate) fn import(app: &Application) {
 pub(crate) fn report(app: &Application) {
   let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
   let ctx = DRUGS.to_vec();
-  // println!("CTX\t{ctx:?}");
 
   loop {
     print!("Текст для поиска: ");
@@ -39,8 +38,7 @@ pub(crate) fn report(app: &Application) {
       .find(object! {oid: oid, ctx: ctx.clone(), search: search})
       .unwrap();
     let json_to_string = result.dump();
-    sort_json_value(&json_to_string);
-    // println!("\tRESULT: \n{}", json_to_string);
+    print_only_name(&json_to_string);
   }
 
   // let result = app
@@ -53,19 +51,12 @@ pub(crate) fn report(app: &Application) {
   // println!("\tRESULT: \n{}", sort_json_value(&json_to_string));
 }
 
-fn sort_json_value(json: &str) -> JsonValue {
+fn print_only_name(json: &str) {
   let mut vektor: Vec<&str> = json.split('{').collect();
   vektor.remove(0);
-  // vektor.sort();
-  print_only_name(vektor.clone());
-
-  JsonValue::String(vektor.join("{"))
-}
-
-fn print_only_name(alphabet: Vec<&str>) {
   let mut namevek: Vec<&str> = Vec::new();
-  for i in 1..alphabet.len() {
-    let name = alphabet[i].split("manufacturer").nth(0).unwrap();
+  for i in 1..vektor.len() {
+    let name = vektor[i].split("manufacturer").nth(0).unwrap();
     let end = name.len() - 2;
     namevek.push(&name[7..end]);
   }
