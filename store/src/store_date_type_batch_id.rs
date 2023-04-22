@@ -111,11 +111,16 @@ impl OrderedTopology for StoreDateTypeBatchId {
     Ok(result)
   }
 
-  fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
+  fn operations_after(
+    &self,
+    op: &Op,
+    no_batches: bool,
+  ) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
     let mut res = Vec::new();
 
     let expected_store: Vec<u8> = op.store.as_bytes().iter().map(|b| *b).collect();
-    let expected_batch: Vec<u8> = op.batch().iter().map(|b| *b).collect();
+    let expected_batch1: Vec<u8> = op.batch.to_bytes(&op.goods);
+    let expected_batch2: Vec<u8> = Batch::no().to_bytes(&op.goods);
 
     let key = self.key(op);
 
@@ -126,13 +131,15 @@ impl OrderedTopology for StoreDateTypeBatchId {
 
     while let Some(bytes) = iter.next() {
       if let Ok((k, v)) = bytes {
-        if k[0..16] != expected_store || k[25..65] != expected_batch || k[0..] == key {
+        if k[0..16] != expected_store || k[0..] == key {
           continue;
         }
 
-        let (op, balance) = self.from_bytes(&v)?;
+        if k[25..65] == expected_batch1 || (no_batches && k[25..65] == expected_batch2) {
+          let (op, balance) = self.from_bytes(&v)?;
 
-        res.push((op, balance));
+          res.push((op, balance));
+        }
       }
     }
 
@@ -143,7 +150,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
     ColumnFamilyDescriptor::new(StoreDateTypeBatchId::cf_name(), opts)
   }
 
-  fn get_ops(
+  fn get_ops_for_storage(
     &self,
     storage: Store,
     from_date: DateTime<Utc>,
@@ -419,7 +426,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
     // log::debug!("STORE_DATE_TYPE_BATCH.get_report");
     let balances = db.get_checkpoints_for_one_storage_before_date(storage, from_date)?;
 
-    let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
+    let ops = self.get_ops_for_storage(storage, first_day_current_month(from_date), till_date)?;
 
     let items = new_get_aggregations(balances, ops, from_date);
 

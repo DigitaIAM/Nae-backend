@@ -80,8 +80,13 @@ pub struct Batch {
 }
 
 impl Batch {
-  fn new() -> Batch {
+  fn new() -> Self {
     Batch { id: Uuid::new_v4(), date: DateTime::<Utc>::MAX_UTC }
+  }
+
+  // TODO make constant
+  pub(crate) fn no() -> Self {
+    Batch { id: UUID_NIL, date: dt("1970-01-01").unwrap() }
   }
 
   pub fn is_empty(&self) -> bool {
@@ -103,6 +108,18 @@ impl Batch {
       id.push('0');
     }
     format!("2{}{}{}{}", &date[2..4], &date[5..7], &date[8..10], &id[0..5])
+  }
+
+  pub(crate) fn to_bytes(&self, goods: &Goods) -> Vec<u8> {
+    let dt = self.date.timestamp() as u64;
+
+    goods
+      .as_bytes()
+      .iter()
+      .chain(dt.to_be_bytes().iter())
+      .chain(self.id.as_bytes().iter())
+      .map(|b| *b)
+      .collect()
   }
 }
 
@@ -129,11 +146,15 @@ pub trait OrderedTopology {
     balances: Vec<Balance>,
   ) -> Result<Vec<(Batch, BalanceForGoods)>, WHError>;
 
-  fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError>;
+  fn operations_after(
+    &self,
+    op: &Op,
+    no_batches: bool,
+  ) -> Result<Vec<(Op, BalanceForGoods)>, WHError>;
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor;
 
-  fn get_ops(
+  fn get_ops_for_storage(
     &self,
     storage: Store,
     from_date: DateTime<Utc>,
@@ -376,7 +397,9 @@ pub trait OrderedTopology {
         // propagate delta
         if !current_balance.delta(&new_balance).is_zero() {
           let mut before_balance = new_balance;
-          for (next_operation, next_current_balance) in self.operations_after(&calculated_op)? {
+          for (next_operation, next_current_balance) in
+            self.operations_after(&calculated_op, true)?
+          {
             let (calc_op, new_balance) = self.evaluate(&before_balance, &next_operation);
             if calc_op.is_zero() {
               self.del(&calc_op)?;
@@ -693,6 +716,15 @@ pub enum InternalOperation {
   // TODO Inventory(Qty, Cost), // actual qty, calculated qty; calculated qty +/- delta = actual qty (delta qty, delta cost)
   Receive(Qty, Cost),     // FROM // TODO Option<Store>
   Issue(Qty, Cost, Mode), // INTO // TODO Option<Store>
+}
+
+impl InternalOperation {
+  pub(crate) fn is_zero(&self) -> bool {
+    match self {
+      InternalOperation::Receive(q, c) => q.is_zero() && c.is_zero(),
+      InternalOperation::Issue(q, c, _) => q.is_zero() && c.is_zero(),
+    }
+  }
 }
 
 impl ToJson for InternalOperation {
