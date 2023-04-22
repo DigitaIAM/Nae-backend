@@ -2,6 +2,7 @@ use super::*;
 
 use chrono::Utc;
 use json::JsonValue;
+use regex::Regex;
 use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
@@ -53,12 +54,21 @@ impl Service for MemoriesInFiles {
       let ws = self.wss.get(&wsid);
 
       let search = self.params(&params)["search"].as_str().unwrap_or_default();
+      
+      let re = Regex::new("[ёЁ]").unwrap();
+      let search = re.replace_all(search, |caps: &regex::Captures| {
+          match &caps[0] {
+              "ё" => "е",
+              "Ё" => "Е",
+              _ => unreachable!(),
+          }
+      }).to_string();
 
       println!("memories_in_files.rs FN FIND: {search}");
 
       let result = {
         let mut engine = self.app.search.write().unwrap();
-        engine.search(search)
+        engine.search(search.as_str())
       };
 
       let total = result.len();

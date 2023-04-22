@@ -106,7 +106,6 @@ impl TantivyEngine {
     let (uuid, name) = self.schematic();
     
     let reader = self.reader.lock().unwrap();
-    // let reader = self.index.reader_builder().reload_policy(ReloadPolicy::OnCommit).try_into().unwrap();
     let searcher = reader.searcher();
 
     let parser = QueryParser::for_index(&self.index, vec![name]);

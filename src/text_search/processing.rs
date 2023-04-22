@@ -1,4 +1,5 @@
 use json::JsonValue;
+use regex::Regex;
 use simsearch::SimSearch;
 use uuid::Uuid;
 
@@ -125,7 +126,7 @@ pub fn handle_mutation(
   data: &JsonValue,
 ) -> Result<(), Error> {
   // dbg!(&ctx, &before, &data);
-  // let letter_e = Regex::new(r#"Ё"#).unwrap();
+  let letter_e = Regex::new(r#"Ё"#).unwrap();
   if ctx == &vec!["drugs"] {
     let id = data["_uuid"].as_str().map(|data| Uuid::parse_str(data).unwrap()).unwrap();
     let before_name = before["name"].as_str();
@@ -137,8 +138,8 @@ pub fn handle_mutation(
           // IGNORE
         } else {
           let mut search = app.search.write().unwrap();
-          // let after_name = letter_e.replace_all(after_name.clone(), "Е").to_string();
-          search.change(id, before_name, after_name)?;
+          let after_name = letter_e.replace_all(after_name.clone(), "Е").to_string();
+          search.change(id, before_name, after_name.as_str())?;
         }
       } else {
         let mut search = app.search.write().unwrap();
@@ -147,8 +148,8 @@ pub fn handle_mutation(
     } else {
       if let Some(after_name) = after_name {
         let mut search = app.search.write().unwrap();
-        // let after_name = letter_e.replace_all(after_name.clone(), "Е").to_string();
-        search.create(id, after_name)?;
+        let after_name = letter_e.replace_all(after_name.clone(), "Е").to_string();
+        search.create(id, after_name.as_str())?;
       } else {
         // IGNORE
       }
