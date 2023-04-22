@@ -244,7 +244,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(res)
   }
 
-  fn get_ops(
+  fn get_ops_for_storage(
     &self,
     storage: Store,
     from_date: DateTime<Utc>,
@@ -347,19 +347,13 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
     let expected_store: Vec<u8> = store.as_bytes().iter().map(|b| *b).collect();
     let expected_goods: Vec<u8> = goods.as_bytes().iter().map(|b| *b).collect();
-    let expected_batch_date: Vec<u8> = ts_batch.to_be_bytes().iter().map(|b| *b).collect();
-    let expected_batch_id: Vec<u8> = batch.id.as_bytes().iter().map(|b| *b).collect();
 
     let mut res = Vec::new();
 
     for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
       let (k, value) = item?;
 
-      if k[9..25] != expected_store
-        || k[25..41] != expected_goods
-        || k[41..49] != expected_batch_date
-        || k[49..65] != expected_batch_id
-      {
+      if k[9..25] != expected_store || k[25..41] != expected_goods {
         continue;
       }
 
@@ -574,7 +568,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
   ) -> Result<Report, WHError> {
     let balances = db.get_checkpoints_for_one_storage_before_date(storage, from_date)?;
 
-    let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
+    let ops = self.get_ops_for_storage(storage, first_day_current_month(from_date), till_date)?;
 
     let items = new_get_aggregations(balances, ops, from_date);
 

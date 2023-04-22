@@ -150,7 +150,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
     ColumnFamilyDescriptor::new(StoreDateTypeBatchId::cf_name(), opts)
   }
 
-  fn get_ops(
+  fn get_ops_for_storage(
     &self,
     storage: Store,
     from_date: DateTime<Utc>,
@@ -426,7 +426,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
     // log::debug!("STORE_DATE_TYPE_BATCH.get_report");
     let balances = db.get_checkpoints_for_one_storage_before_date(storage, from_date)?;
 
-    let ops = self.get_ops(storage, first_day_current_month(from_date), till_date)?;
+    let ops = self.get_ops_for_storage(storage, first_day_current_month(from_date), till_date)?;
 
     let items = new_get_aggregations(balances, ops, from_date);
 

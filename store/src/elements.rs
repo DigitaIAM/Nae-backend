@@ -154,7 +154,7 @@ pub trait OrderedTopology {
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor;
 
-  fn get_ops(
+  fn get_ops_for_storage(
     &self,
     storage: Store,
     from_date: DateTime<Utc>,

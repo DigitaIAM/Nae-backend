@@ -1,6 +1,6 @@
 use crate::memories::Resolve;
 use crate::storage::organizations::Workspace;
-use json::JsonValue;
+use json::{object, JsonValue};
 use service::error::Error;
 use service::utils::json::JsonParams;
 use std::collections::HashMap;
@@ -43,6 +43,7 @@ fn find_elements(
   let mut storages = HashMap::new();
   let mut categories = HashMap::new();
   let mut goods_list = Vec::new();
+  let mut batches_list = Vec::new();
 
   'store: for (store, sb) in balances {
     for (label, value) in filter.entries() {
@@ -88,6 +89,19 @@ fn find_elements(
                 goods_list.push(record);
                 continue 'batch;
               }
+            }
+          } else if label == "stock" {
+            let requested_goods = value.uuid().unwrap(); // TODO Handle Error?
+            if requested_goods != *goods {
+              continue 'goods;
+            } else {
+              let b = object! {
+                id: batch.id.to_json(),
+                date: batch.date.to_json(),
+                _category: "batch",
+              };
+              batches_list.push(b);
+              continue 'batch;
             }
           }
         }
@@ -148,6 +162,10 @@ fn find_elements(
 
   if !goods_list.is_empty() {
     items.append(&mut goods_list);
+  }
+
+  if !batches_list.is_empty() {
+    items.append(&mut batches_list`);
   }
 
   items
