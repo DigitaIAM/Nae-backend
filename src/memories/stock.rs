@@ -74,10 +74,6 @@ fn find_elements(
               let mut category_cost = categories.entry(category.clone()).or_insert(Cost::ZERO);
               category_cost += bb.cost;
             }
-
-            // let record = create_goods(ws, store, goods, _goods, batch, bb);
-            // goods_list.push(record);
-            // continue 'batch;
           } else if label == "category" {
             let cat = value.string();
             if cat != "" {
@@ -88,10 +84,6 @@ fn find_elements(
                   let mut store_cost = storages.entry(store).or_insert(Cost::ZERO);
                   store_cost += bb.cost;
                 }
-
-                // let record = create_goods(ws, store, goods, _goods, batch, bb);
-                // goods_list.push(record);
-                // continue 'batch;
               }
             }
           } else if label == "stock" {
@@ -107,20 +99,18 @@ fn find_elements(
             batches_list.push(b);
             continue 'label;
           }
-
-          let record =
-            // create_goods_with_category(ws, store, goods, _goods.clone(), batch, bb, "stock");
-          create_empty_goods(ws, store, goods, _goods.clone());
-
-          // let _ = goods_map.entry(record["_id"].to_string()).or_insert(record);
-
-          let mut g = goods_map.entry(record["_id"].to_string()).or_insert(record);
-          g["qty"]["number"] =
-            (Decimal::from_str(&g["qty"]["number"].string()).unwrap_or_default() + bb.qty).to_json();
-          g["cost"]["number"] =
-            (Decimal::from_str(&g["cost"]["number"].string()).unwrap_or_default() + bb.cost)
-              .to_json();
         }
+        let record =
+            // create_goods_with_category(ws, store, goods, _goods.clone(), batch, bb, "stock");
+            create_empty_goods(ws, store, goods, _goods.clone());
+
+        // let _ = goods_map.entry(record["_id"].to_string()).or_insert(record);
+
+        let mut g = goods_map.entry(record["_id"].to_string()).or_insert(record);
+        g["qty"]["number"] =
+          (Decimal::from_str(&g["qty"]["number"].string()).unwrap_or_default() + bb.qty).to_json();
+        g["cost"]["number"] =
+          (Decimal::from_str(&g["cost"]["number"].string()).unwrap_or_default() + bb.cost).to_json();
       }
     }
   }
