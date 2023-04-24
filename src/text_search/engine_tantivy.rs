@@ -103,6 +103,10 @@ impl TantivyEngine {
   }
 
   pub fn search(&self, input: &str) -> Vec<Uuid> {
+    // parameters
+    let limit = 10;
+    let offset = 0;
+
     let (uuid, name) = self.schematic();
     
     let reader = self.reader.lock().unwrap();
@@ -111,7 +115,7 @@ impl TantivyEngine {
     let parser = QueryParser::for_index(&self.index, vec![name]);
     let query = parser.parse_query(input).unwrap();
 
-    let top_docs = searcher.search(&query, &TopDocs::with_limit(10).and_offset(0)).unwrap();
+    let top_docs = searcher.search(&query, &TopDocs::with_limit(limit).and_offset(offset)).unwrap();
 
     top_docs
       .iter()
