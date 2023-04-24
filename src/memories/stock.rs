@@ -12,6 +12,11 @@ use store::balance::BalanceForGoods;
 use store::elements::{Batch, Cost, Goods, Store, ToJson};
 use uuid::Uuid;
 
+enum Category {
+  Batch,
+  Stock,
+}
+
 pub(crate) fn find_items(
   ws: &Workspace,
   balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
@@ -44,20 +49,17 @@ fn find_elements(
   filter: &JsonValue,
   ws: &Workspace,
 ) -> Vec<JsonValue> {
+  let mut cache = Cache::new(ws);
+
   let mut storages = HashMap::new();
   let mut categories = HashMap::new();
   let mut goods_map = HashMap::new();
   let mut batches_list = Vec::new();
 
   'store: for (store, sb) in balances {
-    for (label, value) in filter.entries() {
-      if label == "storage" {
-        let uuid = value.uuid_or_none();
-        if uuid != None && uuid.unwrap() != *store {
-          continue 'store;
-        }
-      }
-    }
+    if !is_store_match(&cache, filter, store) {
+      continue 'store;
+    };
     'goods: for (goods, gb) in sb {
       'batch: for (batch, bb) in gb {
         // workaround until get_balance_for_all remove zero balances
@@ -65,7 +67,7 @@ fn find_elements(
           continue 'batch;
         }
 
-        let _goods = goods.resolve_to_json_object(&ws);
+        let _goods = cache.resolve_uuid(goods);
         let category = _goods["category"].string();
 
         println!("filter_entries: {filter:?}");
@@ -94,16 +96,22 @@ fn find_elements(
               continue 'goods;
             }
 
-            let mut b =
-              create_goods_with_category(ws, store, goods, _goods.clone(), batch, bb, "batch");
+            let mut b = create_goods_with_category(
+              ws,
+              store,
+              goods,
+              _goods.clone(),
+              Some(batch),
+              bb,
+              Category::Batch,
+            );
 
             batches_list.push(b);
             continue 'label;
           }
         }
         let record =
-            // create_goods_with_category(ws, store, goods, _goods.clone(), batch, bb, "stock");
-            create_empty_goods(ws, store, goods, _goods.clone());
+          create_goods_with_category(ws, store, goods, _goods.clone(), None, bb, Category::Stock);
 
         // let _ = goods_map.entry(record["_id"].to_string()).or_insert(record);
 
@@ -152,25 +160,47 @@ fn find_elements(
   items
 }
 
-fn create_empty_goods(ws: &Workspace, store: &Store, goods: &Goods, _goods: JsonValue) -> JsonValue {
-  // TODO: add date into this id
-  let bytes: Vec<u8> = store
-    .as_bytes()
-    .into_iter()
-    .zip(goods.as_bytes().into_iter())
-    .map(|(a, (b))| a ^ b)
-    .collect();
+fn is_store_match(cache: &Cache, filter: &JsonValue, store: &Store) -> bool {
+  let storage = cache.resolve_uuid(store);
 
-  let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
+  for (label, value) in filter.entries() {
+    if label == "storage" {
+      let current_id = value.uuid_or_none();
+      if current_id.unwrap() == *store {
+        return true;
+      }
 
-  json::object! {
-    _id: id.to_json(),
-    storage: store.resolve_to_json_object(ws),
-    goods: _goods,
-    qty: json::object! { number: Decimal::ZERO.to_json() },
-    cost: json::object! { number: Decimal::ZERO.to_json() },
-    _category: "stock",
+      if let Some(id) = storage["location"].as_str() {
+        let mut stack = HashSet::new();
+        let mut current = id.to_owned();
+        let top = loop {
+          if stack.insert(current.clone()) {
+            let storage = cache.resolve_str(id);
+            if let Some(id) = storage["location"].as_str() {
+              if id == &store.to_string() {
+                return true;
+              }
+              current = id.to_owned();
+            } else {
+              break current;
+            }
+          } else {
+            // recursion detected, break
+            break "".to_owned();
+          }
+        };
+
+        if top != *store {
+          return false;
+        }
+      } else {
+        if current_id != None && current_id.unwrap() != *store {
+          return false;
+        }
+      }
+    }
   }
+  true
 }
 
 fn create_goods_with_category(
@@ -178,29 +208,52 @@ fn create_goods_with_category(
   store: &Store,
   goods: &Goods,
   _goods: JsonValue,
-  batch: &Batch,
+  batch: Option<&Batch>,
   bb: &BalanceForGoods,
-  category: &str,
+  category: Category,
 ) -> JsonValue {
   // TODO: add date into this id
-  let bytes: Vec<u8> = store
-    .as_bytes()
-    .into_iter()
-    .zip(goods.as_bytes().into_iter().zip(batch.id.as_bytes().into_iter()))
-    .map(|(a, (b, c))| a ^ b ^ c)
-    .collect();
+  let bytes: Vec<u8> = if let Some(_batch) = batch {
+    store
+      .as_bytes()
+      .into_iter()
+      .zip(goods.as_bytes().into_iter().zip(_batch.id.as_bytes().into_iter()))
+      .map(|(a, (b, c))| a ^ b ^ c)
+      .collect()
+  } else {
+    store
+      .as_bytes()
+      .into_iter()
+      .zip(goods.as_bytes().into_iter())
+      .map(|(a, b)| a ^ b)
+      .collect()
+  };
 
   let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
 
-  json::object! {
-    _id: id.to_json(),
-    storage: store.resolve_to_json_object(ws),
-    goods: _goods,
-    batch: batch.to_json(),
-    qty: json::object! { number: bb.qty.to_json() },
-    cost: json::object! { number: bb.cost.to_json() },
-    _category: category,
-  }
+  return match category {
+    Category::Stock => {
+      json::object! {
+        _id: id.to_json(),
+        storage: store.resolve_to_json_object(ws),
+        goods: _goods,
+        qty: json::object! { number: Decimal::ZERO.to_json() },
+        cost: json::object! { number: Decimal::ZERO.to_json() },
+        _category: "stock",
+      }
+    },
+    Category::Batch => {
+      json::object! {
+        _id: id.to_json(),
+        storage: store.resolve_to_json_object(ws),
+        goods: _goods,
+        batch: batch.unwrap().to_json(),
+        qty: json::object! { number: bb.qty.to_json() },
+        cost: json::object! { number: bb.cost.to_json() },
+        _category: "batch",
+      }
+    },
+  };
 }
 
 fn storages_and_categories(
@@ -234,7 +287,7 @@ fn storages_and_categories(
               }
             } else {
               // recursion detected, break
-              continue;
+              break "".to_owned();
             }
           };
 
@@ -243,6 +296,7 @@ fn storages_and_categories(
             Ok(id) => {
               let mut store_cost = storages.entry(id).or_insert(Cost::ZERO);
               store_cost += bb.cost;
+              continue;
             },
             Err(_) => {
               // error detected, ignore for now
