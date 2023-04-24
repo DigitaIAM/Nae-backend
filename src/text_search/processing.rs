@@ -80,16 +80,20 @@ impl SearchEngine {
 
   pub fn search(&self, text: &str) -> Vec<Uuid> {
     let param = text.rsplit("--set").next().unwrap_or("10");
-    let offset = param.parse::<usize>().unwrap_or(10);
+    let page_size = param.split("/").next().unwrap_or("10");
+    let page_size = page_size.parse::<usize>().unwrap_or(10);
 
-    println!("OFFSET = {offset}");
+    let offset = param.rsplit("/").next().unwrap_or("0");
+    let offset = offset.parse::<usize>().unwrap_or(0) * page_size;
+
+    println!("PAGE SIZE = {page_size}; OFFSET = {offset}");
     
     let text = text.split("--set").next().unwrap_or(text);
     
     dbg!(text);
 
-    let result_full = self.tan.search(&format!("\"{}\"", text), offset);
-    let result_tan = self.tan.search(text, offset);
+    let result_full = self.tan.search(&format!("\"{}\"", text), page_size, offset);
+    let result_tan = self.tan.search(text, page_size, offset);
     let result_sim = self.sim.search(text);
 
     println!("result_full.len() = {}", result_full.len());
@@ -100,13 +104,13 @@ impl SearchEngine {
     let result_sim = remove_duplicates(result_sim, &result_tan);
     let result_sim = remove_duplicates(result_sim, &result_full);
 
-    let mut result: Vec<Uuid> = Vec::with_capacity(offset);
+    let mut result: Vec<Uuid> = Vec::with_capacity(page_size);
 
-    let half_offset = offset / 2;
+    let half_page = page_size / 2;
 
-    result.extend(result_full.iter().take(half_offset));
-    result.extend(result_tan.iter().take(half_offset - result.len()));
-    result.extend(result_sim.iter().take(offset - result.len()));
+    result.extend(result_full.iter().take(half_page));
+    result.extend(result_tan.iter().take(half_page - result.len()));
+    result.extend(result_sim.iter().take(page_size - result.len()));
 
     println!("result.len() = {}", result.len());
 
