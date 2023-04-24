@@ -79,8 +79,8 @@ impl SearchEngine {
   }
 
   pub fn search(&self, text: &str) -> Vec<Uuid> {
-    let param = text.rsplit("--set").next().unwrap_or("0");
-    let offset = param.parse::<usize>().unwrap_or(0);
+    let param = text.rsplit("--set").next().unwrap_or("10");
+    let offset = param.parse::<usize>().unwrap_or(10);
 
     println!("OFFSET = {offset}");
     
@@ -100,11 +100,15 @@ impl SearchEngine {
     let result_sim = remove_duplicates(result_sim, &result_tan);
     let result_sim = remove_duplicates(result_sim, &result_full);
 
-    let mut result: Vec<Uuid> = Vec::with_capacity(10);
+    let mut result: Vec<Uuid> = Vec::with_capacity(offset);
 
-    result.extend(result_full.iter().take(5));
-    result.extend(result_tan.iter().take(5 - result.len()));
-    result.extend(result_sim.iter().take(10 - result.len()));
+    let half_offset = offset / 2;
+
+    result.extend(result_full.iter().take(half_offset));
+    result.extend(result_tan.iter().take(half_offset - result.len()));
+    result.extend(result_sim.iter().take(offset - result.len()));
+
+    println!("result.len() = {}", result.len());
 
     result
   }
