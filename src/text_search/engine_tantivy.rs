@@ -111,7 +111,7 @@ impl TantivyEngine {
     let parser = QueryParser::for_index(&self.index, vec![name]);
     let query = parser.parse_query(input).unwrap();
 
-    let top_docs = searcher.search(&query, &TopDocs::with_limit(10).and_offset(3)).unwrap();
+    let top_docs = searcher.search(&query, &TopDocs::with_limit(10).and_offset(0)).unwrap();
 
     top_docs
       .iter()
