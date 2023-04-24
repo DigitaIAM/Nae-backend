@@ -20,19 +20,12 @@ enum Category {
 pub(crate) fn find_items(
   ws: &Workspace,
   balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
-  filter: &JsonValue,
+  filters: &JsonValue,
   skip: usize,
 ) -> crate::services::Result {
-  println!("find_items filter: {filter:?}");
+  println!("find_items filter: {filters:?}");
 
-  let items = if filter.is_empty() {
-    println!("storages_and_categories");
-    storages_and_categories(balances, ws)
-  } else {
-    println!("find_elements");
-    find_elements(balances, filter, ws)
-  };
-
+  let items = process(balances, filters, ws);
   let total = items.len();
 
   log::debug!("fn_find_items: {items:?}");
@@ -44,284 +37,152 @@ pub(crate) fn find_items(
   });
 }
 
-fn find_elements(
+fn process(
   balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
-  filter: &JsonValue,
+  filters: &JsonValue,
   ws: &Workspace,
 ) -> Vec<JsonValue> {
-  let mut cache = Cache::new(ws);
-
-  let mut storages = HashMap::new();
-  let mut categories = HashMap::new();
-  let mut goods_map = HashMap::new();
-  let mut batches_list = Vec::new();
-
-  'store: for (store, sb) in balances {
-    if !is_store_match(&cache, filter, store) {
-      continue 'store;
-    };
-    'goods: for (goods, gb) in sb {
-      'batch: for (batch, bb) in gb {
-        // workaround until get_balance_for_all remove zero balances
-        if bb.is_zero() {
-          continue 'batch;
-        }
-
-        let _goods = cache.resolve_uuid(goods);
-        let category = _goods["category"].string();
-
-        println!("filter_entries: {filter:?}");
-        'label: for (label, value) in filter.entries() {
-          // println!("label: {label} value: {value:?}");
-          if label == "storage" {
-            if filter.len() == 1 {
-              let mut category_cost = categories.entry(category.clone()).or_insert(Cost::ZERO);
-              category_cost += bb.cost;
-            }
-          } else if label == "category" {
-            let cat = value.string();
-            if cat != "" {
-              if cat != category {
-                continue 'goods;
-              } else {
-                if filter.len() == 1 {
-                  let mut store_cost = storages.entry(*store).or_insert(Cost::ZERO);
-                  store_cost += bb.cost;
-                }
-              }
-            }
-          } else if label == "stock" {
-            let requested_goods = value.uuid().unwrap(); // TODO Handle Error?
-            if requested_goods != *goods {
-              continue 'goods;
-            }
-
-            let mut b = create_goods_with_category(
-              ws,
-              store,
-              goods,
-              _goods.clone(),
-              Some(batch),
-              bb,
-              Category::Batch,
-            );
-
-            batches_list.push(b);
-            continue 'label;
-          }
-        }
-        let record =
-          create_goods_with_category(ws, store, goods, _goods.clone(), None, bb, Category::Stock);
-
-        // let _ = goods_map.entry(record["_id"].to_string()).or_insert(record);
-
-        let mut g = goods_map.entry(record["_id"].to_string()).or_insert(record);
-        g["qty"]["number"] =
-          (Decimal::from_str(&g["qty"]["number"].string()).unwrap_or_default() + bb.qty).to_json();
-        g["cost"]["number"] =
-          (Decimal::from_str(&g["cost"]["number"].string()).unwrap_or_default() + bb.cost).to_json();
-      }
-    }
-  }
-  let mut items: Vec<JsonValue> = Vec::new();
-
-  if !batches_list.is_empty() {
-    // println!("_batches: {batches_list:?}");
-    items.append(&mut batches_list);
-    // println!("_items1: {items:?}");
-    return items;
-  }
-
-  if !storages.is_empty() {
-    let mut storages_items: Vec<JsonValue> = process_and_sort(ws, storages, "storage");
-    items.append(&mut storages_items);
-  }
-
-  if !categories.is_empty() {
-    let mut category_items: Vec<JsonValue> = process_and_sort(ws, categories, "category");
-    items.append(&mut category_items);
-  }
-
-  if !goods_map.is_empty() {
-    println!("goods_map: {goods_map:?}");
-    let mut goods_items: Vec<JsonValue> = goods_map.into_iter().map(|(_, v)| v).collect();
-
-    goods_items.sort_by(|a, b| {
-      let a = a["name"].as_str().unwrap_or_default();
-      let b = b["name"].as_str().unwrap_or_default();
-
-      a.cmp(b)
-    });
-
-    items.append(&mut goods_items);
-  }
-
-  // println!("_items2: {items:?}");
-  items
-}
-
-fn is_store_match(cache: &Cache, filter: &JsonValue, store: &Store) -> bool {
-  let storage = cache.resolve_uuid(store);
-
-  for (label, value) in filter.entries() {
-    if label == "storage" {
-      let current_id = value.uuid_or_none();
-      if current_id.unwrap() == *store {
-        return true;
-      }
-
-      if let Some(id) = storage["location"].as_str() {
-        let mut stack = HashSet::new();
-        let mut current = id.to_owned();
-        let top = loop {
-          if stack.insert(current.clone()) {
-            let storage = cache.resolve_str(id);
-            if let Some(id) = storage["location"].as_str() {
-              if id == &store.to_string() {
-                return true;
-              }
-              current = id.to_owned();
-            } else {
-              break current;
-            }
-          } else {
-            // recursion detected, break
-            break "".to_owned();
-          }
-        };
-
-        if top != *store {
-          return false;
-        }
-      } else {
-        if current_id != None && current_id.unwrap() != *store {
-          return false;
-        }
-      }
-    }
-  }
-  true
-}
-
-fn create_goods_with_category(
-  ws: &Workspace,
-  store: &Store,
-  goods: &Goods,
-  _goods: JsonValue,
-  batch: Option<&Batch>,
-  bb: &BalanceForGoods,
-  category: Category,
-) -> JsonValue {
-  // TODO: add date into this id
-  let bytes: Vec<u8> = if let Some(_batch) = batch {
-    store
-      .as_bytes()
-      .into_iter()
-      .zip(goods.as_bytes().into_iter().zip(_batch.id.as_bytes().into_iter()))
-      .map(|(a, (b, c))| a ^ b ^ c)
-      .collect()
-  } else {
-    store
-      .as_bytes()
-      .into_iter()
-      .zip(goods.as_bytes().into_iter())
-      .map(|(a, b)| a ^ b)
-      .collect()
-  };
-
-  let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
-
-  return match category {
-    Category::Stock => {
-      json::object! {
-        _id: id.to_json(),
-        storage: store.resolve_to_json_object(ws),
-        goods: _goods,
-        qty: json::object! { number: Decimal::ZERO.to_json() },
-        cost: json::object! { number: Decimal::ZERO.to_json() },
-        _category: "stock",
-      }
-    },
-    Category::Batch => {
-      json::object! {
-        _id: id.to_json(),
-        storage: store.resolve_to_json_object(ws),
-        goods: _goods,
-        batch: batch.unwrap().to_json(),
-        qty: json::object! { number: bb.qty.to_json() },
-        cost: json::object! { number: bb.cost.to_json() },
-        _category: "batch",
-      }
-    },
-  };
-}
-
-fn storages_and_categories(
-  balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
-  ws: &Workspace,
-) -> Vec<JsonValue> {
-  let mut storages = HashMap::new();
-  let mut categories = HashMap::new();
+  let mut storages_aggregation = HashMap::new();
+  let mut categories_aggregation = HashMap::new();
+  let mut goods_aggregation = HashMap::new();
+  let mut batches_aggregation = HashMap::new();
 
   let mut cache = Cache::new(ws);
+
+  let store_filter = filters["storage"].uuid_or_none();
+  let cat_filter = filters["category"].uuid_or_none();
+  let goods_filter = filters["goods"].uuid_or_none();
 
   for (store, sb) in balances {
     for (goods, gb) in sb {
-      for (_, bb) in gb {
+      for (batch, bb) in gb {
         // workaround until get_balance_for_all remove zero balances
         if bb.is_zero() {
           continue;
         }
 
-        let storage = cache.resolve_uuid(store);
-        if let Some(id) = storage["location"].as_str() {
-          let mut stack = HashSet::new();
-          let mut current = id.to_owned();
-          let top = loop {
-            if stack.insert(current.clone()) {
-              let storage = cache.resolve_str(id);
-              if let Some(id) = storage["location"].as_str() {
-                current = id.to_owned();
-              } else {
-                break current;
-              }
-            } else {
-              // recursion detected, break
-              break "".to_owned();
-            }
-          };
+        // filtering
 
-          let storage = cache.resolve_str(top.as_str());
-          match storage["_uuid"].uuid() {
-            Ok(id) => {
-              let mut store_cost = storages.entry(id).or_insert(Cost::ZERO);
-              store_cost += bb.cost;
-              continue;
-            },
-            Err(_) => {
-              // error detected, ignore for now
-            },
-          }
-
+        // storage
+        let (store_top, before, store_found) = top_and_before(&cache, *store, store_filter);
+        println!("store {store:?} store_top {store_top:?} before {before:?} found {store_found}");
+        if store_filter.is_some() && !store_found {
           continue;
         }
+        let store_uuid = before.unwrap_or(store_top);
 
-        let mut store_cost = storages.entry(*store).or_insert(Cost::ZERO);
-        store_cost += bb.cost;
+        // category
+        let goods_obj = goods.resolve_to_json_object(&ws);
+        let category_id = goods_obj["category"].string();
+        let category_obj = category_id.resolve_to_json_object(&ws);
+        if let Some(filter) = cat_filter {
+          if let Some(uuid) = category_obj["_uuid"].uuid_or_none() {
+            if uuid != filter {
+              continue;
+            }
+          } else {
+            continue;
+          }
+        }
 
-        let _goods = goods.resolve_to_json_object(&ws);
-        let category = _goods["category"].string();
+        // goods
+        if let Some(filter) = goods_filter {
+          if *goods != filter {
+            continue;
+          }
+        }
 
-        let mut category_cost = categories.entry(category).or_insert(Cost::ZERO);
-        category_cost += bb.cost;
+        // aggregate
+        let mut cost = storages_aggregation.entry(store_uuid).or_insert(Cost::ZERO);
+        cost += bb.cost;
+
+        let mut cost = categories_aggregation.entry(category_id).or_insert(Cost::ZERO);
+        cost += bb.cost;
+
+        let mut balance = goods_aggregation.entry(*goods).or_insert(BalanceForGoods::default());
+        balance.qty += bb.qty;
+        balance.cost += bb.cost;
+
+        if goods_filter.is_some() {
+          let mut balance = batches_aggregation
+            .entry((*store, *goods, batch.clone()))
+            .or_insert(BalanceForGoods::default());
+          balance.qty += bb.qty;
+          balance.cost += bb.cost;
+        }
       }
     }
   }
 
-  let mut goods_items = process_and_sort(ws, storages, "storage");
-  let mut category_items = process_and_sort(ws, categories, "category");
+  // workaround: remove filtering storage at aggregation
+  if let Some(store) = store_filter.as_ref() {
+    storages_aggregation.remove(store);
+  }
 
-  [category_items, goods_items].concat()
+  let mut storages_items = process_and_sort(ws, storages_aggregation, "storage");
+  let mut categories_items = process_and_sort(ws, categories_aggregation, "category");
+  let mut goods_items = process_and_sort(ws, goods_aggregation, "goods");
+  let mut batch_items = process_and_sort(ws, batches_aggregation, "batch");
+
+  if goods_filter.is_some() {
+    println!("return - batches");
+    batch_items // stores?
+  } else if store_filter.is_none() || categories_items.len() > 1 {
+    if storages_items.len() > 1 {
+      println!("return - storages + categories");
+      [storages_items, categories_items].concat()
+    } else {
+      println!("return - categories");
+      [categories_items].concat()
+    }
+  } else {
+    println!(
+      "return - storages + goods | categories = {:?} {categories_items:?}",
+      categories_items.len()
+    );
+    [storages_items, goods_items].concat()
+  }
+}
+
+fn top_and_before(cache: &Cache, store: Store, filter: Option<Uuid>) -> (Uuid, Option<Uuid>, bool) {
+  if filter.is_some() && Some(store) == filter {
+    return (store, None, true);
+  }
+
+  let mut prev_uuid = Some(store);
+
+  let mut storage = cache.resolve_uuid(store);
+  if let Some(id) = storage["location"].as_str() {
+    let mut current_id = id.to_owned();
+
+    let mut stack = HashSet::new();
+    let top = loop {
+      if stack.insert(current_id.clone()) {
+        let current_storage = cache.resolve_str(current_id.as_str());
+
+        // TODO review it, bad unwrap_or code
+        let uuid = current_storage["_uuid"].uuid_or_none().unwrap_or(store);
+        if filter.is_some() && Some(uuid) == filter {
+          return (uuid, prev_uuid, true);
+        }
+        prev_uuid = Some(uuid);
+
+        if let Some(id) = current_storage["location"].as_str() {
+          // check next id
+          current_id = id.to_owned();
+        } else {
+          break uuid;
+        }
+      } else {
+        // recursion detected, break
+        break store; // TODO review it, bad code
+      }
+    };
+
+    (top, None, false)
+  } else {
+    (store, None, false)
+  }
 }
 
 fn process_and_sort<K, V>(ws: &Workspace, mut map: HashMap<K, V>, cat: &str) -> Vec<JsonValue>
@@ -353,6 +214,28 @@ where
   items
 }
 
+impl Resolve for (Store, Goods, Batch) {
+  fn resolve_to_json_object(&self, ws: &Workspace) -> JsonValue {
+    let bytes: Vec<u8> = self
+      .0
+      .as_bytes()
+      .into_iter()
+      .zip(self.1.as_bytes().into_iter().zip(self.2.id.as_bytes().into_iter()))
+      .map(|(a, (b, c))| a ^ b ^ c)
+      .collect();
+
+    let id = Uuid::from_bytes(bytes.try_into().unwrap_or_default());
+
+    json::object! {
+      _id: id.to_json(),
+      storage: self.0.resolve_to_json_object(ws),
+      goods: self.1.resolve_to_json_object(ws),
+      batch: self.2.to_json(),
+      _category: "batch",
+    }
+  }
+}
+
 struct Cache<'a> {
   ws: &'a Workspace,
   map: RwLock<HashMap<String, JsonValue>>,
@@ -363,7 +246,7 @@ impl<'a> Cache<'a> {
     Cache { ws, map: RwLock::new(HashMap::new()) }
   }
 
-  fn resolve_uuid(&self, id: &Uuid) -> JsonValue {
+  fn resolve_uuid(&self, id: Uuid) -> JsonValue {
     let mut cache = self.map.write().unwrap();
 
     cache
