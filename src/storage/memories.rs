@@ -124,10 +124,17 @@ fn remove_prefix(id: &String) -> String {
   }
 }
 
-pub(crate) fn build_folder_path(id: &String, folder: &PathBuf) -> PathBuf {
+pub(crate) fn build_folder_path(id: &String, folder: &PathBuf) -> Option<PathBuf> {
+  if id.is_empty() {
+    return None;
+  }
   // println!("before: {id}");
   let id = remove_prefix(id);
   // println!("after: {id}");
+
+  if id.len() < 8 {
+    return None;
+  }
 
   let year = &id[0..4];
   let month = &id[5..7];
@@ -140,7 +147,7 @@ pub(crate) fn build_folder_path(id: &String, folder: &PathBuf) -> PathBuf {
   folder.push(month);
   folder.push(&id);
 
-  folder
+  Some(folder)
 }
 
 impl Memories {
@@ -159,7 +166,10 @@ impl Memories {
         // println!("id: {id}");
 
         // context/2023/01/2023-01-06T12:43:15Z/
-        let folder = build_folder_path(&id, &self.folder);
+        let folder = match build_folder_path(&id, &self.folder) {
+          Some(f) => f,
+          None => return Err(Error::IOError(format!("fail on folder path for id: {}", id))),
+        };
 
         // println!("creating folder {folder:?}");
 
@@ -202,16 +212,13 @@ impl Memories {
     data: Data,
   ) -> Result<JsonValue, Error> {
     let time = Utc::now();
-    let data = save_data(
-      app,
-      &self.top_folder,
-      &build_folder_path(&id, &self.folder),
-      &self.ctx,
-      &id,
-      None,
-      time,
-      data,
-    )?;
+
+    let folder = match build_folder_path(&id, &self.folder) {
+      Some(f) => f,
+      None => return Err(Error::IOError(format!("fail on folder path for id: {}", id))),
+    };
+
+    let data = save_data(app, &self.top_folder, &folder, &self.ctx, &id, None, time, data)?;
 
     Ok(data.enrich(&self.ws))
   }

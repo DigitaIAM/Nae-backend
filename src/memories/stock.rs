@@ -4,8 +4,10 @@ use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::JsonParams;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::str::FromStr;
+use std::sync::RwLock;
 use store::balance::BalanceForGoods;
 use store::elements::{Batch, Cost, Goods, Store, ToJson};
 use uuid::Uuid;
@@ -19,8 +21,8 @@ pub(crate) fn find_items(
   println!("find_items filter: {filter:?}");
 
   let items = if filter.is_empty() {
-    println!("find_wh_and_categories");
-    find_wh_and_categories(balances, ws)
+    println!("storages_and_categories");
+    storages_and_categories(balances, ws)
   } else {
     println!("find_elements");
     find_elements(balances, filter, ws)
@@ -81,14 +83,13 @@ fn find_elements(
                 continue 'goods;
               } else {
                 if filter.len() == 1 {
-                  let mut store_cost = storages.entry(store).or_insert(Cost::ZERO);
+                  let mut store_cost = storages.entry(*store).or_insert(Cost::ZERO);
                   store_cost += bb.cost;
                 }
               }
             }
           } else if label == "stock" {
             let requested_goods = value.uuid().unwrap(); // TODO Handle Error?
-            println!("requested_goods: {requested_goods:?}, goods: {goods:?}");
             if requested_goods != *goods {
               continue 'goods;
             }
@@ -124,52 +125,12 @@ fn find_elements(
   }
 
   if !storages.is_empty() {
-    let mut storages_items: Vec<JsonValue> = storages
-      .keys()
-      .map(|id| id.clone())
-      .collect::<Vec<_>>()
-      .into_iter()
-      .map(|id| (id.resolve_to_json_object(&ws), id))
-      .map(|(mut o, id)| {
-        let cost = storages.remove(&id).unwrap_or_default();
-        o["_cost"] = cost.to_json();
-        o["_category"] = "storage".into();
-        o
-      })
-      .collect();
-
-    items.sort_by(|a, b| {
-      let a = a["name"].as_str().unwrap_or_default();
-      let b = b["name"].as_str().unwrap_or_default();
-
-      a.cmp(b)
-    });
-
+    let mut storages_items: Vec<JsonValue> = process_and_sort(ws, storages, "storage");
     items.append(&mut storages_items);
   }
 
   if !categories.is_empty() {
-    let mut category_items: Vec<JsonValue> = categories
-      .keys()
-      .map(|id| id.clone())
-      .collect::<Vec<_>>()
-      .into_iter()
-      .map(|id| (id.resolve_to_json_object(&ws), id))
-      .map(|(mut o, id)| {
-        let cost = categories.remove(&id).unwrap_or_default();
-        o["_cost"] = cost.to_json();
-        o["_category"] = "category".into();
-        o
-      })
-      .collect();
-
-    category_items.sort_by(|a, b| {
-      let a = a["name"].as_str().unwrap_or_default();
-      let b = b["name"].as_str().unwrap_or_default();
-
-      a.cmp(b)
-    });
-
+    let mut category_items: Vec<JsonValue> = process_and_sort(ws, categories, "category");
     items.append(&mut category_items);
   }
 
@@ -242,12 +203,14 @@ fn create_goods_with_category(
   }
 }
 
-fn find_wh_and_categories(
+fn storages_and_categories(
   balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
   ws: &Workspace,
 ) -> Vec<JsonValue> {
   let mut storages = HashMap::new();
   let mut categories = HashMap::new();
+
+  let mut cache = Cache::new(ws);
 
   for (store, sb) in balances {
     for (goods, gb) in sb {
@@ -256,7 +219,40 @@ fn find_wh_and_categories(
         if bb.is_zero() {
           continue;
         }
-        let mut store_cost = storages.entry(store).or_insert(Cost::ZERO);
+
+        let storage = cache.resolve_uuid(store);
+        if let Some(id) = storage["location"].as_str() {
+          let mut stack = HashSet::new();
+          let mut current = id.to_owned();
+          let top = loop {
+            if stack.insert(current.clone()) {
+              let storage = cache.resolve_str(id);
+              if let Some(id) = storage["location"].as_str() {
+                current = id.to_owned();
+              } else {
+                break current;
+              }
+            } else {
+              // recursion detected, break
+              continue;
+            }
+          };
+
+          let storage = cache.resolve_str(top.as_str());
+          match storage["_uuid"].uuid() {
+            Ok(id) => {
+              let mut store_cost = storages.entry(id).or_insert(Cost::ZERO);
+              store_cost += bb.cost;
+            },
+            Err(_) => {
+              // error detected, ignore for now
+            },
+          }
+
+          continue;
+        }
+
+        let mut store_cost = storages.entry(*store).or_insert(Cost::ZERO);
         store_cost += bb.cost;
 
         let _goods = goods.resolve_to_json_object(&ws);
@@ -268,16 +264,27 @@ fn find_wh_and_categories(
     }
   }
 
-  let mut items: Vec<JsonValue> = storages
+  let mut goods_items = process_and_sort(ws, storages, "storage");
+  let mut category_items = process_and_sort(ws, categories, "category");
+
+  [category_items, goods_items].concat()
+}
+
+fn process_and_sort<K, V>(ws: &Workspace, mut map: HashMap<K, V>, cat: &str) -> Vec<JsonValue>
+where
+  K: Resolve + Hash + Eq + PartialEq + Clone,
+  V: ToJson + Default,
+{
+  let mut items: Vec<JsonValue> = map
     .keys()
     .map(|id| id.clone())
     .collect::<Vec<_>>()
     .into_iter()
     .map(|id| (id.resolve_to_json_object(&ws), id))
     .map(|(mut o, id)| {
-      let cost = storages.remove(&id).unwrap_or_default();
+      let cost = map.remove(&id).unwrap_or_default();
       o["_cost"] = cost.to_json();
-      o["_category"] = "storage".into();
+      o["_category"] = cat.into();
       o
     })
     .collect();
@@ -289,28 +296,34 @@ fn find_wh_and_categories(
     a.cmp(b)
   });
 
-  let mut category_items: Vec<JsonValue> = categories
-    .keys()
-    .map(|id| id.clone())
-    .collect::<Vec<_>>()
-    .into_iter()
-    .map(|id| (id.resolve_to_json_object(&ws), id))
-    .map(|(mut o, id)| {
-      let cost = categories.remove(&id).unwrap_or_default();
-      o["_cost"] = cost.to_json();
-      o["_category"] = "category".into();
-      o
-    })
-    .collect();
-
-  category_items.sort_by(|a, b| {
-    let a = a["name"].as_str().unwrap_or_default();
-    let b = b["name"].as_str().unwrap_or_default();
-
-    a.cmp(b)
-  });
-
-  items.append(&mut category_items);
-
   items
+}
+
+struct Cache<'a> {
+  ws: &'a Workspace,
+  map: RwLock<HashMap<String, JsonValue>>,
+}
+
+impl<'a> Cache<'a> {
+  fn new(ws: &'a Workspace) -> Self {
+    Cache { ws, map: RwLock::new(HashMap::new()) }
+  }
+
+  fn resolve_uuid(&self, id: &Uuid) -> JsonValue {
+    let mut cache = self.map.write().unwrap();
+
+    cache
+      .entry(id.to_string())
+      .or_insert_with(|| id.resolve_to_json_object(self.ws))
+      .clone()
+  }
+
+  fn resolve_str(&self, id: &str) -> JsonValue {
+    let mut cache = self.map.write().unwrap();
+
+    cache
+      .entry(id.to_string())
+      .or_insert_with(|| id.resolve_to_json_object(self.ws))
+      .clone()
+  }
 }

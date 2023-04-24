@@ -110,6 +110,7 @@ impl Workspace {
   }
 
   pub(crate) fn resolve_uuid(&self, id: &Uuid) -> Option<Document> {
+    // println!("resolve_uuid {id}");
     let mut top_folder = self.folder.clone();
     top_folder.push("memories");
 
@@ -120,15 +121,21 @@ impl Workspace {
     path.push(&id[0..4]);
     path.push(id);
 
+    // println!("path {path:?}");
+
     let path = match fs::read_link(path) {
       Ok(r) => r,
       Err(_) => return None,
     };
 
+    // println!("read link {path:?}");
+
     let mut id = path.to_string_lossy().to_string();
     while &id.as_str()[0..3] == "../" {
       id = id[3..].to_string();
     }
+
+    // println!("id {id}");
 
     let mut path = top_folder.clone();
     path.push(format!("{}/latest.json", id));
@@ -137,10 +144,17 @@ impl Workspace {
     let mut ctx: Vec<_> = id.split("/").map(|s| s.to_string()).collect();
     ctx.pop();
 
+    // println!("path {path:?} ctx {ctx:?}");
+
     Some(Document { mem: self.memories(ctx), id, path })
   }
 
   pub(crate) fn resolve_id(&self, id: &str) -> Option<Document> {
+    // println!("resolve_id {id}");
+    if id.is_empty() {
+      return None;
+    }
+
     let mut top_folder = self.folder.clone();
     top_folder.push("memories");
 
@@ -150,11 +164,18 @@ impl Workspace {
     let mut path = top_folder.clone();
     ctx.iter().for_each(|name| path.push(name));
 
-    let mut path = crate::storage::memories::build_folder_path(&ctx_id, &path);
+    if ctx_id.is_empty() {
+      return None;
+    }
+
+    let mut path = match crate::storage::memories::build_folder_path(&ctx_id, &path) {
+      Some(f) => f,
+      None => return None,
+    };
     path.push("latest.json");
 
-    println!("id {id:?}");
-    println!("path {path:?}");
+    // println!("id {id:?}");
+    // println!("path {path:?}");
 
     Some(Document { mem: self.memories(ctx), id: id.to_string(), path })
   }

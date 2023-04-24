@@ -267,7 +267,7 @@ pub trait OrderedTopology {
         let before_balance: Vec<(Batch, BalanceForGoods)> =
           self.goods_balance_before(&op, balances.clone())?;
 
-        println!("BEFORE_BALANCE: {:?}", before_balance);
+        log::debug!("BEFORE_BALANCE: {:?}", before_balance);
 
         let mut qty = match op.op {
           InternalOperation::Receive(_, _) => unreachable!(),
@@ -284,12 +284,12 @@ pub trait OrderedTopology {
             new.is_dependent = true;
             new.batch = batch;
             new.op = InternalOperation::Issue(balance.qty, balance.cost, Mode::Auto);
-            println!("NEW_OP partly: qty {qty} balance {balance:?} op {new:?}");
+            log::debug!("NEW_OP partly: qty {qty} balance {balance:?} op {new:?}");
             ops.push(new);
 
             qty -= balance.qty;
 
-            println!("NEW_OP: qty {:?}", qty);
+            log::debug!("NEW_OP: qty {:?}", qty);
           } else {
             batches.push(batch.clone());
 
@@ -297,7 +297,7 @@ pub trait OrderedTopology {
             new.is_dependent = true;
             new.batch = batch;
             new.op = InternalOperation::Issue(qty, qty * (balance.cost / balance.qty), Mode::Auto);
-            println!("NEW_OP full: qty {qty} balance {balance:?} op {new:?}");
+            log::debug!("NEW_OP full: qty {qty} balance {balance:?} op {new:?}");
             ops.push(new);
 
             qty -= qty;
@@ -308,7 +308,7 @@ pub trait OrderedTopology {
           }
         }
 
-        println!("qty left {qty}");
+        log::debug!("qty left {qty}");
 
         // todo!("update op with qty");
         op.op = match op.op {
