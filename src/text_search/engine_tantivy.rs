@@ -102,10 +102,8 @@ impl TantivyEngine {
     self.force_commit()
   }
 
-  pub fn search(&self, input: &str) -> Vec<Uuid> {
-    // parameters
+  pub fn search(&self, input: &str, offset: usize) -> Vec<Uuid> {
     let limit = 10;
-    let offset = 0;
 
     let (uuid, name) = self.schematic();
     
