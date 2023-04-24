@@ -79,7 +79,15 @@ impl SearchEngine {
   }
 
   pub fn search(&self, text: &str) -> Vec<Uuid> {
+    let param = text.rsplit("--set").next().unwrap_or("0");
+    let offset = param.parse::<usize>().unwrap_or(0);
+    
+    println!("OFFSET = {offset}");
+    
+    let text = text.split("--set").next().unwrap_or(text);
+    
     dbg!(text);
+
     let result_full = self.tan.search(&format!("\"{}\"", text));
     let result_tan = self.tan.search(text);
     let result_sim = self.sim.search(text);
