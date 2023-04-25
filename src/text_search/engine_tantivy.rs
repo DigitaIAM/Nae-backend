@@ -102,7 +102,7 @@ impl TantivyEngine {
     self.force_commit()
   }
 
-  pub fn search(&self, input: &str, page_size: usize) -> Vec<Uuid> {
+  pub fn search(&self, input: &str) -> Vec<Uuid> {
     let (uuid, name) = self.schematic();
     
     let reader = self.reader.lock().unwrap();

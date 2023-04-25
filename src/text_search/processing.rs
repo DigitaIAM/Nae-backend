@@ -81,8 +81,8 @@ impl SearchEngine {
   pub fn search(&self, text: &str, page_size: usize, offset: usize) -> Vec<Uuid> {
     let text = &text.to_lowercase().replace("ё", "е")[..];
 
-    let result_full = self.tan.search(&format!("\"{}\"", text), page_size);
-    let result_tan = self.tan.search(text, page_size);
+    let result_full = self.tan.search(&format!("\"{}\"", text));
+    let result_tan = self.tan.search(text);
     let result_sim = self.sim.search(text);
 
     println!("result_full.len() = {}", result_full.len());
@@ -103,19 +103,21 @@ impl SearchEngine {
     loop {
       let mut page: Vec<Uuid> = Vec::with_capacity(page_size);
 
-      if index < result_full.len() {
+      if index < half_page {
         let mut i = index;
         while i < result_full.len() && page.len() < half_page {
-          page.push(result_full[i]);
+          page.extend(result_full.iter().skip(index).take(half_page - page.len()));
+          // page.push(result_full[i]);
           i += 1;
         }
         index = i;
       }
 
-      if index < result_tan.len() {
+      if index < half_page {
         let mut i = index;
         while i < result_tan.len() && page.len() < half_page {
-          page.push(result_tan[i]);
+          page.extend(result_tan.iter().skip(index).take(half_page - page.len()));
+          // page.push(result_tan[i]);
           i += 1;
         }
         index = i;
@@ -124,7 +126,8 @@ impl SearchEngine {
       if index < result_sim.len() {
         let mut i = index;
         while i < result_sim.len() && page.len() < page_size {
-          page.push(result_sim[i]);
+          page.extend(result_sim.iter().skip(index).take(page_size - page.len()));
+          // page.push(result_sim[i]);
           i += 1;
         }
         index = i;
@@ -137,6 +140,7 @@ impl SearchEngine {
       pages.push(page);
     }
 
+    println!("pages.len() = {}", pages.len());
     let result = pages.into_iter().flatten().skip(offset).take(page_size).collect::<Vec<Uuid>>();
     println!("result.len() = {}; page_size = {page_size}; offset = {offset}", result.len());
 
