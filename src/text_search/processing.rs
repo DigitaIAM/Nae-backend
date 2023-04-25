@@ -107,7 +107,6 @@ impl SearchEngine {
         let mut i = index;
         while i < result_full.len() && page.len() < half_page {
           page.extend(result_full.iter().skip(index).take(half_page - page.len()));
-          // page.push(result_full[i]);
           i += 1;
         }
         index = i;
@@ -117,7 +116,6 @@ impl SearchEngine {
         let mut i = index;
         while i < result_tan.len() && page.len() < half_page {
           page.extend(result_tan.iter().skip(index).take(half_page - page.len()));
-          // page.push(result_tan[i]);
           i += 1;
         }
         index = i;
@@ -127,7 +125,6 @@ impl SearchEngine {
         let mut i = index;
         while i < result_sim.len() && page.len() < page_size {
           page.extend(result_sim.iter().skip(index).take(page_size - page.len()));
-          // page.push(result_sim[i]);
           i += 1;
         }
         index = i;

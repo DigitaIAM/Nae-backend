@@ -45,8 +45,8 @@ impl Service for MemoriesInFiles {
 
     let limit = self.limit(&params);
     // let limit = 20;
-    // let skip = self.skip(&params);
-    let skip = 10;
+    let skip = self.skip(&params);
+    // let skip = 10;
 
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
 
