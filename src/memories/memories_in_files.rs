@@ -64,7 +64,7 @@ impl Service for MemoriesInFiles {
       // println!("memories_in_files.rs FN FIND: {search}");
 
       let result = {
-        let mut engine = self.app.search.read().unwrap();
+        let engine = self.app.search.read().unwrap();
         engine.search(search.as_str())
       };
 
