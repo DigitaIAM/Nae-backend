@@ -43,7 +43,8 @@ impl Service for MemoriesInFiles {
     let wsid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
-    let limit = self.limit(&params);
+    // let limit = self.limit(&params);
+    let limit = 22;
     let skip = self.skip(&params);
 
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);

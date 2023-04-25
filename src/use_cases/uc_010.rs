@@ -50,9 +50,10 @@ fn print_only_name(json: &str) {
     let end = name.len() - 2;
     namevek.push(&name[7..end]);
   }
-
+  let mut index = 1;
   for i in namevek.clone() {
-    println!("\t{}", i)
+    println!("\t{index}) {}", i);
+    index += 1
   }
 }
 

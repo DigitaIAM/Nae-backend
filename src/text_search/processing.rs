@@ -80,17 +80,16 @@ impl SearchEngine {
 
   pub fn search(&self, text: &str) -> Vec<Uuid> {
     let param = text.rsplit("--set").next().unwrap_or("10");
+
     let page_size = param.split("/").next().unwrap_or("10");
     let page_size = page_size.parse::<usize>().unwrap_or(10);
 
     let offset = param.rsplit("/").next().unwrap_or("0");
     let offset = offset.parse::<usize>().unwrap_or(0) * page_size;
 
-    println!("PAGE SIZE = {page_size}; OFFSET = {offset}");
+    // println!("PAGE SIZE = {page_size}; OFFSET = {offset}");
     
     let text = text.split("--set").next().unwrap_or(text);
-    
-    dbg!(text);
 
     let result_full = self.tan.search(&format!("\"{}\"", text), page_size, offset);
     let result_tan = self.tan.search(text, page_size, offset);
