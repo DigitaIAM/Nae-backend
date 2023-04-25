@@ -12,11 +12,6 @@ use store::balance::BalanceForGoods;
 use store::elements::{Batch, Cost, Goods, Store, ToJson};
 use uuid::Uuid;
 
-enum Category {
-  Batch,
-  Stock,
-}
-
 pub(crate) fn find_items(
   ws: &Workspace,
   balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
