@@ -60,7 +60,7 @@ fn process(
 
         // storage
         let (store_top, before, store_found) = top_and_before(&cache, *store, store_filter);
-        println!("store {store:?} store_top {store_top:?} before {before:?} found {store_found}");
+        // println!("store {store:?} store_top {store_top:?} before {before:?} found {store_found}");
         if store_filter.is_some() && !store_found {
           continue;
         }
@@ -124,17 +124,24 @@ fn process(
     batch_items // stores?
   } else if store_filter.is_none() || categories_items.len() > 1 {
     if storages_items.len() > 1 {
-      println!("return - storages + categories");
-      [storages_items, categories_items].concat()
+      if categories_items.len() > 1 {
+        println!("return - storages + categories | categories = {categories_items:?}");
+        [storages_items, categories_items].concat()
+      } else {
+        println!("return - storages + goods");
+        [storages_items, goods_items].concat()
+      }
     } else {
-      println!("return - categories");
-      [categories_items].concat()
+      if categories_items.len() > 1 {
+        println!("return - categories");
+        [categories_items].concat()
+      } else {
+        println!("return - goods");
+        [goods_items].concat()
+      }
     }
   } else {
-    println!(
-      "return - storages + goods | categories = {:?} {categories_items:?}",
-      categories_items.len()
-    );
+    println!("return - storages + goods");
     [storages_items, goods_items].concat()
   }
 }
