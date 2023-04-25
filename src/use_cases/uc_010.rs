@@ -52,7 +52,7 @@ fn print_only_name(json: &str) {
   }
   let mut index = 1;
   for i in namevek.clone() {
-    println!("\t{index}) {}", i);
+    println!("\t{index:>2}) {}", i);
     index += 1
   }
 }

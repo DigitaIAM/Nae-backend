@@ -40,11 +40,15 @@ impl Service for MemoriesInFiles {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
+    let text = self.params(&params)["search"].as_str().unwrap_or_default();
+    let param = text.rsplit("--set").next().unwrap_or("10");
+    let page_size = param.split("/").next().unwrap_or("10");
+    let limit = page_size.parse::<usize>().unwrap_or(10);
+
     let wsid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
     // let limit = self.limit(&params);
-    let limit = 22;
     let skip = self.skip(&params);
 
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
@@ -57,7 +61,7 @@ impl Service for MemoriesInFiles {
       
       let search = search.replace("ё", "е");
 
-      println!("memories_in_files.rs FN FIND: {search}");
+      // println!("memories_in_files.rs FN FIND: {search}");
 
       let result = {
         let mut engine = self.app.search.read().unwrap();
