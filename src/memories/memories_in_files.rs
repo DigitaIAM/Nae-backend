@@ -43,8 +43,8 @@ impl Service for MemoriesInFiles {
     let wsid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
-    // let limit = self.limit(&params);
-    let limit = 20;
+    let limit = self.limit(&params);
+    // let limit = 20;
     let skip = self.skip(&params);
     // let skip = 10;
 

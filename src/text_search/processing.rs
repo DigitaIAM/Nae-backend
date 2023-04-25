@@ -94,21 +94,42 @@ impl SearchEngine {
     let result_sim = remove_duplicates(result_sim, &result_full);
 
     let mut result: Vec<Uuid> = Vec::with_capacity(page_size);
+    let mut pages: Vec<Vec<Uuid>> = vec![];
 
     let half_page = page_size / 2;
 
     let mut index = 0;
 
     loop {
-      if index >= offset {
-        result.extend(result_full.iter().take(half_page));
-        result.extend(result_tan.iter().take(half_page + index - result.len()));
-        result.extend(result_sim.iter().take(page_size + index - result.len()));
+      let mut page: Vec<Uuid> = Vec::with_capacity(page_size);
+
+      if index < result_tan.len() {
+        let mut i = index;
+        while i < result_tan.len() && page.len() < half_page {
+          page.push(result_tan[i]);
+          i += 1;
+        }
+        index = i;
+      }
+
+      if index < result_sim.len() {
+        let mut i = index;
+        while i < result_sim.len() && page.len() < page_size {
+          page.push(result_sim[i]);
+          i += 1;
+        }
+        index = i;
+      }
+
+      if page.len() == 0 {
         break;
       }
-      index += page_size
+
+      pages.push(page);
     }
-    
+
+    // let result = pages.into_iter().flatten().collect::<Vec<Uuid>>();
+    let result = pages.into_iter().flatten().skip(offset).take(page_size).collect::<Vec<Uuid>>();
     println!("result.len() = {}; page_size = {page_size}; offset = {offset}", result.len());
 
     result
