@@ -103,7 +103,7 @@ pub(crate) fn receive_csv_to_json(
     let record = record.unwrap();
 
     let category_name = match &record[1] {
-      "Производство" => "Производство",
+      "производство" => "производство",
       _ => continue,
     };
 
@@ -145,7 +145,7 @@ pub(crate) fn receive_csv_to_json(
     };
     let into_name = &record[8].replace("\\", "").replace("\"", "").replace(",,", ",");
     let into_name = match into_name.as_str() {
-      "Гагарина 36" => "Снабжение Бегбудиев Носир",
+      "Гагарина 36" => "снабжение Бегбудиев Носир",
       "Склад" => "склад",
       "Материалы в пути" => "склад",
       "Администрация" => continue,
