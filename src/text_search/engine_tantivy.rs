@@ -112,7 +112,8 @@ impl TantivyEngine {
     let query = parser.parse_query(input).unwrap();
 
     let top_docs = searcher.search(
-      &query, &TopDocs::with_limit(page_size)
+      // &query, &TopDocs::with_limit(page_size)
+      &query, &TopDocs::with_limit(100)
     ).unwrap();
 
     top_docs

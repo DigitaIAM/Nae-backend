@@ -97,11 +97,19 @@ impl SearchEngine {
 
     let half_page = page_size / 2;
 
-    result.extend(result_full.iter().take(half_page));
-    result.extend(result_tan.iter().take(half_page - result.len()));
-    result.extend(result_sim.iter().take(page_size - result.len()));
+    let mut index = 0;
 
-    println!("result.len() = {}", result.len());
+    loop {
+      if index >= offset {
+        result.extend(result_full.iter().take(half_page));
+        result.extend(result_tan.iter().take(half_page + index - result.len()));
+        result.extend(result_sim.iter().take(page_size + index - result.len()));
+        break;
+      }
+      index += page_size
+    }
+    
+    println!("result.len() = {}; page_size = {page_size}; offset = {offset}", result.len());
 
     result
   }
