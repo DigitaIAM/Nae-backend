@@ -40,18 +40,10 @@ impl Service for MemoriesInFiles {
   }
 
   fn find(&self, params: Params) -> crate::services::Result {
-    let text = self.params(&params)["search"].as_str().unwrap_or_default();
-    let param = text.rsplit("--set").next().unwrap_or("10");
-    let page_size = param.split("/").next().unwrap_or("10");
-    let page_size = page_size.parse::<usize>().unwrap_or(10);
-    let offset = param.rsplit("/").next().unwrap_or("0");
-    let offset = offset.parse::<usize>().unwrap_or(0) * page_size;
-
     let wsid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
-    // let limit = self.limit(&params);
-    let limit = page_size;
+    let limit = self.limit(&params);
     let skip = self.skip(&params);
 
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
@@ -68,7 +60,7 @@ impl Service for MemoriesInFiles {
 
       let result = {
         let engine = self.app.search.read().unwrap();
-        engine.search(search.as_str(), page_size, offset)
+        engine.search(search.as_str(), limit, skip)
       };
 
       let total = result.len();
