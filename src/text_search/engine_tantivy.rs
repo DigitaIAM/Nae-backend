@@ -102,7 +102,7 @@ impl TantivyEngine {
     self.force_commit()
   }
 
-  pub fn search(&self, input: &str, page_size: usize, offset: usize) -> Vec<Uuid> {
+  pub fn search(&self, input: &str, page_size: usize) -> Vec<Uuid> {
     let (uuid, name) = self.schematic();
     
     let reader = self.reader.lock().unwrap();
@@ -112,7 +112,7 @@ impl TantivyEngine {
     let query = parser.parse_query(input).unwrap();
 
     let top_docs = searcher.search(
-      &query, &TopDocs::with_limit(page_size).and_offset(offset)
+      &query, &TopDocs::with_limit(page_size)
     ).unwrap();
 
     top_docs
