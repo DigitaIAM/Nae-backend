@@ -53,14 +53,10 @@ impl Service for MemoriesInFiles {
       let ws = self.wss.get(&wsid);
 
       let search = self.params(&params)["search"].as_str().unwrap_or_default();
-      
-      let search = search.replace("ё", "е");
-
-      // println!("memories_in_files.rs FN FIND: {search}");
 
       let result = {
         let engine = self.app.search.read().unwrap();
-        engine.search(search.as_str(), limit, skip)
+        engine.search(search, limit, skip)
       };
 
       let total = result.len();

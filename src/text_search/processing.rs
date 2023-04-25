@@ -79,6 +79,8 @@ impl SearchEngine {
   }
 
   pub fn search(&self, text: &str, page_size: usize, offset: usize) -> Vec<Uuid> {
+    let text = &text.to_lowercase().replace("ё", "е")[..];
+
     let result_full = self.tan.search(&format!("\"{}\"", text), page_size, offset);
     let result_tan = self.tan.search(text, page_size, offset);
     let result_sim = self.sim.search(text);
