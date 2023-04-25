@@ -134,7 +134,7 @@ pub fn handle_mutation(
           // IGNORE
         } else {
           let mut search = app.search.write().unwrap();
-          let after_name = after_name.to_uppercase().replace("ё", "е");
+          let after_name = after_name.to_lowercase().replace("ё", "е");
           search.change(id, before_name, after_name.as_str())?;
         }
       } else {
@@ -144,7 +144,7 @@ pub fn handle_mutation(
     } else {
       if let Some(after_name) = after_name {
         let mut search = app.search.write().unwrap();
-        let after_name = after_name.to_uppercase().replace("ё", "е");
+        let after_name = after_name.to_lowercase().replace("ё", "е");
         search.create(id, after_name.as_str())?;
       } else {
         // IGNORE
