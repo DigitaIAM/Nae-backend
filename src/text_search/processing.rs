@@ -84,7 +84,7 @@ impl SearchEngine {
     let result_full = self.tan.search(&format!("\"{}\"", text));
     let result_tan = self.tan.search(text);
     let result_sim = self.sim.search(text);
-// result_full == result_tan
+
     println!("result_full.len() = {}", result_full.len());
     println!("result_tan.len() = {}", result_tan.len());
     println!("result_sim.len() = {}", result_sim.len());
@@ -93,57 +93,19 @@ impl SearchEngine {
     let result_sim = remove_duplicates(result_sim, &result_tan);
     let result_sim = remove_duplicates(result_sim, &result_full);
 
-    // let mut result: Vec<Uuid> = Vec::with_capacity(page_size);
-    let mut pages: Vec<Vec<Uuid>> = vec![];
-
     let half_page = page_size / 2;
 
-    let mut index = 0;
+    let mut skip_full = 0;
+    let mut skip_tan = 0;
+    let mut skip_sim = 0;
 
-    loop {
-      let mut page: Vec<Uuid> = Vec::with_capacity(page_size);
+    loop {}
 
-      if index < half_page {
-        let mut i = index;
-        while i < half_page {
-          println!("i_1 = {i}");
-          page.extend(result_full.iter().skip(index).take(half_page - page.len()));
-          i += 1;
-        }
-        index = i;
-      }
+    let mut result: Vec<Uuid> = Vec::with_capacity(page_size);
 
-      if index < half_page {
-        let mut i = index;
-        while i < (half_page - page.len()) {
-          println!("i_2 = {i}");
-          page.extend(result_tan.iter().skip(index).take(half_page - page.len()));
-          i += 1;
-        }
-        index = i;
-      }
-
-      if index < result_sim.len() {
-        let mut i = index;
-        while page.len() < page_size {
-          print!("i_3 = {i}\t");
-          page.extend(result_sim.iter().skip(index).take(page_size - page.len()));
-          i += 1;
-        }
-        index = i;
-      }
-      println!();
-
-      if page.len() == 0 {
-        break;
-      }
-
-      pages.push(page);
-    }
-
-    println!("pages.len() = {}", pages.len());
-    let result = pages.into_iter().flatten().skip(offset).take(page_size).collect::<Vec<Uuid>>();
-    println!("result.len() = {}; page_size = {page_size}; offset = {offset}", result.len());
+    result.extend(result_full.iter().skip(skip_full).take(half_page));
+    result.extend(result_tan.iter().skip(skip_tan).take(half_page - result.len()));
+    result.extend(result_sim.iter().skip(skip_sim).take(page_size - result.len()));
 
     result
   }
