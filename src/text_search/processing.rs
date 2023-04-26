@@ -99,7 +99,12 @@ impl SearchEngine {
     let mut skip_tan = 0;
     let mut skip_sim = 0;
 
-    loop {}
+    loop {
+      if skip_full + skip_tan + skip_sim >= offset {
+        break;
+      }
+      
+    }
 
     let mut result: Vec<Uuid> = Vec::with_capacity(page_size);
 
