@@ -105,7 +105,7 @@ impl SearchEngine {
 
       if index < half_page {
         let mut i = index;
-        while i < result_full.len() && page.len() < half_page {
+        while i < half_page {
           println!("i_1 = {i}");
           page.extend(result_full.iter().skip(index).take(half_page - page.len()));
           i += 1;
@@ -115,7 +115,7 @@ impl SearchEngine {
 
       if index < half_page {
         let mut i = index;
-        while i < result_tan.len() && page.len() < half_page {
+        while i < (half_page - page.len()) {
           println!("i_2 = {i}");
           page.extend(result_tan.iter().skip(index).take(half_page - page.len()));
           i += 1;
@@ -126,12 +126,13 @@ impl SearchEngine {
       if index < result_sim.len() {
         let mut i = index;
         while page.len() < page_size {
-          println!("i_3 = {i}");
+          print!("i_3 = {i}\t");
           page.extend(result_sim.iter().skip(index).take(page_size - page.len()));
           i += 1;
         }
         index = i;
       }
+      println!();
 
       if page.len() == 0 {
         break;
