@@ -85,13 +85,17 @@ impl SearchEngine {
     let result_tan = self.tan.search(text);
     let result_sim = self.sim.search(text);
 
-    println!("result_full.len() = {}", result_full.len());
-    println!("result_tan.len() = {}", result_tan.len());
-    println!("result_sim.len() = {}", result_sim.len());
+    println!("result_full.len() = {}\tresult_tan.len() = {}\tresult_sim.len() = {}", 
+      result_full.len(), result_tan.len(), result_sim.len()
+    );
 
     let result_tan = remove_duplicates(result_tan, &result_full);
     let result_sim = remove_duplicates(result_sim, &result_tan);
     let result_sim = remove_duplicates(result_sim, &result_full);
+
+    println!("result_full.len() = {}\tresult_tan.len() = {}\tresult_sim.len() = {}", 
+      result_full.len(), result_tan.len(), result_sim.len()
+    );
 
     let half_page = page_size / 2;
 
@@ -107,12 +111,15 @@ impl SearchEngine {
       if skip_full < half_page {
         skip_full += 1;
       }
-      if skip_tan < half_page - skip_full && skip_tan < half_page {
+      println!("skip_full = {skip_full}");
+      if skip_tan < half_page - skip_full {
         skip_tan += 1;
       }
-      if skip_sim < page_size && skip_sim < page_size - skip_full - skip_tan {
+      println!("skip_tan = {skip_tan}");
+      if skip_sim < page_size - skip_full - skip_tan {
         skip_sim += 1;
       } else {
+        println!("skip_sim = {skip_sim}");
         break;
       }
     }

@@ -58,7 +58,7 @@ impl Service for MemoriesInFiles {
 
       let result = {
         let engine = self.app.search.read().unwrap();
-        engine.search(search, limit, skip_2)
+        engine.search(search, limit, 0)
       };
 
       let total = result.len();
