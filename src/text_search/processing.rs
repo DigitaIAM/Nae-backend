@@ -84,7 +84,7 @@ impl SearchEngine {
     let result_full = self.tan.search(&format!("\"{}\"", text));
     let result_tan = self.tan.search(text);
     let result_sim = self.sim.search(text);
-
+// result_full == result_tan
     println!("result_full.len() = {}", result_full.len());
     println!("result_tan.len() = {}", result_tan.len());
     println!("result_sim.len() = {}", result_sim.len());
@@ -106,6 +106,7 @@ impl SearchEngine {
       if index < half_page {
         let mut i = index;
         while i < result_full.len() && page.len() < half_page {
+          println!("i_1 = {i}");
           page.extend(result_full.iter().skip(index).take(half_page - page.len()));
           i += 1;
         }
@@ -115,6 +116,7 @@ impl SearchEngine {
       if index < half_page {
         let mut i = index;
         while i < result_tan.len() && page.len() < half_page {
+          println!("i_2 = {i}");
           page.extend(result_tan.iter().skip(index).take(half_page - page.len()));
           i += 1;
         }
@@ -123,7 +125,8 @@ impl SearchEngine {
 
       if index < result_sim.len() {
         let mut i = index;
-        while i < result_sim.len() && page.len() < page_size {
+        while page.len() < page_size {
+          println!("i_3 = {i}");
           page.extend(result_sim.iter().skip(index).take(page_size - page.len()));
           i += 1;
         }
