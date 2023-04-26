@@ -46,7 +46,7 @@ impl Service for MemoriesInFiles {
     let limit = self.limit(&params);
     // let limit = 20;
     let skip = self.skip(&params);
-    let skip_2 = 10; // Don't use original skip yet
+    let skip_2 = 0; // Don't use original skip yet
 
     let reverse = self.params(&params)["reverse"].as_bool().unwrap_or(false);
 
@@ -58,7 +58,7 @@ impl Service for MemoriesInFiles {
 
       let result = {
         let engine = self.app.search.read().unwrap();
-        engine.search(search, limit, 0)
+        engine.search(search, limit, skip_2)
       };
 
       let total = result.len();
