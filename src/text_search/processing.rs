@@ -103,15 +103,28 @@ impl SearchEngine {
       if skip_full + skip_tan + skip_sim >= offset {
         break;
       }
-      
+
+      if skip_full < half_page {
+        skip_full += 1;
+      }
+      if skip_tan < half_page - skip_full {
+        skip_tan += 1;
+      }
+      if skip_sim < page_size - skip_full - skip_tan {
+        skip_sim += 1;
+      } else {
+        break;
+      }
     }
 
     let mut result: Vec<Uuid> = Vec::with_capacity(page_size);
 
     result.extend(result_full.iter().skip(skip_full).take(half_page));
+    println!("skip_full = {skip_full}; result.len() = {}", result.len());
     result.extend(result_tan.iter().skip(skip_tan).take(half_page - result.len()));
+    println!("skip_tan = {skip_tan}; result.len() = {}", result.len());
     result.extend(result_sim.iter().skip(skip_sim).take(page_size - result.len()));
-
+    println!("skip_sim = {skip_sim}; result.len() = {}", result.len());
     result
   }
 
