@@ -107,10 +107,10 @@ impl SearchEngine {
       if skip_full < half_page {
         skip_full += 1;
       }
-      if skip_tan < half_page - skip_full {
+      if skip_tan < half_page - skip_full && skip_tan < half_page {
         skip_tan += 1;
       }
-      if skip_sim < page_size - skip_full - skip_tan {
+      if skip_sim < page_size && skip_sim < page_size - skip_full - skip_tan {
         skip_sim += 1;
       } else {
         break;
