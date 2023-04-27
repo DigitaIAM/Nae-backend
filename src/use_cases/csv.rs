@@ -104,6 +104,7 @@ pub(crate) fn receive_csv_to_json(
 
     let category_name = match &record[1] {
       "производство" => "производство",
+      "Производство" => "производство",
       _ => continue,
     };
 

@@ -1822,12 +1822,17 @@ fn json_to_ops(
     return Ok(ops);
   }
 
-  if ctx.get(0) != Some(&"warehouse".to_string()) || ctx.len() != 2 {
-    return Ok(ops);
-  }
+  let ctx_str: Vec<&str> = ctx.iter().map(|s| s as &str).collect();
 
-  let type_of_operation = match ctx.get(1) {
-    Some(str) => str.clone(),
+  log::debug!("ctx: {ctx_str:?}");
+
+  let type_of_operation = match ctx_str[..] {
+    ["warehouse", "receive"] => "receive",
+    ["warehouse", "dispatch"] => "dispatch",
+    ["warehouse", "transfer"] => "transfer",
+    ["warehouse", "inventory"] => "inventory",
+    ["production", "material", "produced"] => "receive",
+    ["production", "material", "used"] => "dispatch",
     _ => return Ok(ops),
   };
 
@@ -1877,6 +1882,12 @@ fn json_to_ops(
     };
 
     (store_from, Some(store_into))
+  } else if ctx.get(0) == Some(&"production".to_string()) {
+    let store_from = match resolve_store(app, oid, &data, "storage_from") {
+      Ok(uuid) => uuid,
+      Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+    };
+    (store_from, None)
   } else {
     let store_from = match resolve_store(app, oid, &document, "storage") {
       Ok(uuid) => uuid,
@@ -1900,7 +1911,7 @@ fn json_to_ops(
 
   // log::debug!("before op");
 
-  let op = match type_of_operation.as_str() {
+  let op = match type_of_operation {
     "receive" | "inventory" => {
       let qty = data["qty"]["number"].number_or_none();
       let cost = data["cost"]["number"].number_or_none();
