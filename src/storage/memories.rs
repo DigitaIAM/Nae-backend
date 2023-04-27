@@ -246,6 +246,11 @@ impl Memories {
       .collect::<Result<Vec<PathBuf>, std::io::Error>>()?
       .into_iter()
       .filter(|y| y.is_dir())
+      .filter(|y| {
+        y.file_name()
+          .map(|name| name.to_string_lossy().to_string().parse::<u32>().is_ok())
+          .unwrap_or(false)
+      })
       .collect();
 
     for year in years {
