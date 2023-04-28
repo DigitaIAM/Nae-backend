@@ -174,7 +174,7 @@ impl Agregation for AgregationStore {
 
   fn apply_operation(&mut self, op: &Op) {
     match &op.op {
-      InternalOperation::Receive(qty, cost) => {
+      InternalOperation::Receive(qty, cost) | InternalOperation::Inventory(qty, cost) => {
         self.receive += cost;
         self.close_balance += cost;
       },
@@ -222,7 +222,7 @@ impl Agregation for AgregationStoreGoods {
 
   fn apply_operation(&mut self, op: &Op) {
     match &op.op {
-      InternalOperation::Receive(qty, cost) => {
+      InternalOperation::Receive(qty, cost) | InternalOperation::Inventory(qty, cost) => {
         self.receive.qty += qty;
         self.receive.cost += cost;
       },

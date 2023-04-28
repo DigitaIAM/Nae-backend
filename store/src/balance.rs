@@ -69,7 +69,7 @@ impl Add<InternalOperation> for BalanceForGoods {
 
   fn add(mut self, rhs: InternalOperation) -> Self::Output {
     match rhs {
-      InternalOperation::Receive(qty, cost) => {
+      InternalOperation::Receive(qty, cost) | InternalOperation::Inventory(qty, cost) => {
         self.qty += qty;
         self.cost += cost;
       },
@@ -92,7 +92,7 @@ impl Add<InternalOperation> for BalanceForGoods {
 impl AddAssign<&InternalOperation> for BalanceForGoods {
   fn add_assign(&mut self, rhs: &InternalOperation) {
     match rhs {
-      InternalOperation::Receive(qty, cost) => {
+      InternalOperation::Receive(qty, cost) | InternalOperation::Inventory(qty, cost) => {
         self.qty += qty;
         self.cost += cost;
       },

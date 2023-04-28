@@ -146,7 +146,7 @@ pub trait OrderedTopology {
         log::debug!("BEFORE_BALANCE: {:?}", before_balance);
 
         let mut qty = match op.op {
-          InternalOperation::Receive(_, _) => unreachable!(),
+          InternalOperation::Receive(_, _) | InternalOperation::Inventory(_, _) => unreachable!(),
           InternalOperation::Issue(qty, _, _) => qty,
         };
 
@@ -188,7 +188,7 @@ pub trait OrderedTopology {
 
         // todo!("update op with qty");
         op.op = match op.op {
-          InternalOperation::Receive(_, _) => unreachable!(),
+          InternalOperation::Receive(_, _) | InternalOperation::Inventory(_, _) => unreachable!(),
           InternalOperation::Issue(q, c, m) => InternalOperation::Issue(qty, qty * (c / q), m), // TODO make sure that q is not ZERO
         };
 
@@ -305,7 +305,7 @@ pub trait OrderedTopology {
 
   fn evaluate(&self, balance: &BalanceForGoods, op: &Op) -> (Op, BalanceForGoods) {
     match &op.op {
-      InternalOperation::Receive(q, c) => {
+      InternalOperation::Receive(q, c) | InternalOperation::Inventory(q, c) => {
         (op.clone(), BalanceForGoods { qty: balance.qty + q, cost: balance.cost + c })
       },
       InternalOperation::Issue(q, c, m) => {
@@ -378,7 +378,9 @@ pub trait OrderedTopology {
 
     for op in ops {
       result.entry(op.goods).and_modify(|bal| *bal += &op.op).or_insert(match &op.op {
-        InternalOperation::Receive(q, c) => BalanceForGoods { qty: q.clone(), cost: c.clone() },
+        InternalOperation::Receive(q, c) | InternalOperation::Inventory(q, c) => {
+          BalanceForGoods { qty: q.clone(), cost: c.clone() }
+        },
         InternalOperation::Issue(q, c, _) => BalanceForGoods { qty: -q.clone(), cost: -c.clone() },
       });
     }
