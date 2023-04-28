@@ -2,9 +2,13 @@ use std::sync::Arc;
 
 use super::{
   balance::BalanceForGoods,
-  elements::{dt, Balance, Batch, CheckpointTopology, Goods, Op, Store, UUID_NIL},
+  elements::{dt, Goods, Store, UUID_NIL},
   error::WHError,
 };
+use crate::balance::Balance;
+use crate::batch::Batch;
+use crate::checkpoint_topology::CheckpointTopology;
+use crate::operations::Op;
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, DB};
 use std::collections::HashMap;
@@ -64,14 +68,6 @@ impl CheckpointTopology for CheckBatchStoreDate {
     Ok(())
   }
 
-  fn get_checkpoints_for_one_storage_before_date(
-    &self,
-    _store: Store,
-    _date: DateTime<Utc>,
-  ) -> Result<Vec<Balance>, WHError> {
-    Err(WHError::new("Not supported"))
-  }
-
   fn key_latest_checkpoint_date(&self) -> Vec<u8> {
     [].iter()
       .chain(UUID_NIL.as_bytes().iter())
@@ -115,11 +111,13 @@ impl CheckpointTopology for CheckBatchStoreDate {
     unimplemented!()
   }
 
-  fn get_checkpoints_for_many_goods(
+  fn get_checkpoint_for_goods_and_batch(
     &self,
+    _store: Store,
+    _goods: Goods,
+    _batch: &Batch,
     _date: DateTime<Utc>,
-    _goods: &Vec<Goods>,
-  ) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
+  ) -> Result<Option<Balance>, WHError> {
     unimplemented!()
   }
 
@@ -133,14 +131,20 @@ impl CheckpointTopology for CheckBatchStoreDate {
     unimplemented!()
   }
 
-  fn get_checkpoint_for_goods_and_batch(
+  fn get_checkpoints_for_many_goods(
+    &self,
+    _date: DateTime<Utc>,
+    _goods: &Vec<Goods>,
+  ) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
+    unimplemented!()
+  }
+
+  fn get_checkpoints_for_one_storage_before_date(
     &self,
     _store: Store,
-    _goods: Goods,
-    _batch: &Batch,
     _date: DateTime<Utc>,
-  ) -> Result<Option<Balance>, WHError> {
-    unimplemented!()
+  ) -> Result<Vec<Balance>, WHError> {
+    Err(WHError::new("Not supported"))
   }
 
   fn get_checkpoints_for_all_storages_before_date(
