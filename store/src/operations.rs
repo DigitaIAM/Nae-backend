@@ -37,6 +37,7 @@ pub struct Op {
 impl Op {
   pub(crate) fn qty(&self) -> Decimal {
     match self.op {
+      InternalOperation::Inventory(q, _) => q,
       InternalOperation::Receive(q, _) => q,
       InternalOperation::Issue(q, _, _) => q,
     }
@@ -44,6 +45,7 @@ impl Op {
 
   pub(crate) fn cost(&self) -> Decimal {
     match self.op {
+      InternalOperation::Inventory(_, c) => c,
       InternalOperation::Receive(_, c) => c,
       InternalOperation::Issue(_, c, _) => c,
     }
@@ -53,6 +55,7 @@ impl Op {
     let op = &data["op"];
 
     let operation = match op["type"].as_str() {
+      Some("Inventory") => InternalOperation::Inventory(op["qty"].number(), op["cost"].number()),
       Some("Receive") => InternalOperation::Receive(op["qty"].number(), op["cost"].number()),
       Some("Issue") => {
         let mode = if op["mode"].as_str() == Some("Auto") { Mode::Auto } else { Mode::Manual };
@@ -132,6 +135,7 @@ impl Op {
 
   pub(crate) fn is_zero(&self) -> bool {
     match &self.op {
+      InternalOperation::Inventory(q, c) => q.is_zero() && c.is_zero(),
       InternalOperation::Receive(q, c) => q.is_zero() && c.is_zero(),
       InternalOperation::Issue(q, c, _) => q.is_zero() && c.is_zero(),
     }
@@ -139,6 +143,7 @@ impl Op {
 
   pub fn is_issue(&self) -> bool {
     match self.op {
+      InternalOperation::Inventory(_, _) => false,
       InternalOperation::Receive(_, _) => false,
       InternalOperation::Issue(_, _, _) => true,
     }
@@ -362,6 +367,7 @@ impl OpMutation {
   pub fn is_issue(&self) -> bool {
     match &self.after {
       Some(o) => match o {
+        InternalOperation::Inventory(_, _) => false,
         InternalOperation::Receive(_, _) => false,
         InternalOperation::Issue(_, _, _) => true,
       },
@@ -373,6 +379,7 @@ impl OpMutation {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum InternalOperation {
   // TODO Inventory(Qty, Cost), // actual qty, calculated qty; calculated qty +/- delta = actual qty (delta qty, delta cost)
+  Inventory(Qty, Cost),
   Receive(Qty, Cost),     // FROM // TODO Option<Store>
   Issue(Qty, Cost, Mode), // INTO // TODO Option<Store>
 }
@@ -380,6 +387,7 @@ pub enum InternalOperation {
 impl InternalOperation {
   pub(crate) fn is_zero(&self) -> bool {
     match self {
+      InternalOperation::Inventory(q, c) => q.is_zero() && c.is_zero(),
       InternalOperation::Receive(q, c) => q.is_zero() && c.is_zero(),
       InternalOperation::Issue(q, c, _) => q.is_zero() && c.is_zero(),
     }
@@ -391,6 +399,13 @@ impl ToJson for InternalOperation {
     // JsonValue::String(serde_json::to_string(&self).unwrap_or_default())
 
     match self {
+      InternalOperation::Inventory(q, c) => {
+        object! {
+          type: JsonValue::String("Inventory".to_string()),
+          qty: q.to_json(),
+          cost: c.to_json(),
+        }
+      },
       InternalOperation::Receive(q, c) => {
         object! {
           type: JsonValue::String("Receive".to_string()),
@@ -418,6 +433,7 @@ trait Operation {}
 impl Into<BalanceDelta> for InternalOperation {
   fn into(self) -> BalanceDelta {
     match self {
+      InternalOperation::Inventory(qty, cost) => BalanceDelta { qty, cost },
       InternalOperation::Receive(qty, cost) => BalanceDelta { qty, cost },
       InternalOperation::Issue(qty, cost, mode) => BalanceDelta { qty: -qty, cost: -cost },
     }

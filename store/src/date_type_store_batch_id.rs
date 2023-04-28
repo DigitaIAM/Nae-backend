@@ -50,6 +50,7 @@ impl DateTypeStoreBatchId {
     let op_type = match op {
       InternalOperation::Receive(..) => 1_u8,
       InternalOperation::Issue(..) => 2_u8,
+      InternalOperation::Inventory(..) => 3_u8,
     };
 
     let ts = date.timestamp() as u64;
