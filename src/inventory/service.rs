@@ -5,7 +5,8 @@ use service::error::Error;
 use service::utils::json::JsonParams;
 use service::Service;
 use std::sync::Arc;
-use store::elements::{Batch, ToJson};
+use store::batch::Batch;
+use store::elements::ToJson;
 
 pub struct Inventory {
   app: Application,

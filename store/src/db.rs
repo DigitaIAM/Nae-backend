@@ -5,12 +5,15 @@ use rocksdb::DB;
 
 use super::{
   balance::BalanceForGoods,
-  elements::{
-    first_day_next_month, Balance, CheckpointTopology, OpMutation, OrderedTopology, Report, Store,
-  },
+  elements::{Report, Store},
   error::WHError,
 };
-use crate::elements::{Batch, Goods};
+use crate::balance::Balance;
+use crate::batch::Batch;
+use crate::checkpoint_topology::CheckpointTopology;
+use crate::elements::Goods;
+use crate::operations::OpMutation;
+use crate::ordered_topology::OrderedTopology;
 use json::JsonValue;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -35,27 +38,6 @@ impl Db {
       Ok(Some(res)) => Ok(String::from_utf8(res)?),
       Ok(None) => Err(WHError::new("Can't get from database - no such value")),
       Err(_) => Err(WHError::new("Something wrong with getting from database")),
-    }
-  }
-
-  fn find_checkpoint(&self, op: &OpMutation, name: &str) -> Result<Option<Balance>, WHError> {
-    let bal = Balance {
-      date: first_day_next_month(op.date),
-      store: op.store,
-      goods: op.goods,
-      batch: op.batch.clone(),
-      number: BalanceForGoods::default(),
-    };
-
-    if let Some(cf) = self.db.cf_handle(name) {
-      if let Ok(Some(v1)) = self.db.get_cf(&cf, bal.key(name)?) {
-        let b = serde_json::from_slice(&v1)?;
-        Ok(b)
-      } else {
-        Ok(None)
-      }
-    } else {
-      Err(WHError::new("Can't get cf from db in fn find_checkpoint"))
     }
   }
 

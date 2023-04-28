@@ -1,15 +1,17 @@
 use super::{
   balance::BalanceForGoods,
   db::Db,
-  elements::{
-    first_day_current_month, new_get_aggregations, Balance, Batch, InternalOperation, Op,
-    OrderedTopology, Report, Store, UUID_MAX, UUID_NIL,
-  },
+  elements::{first_day_current_month, Report, Store, UUID_MAX, UUID_NIL},
   error::WHError,
 };
 
-use crate::elements::get_aggregations_for_one_goods;
+use crate::ordered_topology::OrderedTopology;
+
+use crate::agregations::{get_aggregations_for_one_goods, new_get_aggregations};
+use crate::balance::Balance;
+use crate::batch::Batch;
 use crate::elements::Goods;
+use crate::operations::{InternalOperation, Op};
 use chrono::{DateTime, Utc};
 use json::JsonValue;
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
@@ -197,53 +199,6 @@ impl OrderedTopology for DateTypeStoreBatchId {
     ColumnFamilyDescriptor::new(DateTypeStoreBatchId::cf_name(), opts)
   }
 
-  fn get_ops_for_all(
-    &self,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    let from_date = from_date.timestamp() as u64;
-    let from: Vec<u8> = from_date
-      .to_be_bytes()
-      .iter()
-      .chain(0_u8.to_be_bytes().iter())
-      .chain(UUID_NIL.as_bytes().iter())
-      .chain(UUID_NIL.as_bytes().iter())
-      .chain(UUID_NIL.as_bytes().iter())
-      .chain(u64::MIN.to_be_bytes().iter())
-      .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let till_date = till_date.timestamp() as u64;
-    let till: Vec<u8> = till_date
-      .to_be_bytes()
-      .iter()
-      .chain(u8::MAX.to_be_bytes().iter())
-      .chain(UUID_MAX.as_bytes().iter())
-      .chain(UUID_MAX.as_bytes().iter())
-      .chain(UUID_MAX.as_bytes().iter())
-      .chain(u64::MAX.to_be_bytes().iter())
-      .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(from..till);
-
-    let mut res = Vec::new();
-
-    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
-      let (_, value) = item?;
-
-      let (op, _) = self.from_bytes(&value)?;
-
-      res.push(op);
-    }
-
-    Ok(res)
-  }
-
   fn get_ops_for_storage(
     &self,
     storage: Store,
@@ -309,6 +264,53 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(res)
   }
 
+  fn get_ops_for_all(
+    &self,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    let from_date = from_date.timestamp() as u64;
+    let from: Vec<u8> = from_date
+      .to_be_bytes()
+      .iter()
+      .chain(0_u8.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(u64::MIN.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
+
+    let till_date = till_date.timestamp() as u64;
+    let till: Vec<u8> = till_date
+      .to_be_bytes()
+      .iter()
+      .chain(u8::MAX.to_be_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(u64::MAX.to_be_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
+
+    let mut options = ReadOptions::default();
+    options.set_iterate_range(from..till);
+
+    let mut res = Vec::new();
+
+    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
+      let (_, value) = item?;
+
+      let (op, _) = self.from_bytes(&value)?;
+
+      res.push(op);
+    }
+
+    Ok(res)
+  }
+
   fn get_ops_for_one_goods(
     &self,
     store: Store,
@@ -359,9 +361,6 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
       let (op, _) = self.from_bytes(&value)?;
 
-      // if op.op.is_zero() {
-      //   println!("zero operation {:?}", op);
-      // }
       if !op.op.is_zero() {
         res.push(op.clone());
       }
@@ -551,11 +550,8 @@ impl OrderedTopology for DateTypeStoreBatchId {
       till_date,
     )?;
 
-    // let items = new_get_aggregations(balances, ops, from_date);
-
     let items = get_aggregations_for_one_goods(balances, ops, from_date, till_date)?;
 
-    // Ok(Report { from_date, till_date, items })
     Ok(items)
   }
 
