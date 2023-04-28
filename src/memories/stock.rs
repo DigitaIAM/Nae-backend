@@ -70,7 +70,11 @@ fn process(
         let goods_obj = goods.resolve_to_json_object(&ws);
         let category_id = goods_obj["category"].string();
         let category_obj = category_id.resolve_to_json_object(&ws);
-        if let Some(filter) = cat_filter {
+        if let Some("") = filters["category"].as_str() {
+          if !category_id.is_empty() {
+            continue;
+          }
+        } else if let Some(filter) = cat_filter {
           if let Some(uuid) = category_obj["_uuid"].uuid_or_none() {
             if uuid != filter {
               continue;
