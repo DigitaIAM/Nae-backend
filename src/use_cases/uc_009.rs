@@ -243,7 +243,7 @@ pub fn import(app: &Application) {
       // F=SP2736    |(P)Количество       |N   |16    |3
       let qty = number(record, "SP2736");
       // F=SP2737    |(P)Сумма            |N   |20    |2
-      // let cost = number(record, "SP2737");
+      let cost = number(record, "SP2737");
 
       let date = doc_date.get(doc_id.as_str()).unwrap().clone();
 
@@ -258,8 +258,8 @@ pub fn import(app: &Application) {
           let uom_name = uoms.get(goods_uom).unwrap();
 
           let data = format!(
-            "{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},\n",
-            doc_id, goods_descr, goods_code, uom_name, qty, date, supplier_name, store_name
+            "{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},\n",
+            doc_id, goods_descr, goods_code, uom_name, qty, cost, date, supplier_name, store_name
           );
           f.write_all(data.as_bytes()).expect("Unable to write data");
         }

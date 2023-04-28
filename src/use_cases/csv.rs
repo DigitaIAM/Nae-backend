@@ -108,7 +108,7 @@ pub(crate) fn receive_csv_to_json(
       _ => continue,
     };
 
-    let date = &record[6];
+    let date = &record[7];
     let date = format!("{}-{}-{}", &date[6..=9], &date[3..=4], &date[0..=1]);
 
     let number = match &record[0] {
@@ -124,7 +124,7 @@ pub(crate) fn receive_csv_to_json(
     } else {
       COUNTERPARTY.to_vec()
     };
-    let from_name = &record[7].replace("\\", "").replace("\"", "").replace(",,", ",");
+    let from_name = &record[8].replace("\\", "").replace("\"", "").replace(",,", ",");
     let from = if from_name.is_empty() {
       JsonValue::String("".to_string())
     } else {
@@ -144,7 +144,7 @@ pub(crate) fn receive_csv_to_json(
     } else {
       COUNTERPARTY.to_vec()
     };
-    let into_name = &record[8].replace("\\", "").replace("\"", "").replace(",,", ",");
+    let into_name = &record[9].replace("\\", "").replace("\"", "").replace(",,", ",");
     let into_name = match into_name.as_str() {
       "Гагарина 36" => "снабжение Бегбудиев Носир",
       "Склад" => "склад",
@@ -240,20 +240,6 @@ pub(crate) fn receive_csv_to_json(
 
     // cells at the warehouse
     let cell_from: Option<JsonValue> = if ctx.get(1) == Some(&"transfer") {
-      match &record[9] {
-        "" => None,
-        _ => Some(json(
-          app,
-          object! { name: &record[9] },
-          STORAGE.to_vec(),
-          &|| object! { name: &record[9] },
-        )?),
-      }
-    } else {
-      None
-    };
-
-    let cell_into: Option<JsonValue> = if ctx.get(1) == Some(&"transfer") {
       match &record[10] {
         "" => None,
         _ => Some(json(
@@ -267,13 +253,30 @@ pub(crate) fn receive_csv_to_json(
       None
     };
 
+    let cell_into: Option<JsonValue> = if ctx.get(1) == Some(&"transfer") {
+      match &record[11] {
+        "" => None,
+        _ => Some(json(
+          app,
+          object! { name: &record[11] },
+          STORAGE.to_vec(),
+          &|| object! { name: &record[11] },
+        )?),
+      }
+    } else {
+      None
+    };
+
     let float_qty_str = &record[5].replace(",", ".");
 
     let qty = float_qty_str.parse::<Decimal>().unwrap();
 
-    // let currency = json(app, object! {name: "uzd"}, CURRENCY.to_vec(), &|| {
-    //   object! {name: "uzd"}
-    // })?;
+    let cost = &record[6].parse::<Decimal>().unwrap();
+
+    let currency = json(app, object! {name: "uzd"}, CURRENCY.to_vec(), &|| {
+      object! {name: "uzd"}
+    })?;
+
     // let price: Decimal = 0.into();
 
     let data = if cell_from.is_some() && cell_into.is_some() {
@@ -284,7 +287,7 @@ pub(crate) fn receive_csv_to_json(
         storage_into: cell_into.unwrap()["_id"].clone(),
         qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
         // price: price.to_json(),
-        // cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
+        cost: object! { number: cost.to_json(), currency: currency["_id"].clone() },
       }
     } else if cell_from.is_some() && cell_into.is_none() {
       object! {
@@ -293,7 +296,7 @@ pub(crate) fn receive_csv_to_json(
         storage_from: cell_from.unwrap()["_id"].clone(),
         qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
         // price: price.to_json(),
-        // cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
+        cost: object! { number: cost.to_json(), currency: currency["_id"].clone() },
       }
     } else if cell_from.is_none() && cell_into.is_some() {
       object! {
@@ -302,7 +305,7 @@ pub(crate) fn receive_csv_to_json(
         storage_into: cell_into.unwrap()["_id"].clone(),
         qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
         // price: price.to_json(),
-        // cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
+        cost: object! { number: cost.to_json(), currency: currency["_id"].clone() },
       }
     } else {
       object! {
@@ -310,7 +313,7 @@ pub(crate) fn receive_csv_to_json(
         goods: item["_id"].clone(),
         qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
         // price: price.to_json(),
-        // cost: object! { number: Decimal::default().to_json(), currency: currency["_id"].clone() },
+        cost: object! { number: cost.to_json(), currency: currency["_id"].clone() },
       }
     };
 
