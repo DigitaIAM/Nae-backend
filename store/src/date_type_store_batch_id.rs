@@ -48,9 +48,9 @@ impl DateTypeStoreBatchId {
     op: &InternalOperation,
   ) -> Vec<u8> {
     let op_type = match op {
+      InternalOperation::Inventory(..) => 0_u8,
       InternalOperation::Receive(..) => 1_u8,
       InternalOperation::Issue(..) => 2_u8,
-      InternalOperation::Inventory(..) => 3_u8,
     };
 
     let ts = date.timestamp() as u64;

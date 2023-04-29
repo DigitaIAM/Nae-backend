@@ -205,6 +205,52 @@ impl Db {
     Err(WHError::new("fn get_balance not implemented"))
   }
 
+  pub fn get_balance_for_one_goods_and_store(
+    &self,
+    date: DateTime<Utc>,
+    storage: &Store,
+    goods: &Goods,
+  ) -> Result<HashMap<Uuid, BalanceForGoods>, WHError> {
+    let mut it = self.checkpoint_topologies.iter();
+    let (from_date, checkpoints) = loop {
+      if let Some(checkpoint_topology) = it.next() {
+        match checkpoint_topology.get_checkpoints_for_one_goods_with_date(
+          storage.clone(),
+          goods.clone(),
+          date,
+        ) {
+          Ok(result) => {
+            break result;
+          },
+          Err(e) => {
+            // ignore only "not implemented"
+            println!("{e:?}");
+          },
+        }
+      } else {
+        break (
+          DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp_millis(0).unwrap(), Utc),
+          HashMap::new(),
+        );
+      }
+    };
+
+    for ordered_topology in self.ordered_topologies.iter() {
+      match ordered_topology.get_balances_for_one_goods_and_store(
+        from_date,
+        date,
+        storage,
+        goods,
+        checkpoints.clone(),
+      ) {
+        Ok(res) => return Ok(res),
+        Err(_) => {}, // ignore
+      }
+    }
+
+    Err(WHError::new("fn get_balance not implemented"))
+  }
+
   pub fn get_balance_for_all(
     &self,
     date: DateTime<Utc>,

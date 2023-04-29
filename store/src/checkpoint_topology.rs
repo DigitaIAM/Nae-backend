@@ -23,6 +23,13 @@ pub trait CheckpointTopology {
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError>;
 
+  fn get_checkpoints_for_one_goods_with_date(
+    &self,
+    store: Store,
+    goods: Goods,
+    date: DateTime<Utc>,
+  ) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError>;
+
   fn get_checkpoint_for_goods_and_batch(
     &self,
     store: Store,

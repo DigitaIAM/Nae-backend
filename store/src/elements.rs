@@ -14,6 +14,7 @@ use crate::GetWarehouse;
 use service::Services;
 
 use crate::agregations::{AgregationStore, AgregationStoreGoods};
+use crate::balance::{BalanceDelta, BalanceForGoods};
 use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
 use service::utils::json::JsonParams;
@@ -211,7 +212,7 @@ pub fn receive_data(
 }
 
 fn json_to_ops(
-  app: &impl Services,
+  app: &(impl GetWarehouse + Services),
   data: &mut JsonValue,
   time: DateTime<Utc>,
   ctx: &Vec<String>,
@@ -313,8 +314,34 @@ fn json_to_ops(
 
   // log::debug!("before op");
 
+  let mut is_negative_inventory = false;
+
   let op = match type_of_operation {
-    "receive" | "inventory" => {
+    "inventory" => {
+      let qty = data["qty"]["number"].number_or_none();
+      let cost = data["cost"]["number"].number_or_none();
+
+      if qty.is_none() && cost.is_none() {
+        return Ok(ops);
+      } else {
+        let (cost, mode) =
+          if let Some(cost) = cost { (cost, Mode::Manual) } else { (0.into(), Mode::Auto) };
+
+        let _qty = qty.unwrap_or_default();
+
+        let delta = inventory_delta(app, date, &store_from, &goods, _qty, cost)?;
+
+        if !delta.is_zero() {
+          if delta.qty < Decimal::ZERO {
+            is_negative_inventory = true;
+          }
+          InternalOperation::Inventory(BalanceForGoods { qty: _qty, cost }, delta, mode)
+        } else {
+          return Ok(ops);
+        }
+      }
+    },
+    "receive" => {
       let qty = data["qty"]["number"].number_or_none();
       let cost = data["cost"]["number"].number_or_none();
 
@@ -353,7 +380,17 @@ fn json_to_ops(
     Batch { id: tid, date }
   } else if type_of_operation == "inventory" {
     // TODO try to read batch from document
-    Batch { id: tid, date }
+    if is_negative_inventory {
+      match &data["batch"] {
+        JsonValue::Object(d) => Batch {
+          id: data["batch"]["_uuid"].uuid()?,
+          date: data["batch"]["date"].date_with_check()?,
+        },
+        _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
+      }
+    } else {
+      Batch { id: tid, date }
+    }
   } else {
     match &data["batch"] {
       JsonValue::Object(d) => {
@@ -397,6 +434,43 @@ fn json_to_ops(
   ops.insert(tid.to_string(), op);
 
   Ok(ops)
+}
+
+fn inventory_delta(
+  app: &(impl GetWarehouse + Services),
+  date: DateTime<Utc>,
+  storage: &Store,
+  goods: &Goods,
+  inv_qty: Decimal,
+  inv_cost: Decimal,
+) -> Result<BalanceDelta, WHError> {
+  let old_balances = app
+    .warehouse()
+    .database
+    .get_balance_for_one_goods_and_store(date, storage, goods)?;
+
+  let mut delta = BalanceDelta::new();
+
+  if let Some(balance) = old_balances.get(goods) {
+    if balance.qty != inv_qty {
+      delta.qty = inv_qty - balance.qty;
+    }
+
+    if inv_cost != Decimal::ZERO && balance.cost != inv_cost {
+      delta.cost = inv_cost - balance.cost;
+    } else if inv_cost == Decimal::ZERO && balance.cost != Decimal::ZERO {
+      if let Some(price) = balance.cost.checked_div(balance.qty) {
+        delta.cost = price * inv_qty - balance.cost;
+      } else {
+        delta.cost = balance.cost; // TODO is this ok?
+      }
+    }
+  } else {
+    delta.qty = inv_qty;
+    delta.cost = inv_cost;
+  }
+
+  Ok(delta)
 }
 
 fn resolve_store(

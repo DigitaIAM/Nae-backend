@@ -439,9 +439,9 @@ impl OrderedTopology for StoreDateTypeBatchId {
     let ts = op.date.timestamp() as u64;
 
     let op_type = match op.op {
+      InternalOperation::Inventory(..) => 0_u8,
       InternalOperation::Receive(..) => 1_u8,
       InternalOperation::Issue(..) => 2_u8,
-      InternalOperation::Inventory(..) => 3_u8,
     };
 
     op.store

@@ -5,6 +5,7 @@ use super::{
 
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, AddAssign, Sub};
 
@@ -69,7 +70,18 @@ impl Add<InternalOperation> for BalanceForGoods {
 
   fn add(mut self, rhs: InternalOperation) -> Self::Output {
     match rhs {
-      InternalOperation::Receive(qty, cost) | InternalOperation::Inventory(qty, cost) => {
+      InternalOperation::Inventory(_, d, mode) => {
+        self.qty += d.qty;
+        self.cost += if mode == Mode::Manual {
+          d.cost
+        } else {
+          match self.cost.checked_div(self.qty) {
+            Some(price) => price * d.qty,
+            None => 0.into(), // TODO handle errors?
+          }
+        }
+      },
+      InternalOperation::Receive(qty, cost) => {
         self.qty += qty;
         self.cost += cost;
       },
@@ -92,7 +104,18 @@ impl Add<InternalOperation> for BalanceForGoods {
 impl AddAssign<&InternalOperation> for BalanceForGoods {
   fn add_assign(&mut self, rhs: &InternalOperation) {
     match rhs {
-      InternalOperation::Receive(qty, cost) | InternalOperation::Inventory(qty, cost) => {
+      InternalOperation::Inventory(_, d, mode) => {
+        self.qty += d.qty;
+        self.cost += if mode == &Mode::Manual {
+          d.cost
+        } else {
+          match self.cost.checked_div(self.qty) {
+            Some(price) => price * d.qty,
+            None => 0.into(), // TODO handle errors?
+          }
+        }
+      },
+      InternalOperation::Receive(qty, cost) => {
         self.qty += qty;
         self.cost += cost;
       },
@@ -119,6 +142,10 @@ pub struct BalanceDelta {
 impl BalanceDelta {
   pub(crate) fn is_zero(&self) -> bool {
     self.qty.is_zero() && self.cost.is_zero()
+  }
+
+  pub(crate) fn new() -> Self {
+    BalanceDelta { qty: Decimal::ZERO, cost: Decimal::ZERO }
   }
 }
 
