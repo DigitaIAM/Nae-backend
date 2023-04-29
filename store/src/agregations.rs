@@ -174,11 +174,15 @@ impl Agregation for AgregationStore {
 
   fn apply_operation(&mut self, op: &Op) {
     match &op.op {
-      InternalOperation::Receive(qty, cost) | InternalOperation::Inventory(qty, cost) => {
+      InternalOperation::Inventory(_, d, _) => {
+        self.receive += d.cost;
+        self.close_balance += d.cost;
+      },
+      InternalOperation::Receive(_, cost) => {
         self.receive += cost;
         self.close_balance += cost;
       },
-      InternalOperation::Issue(qty, cost, mode) => {
+      InternalOperation::Issue(_, cost, _) => {
         self.issue -= cost;
         self.close_balance -= cost;
       },
@@ -222,7 +226,20 @@ impl Agregation for AgregationStoreGoods {
 
   fn apply_operation(&mut self, op: &Op) {
     match &op.op {
-      InternalOperation::Receive(qty, cost) | InternalOperation::Inventory(qty, cost) => {
+      InternalOperation::Inventory(b, d, mode) => {
+        self.issue.qty += d.qty;
+        if mode == &Mode::Auto {
+          let balance = self.open_balance.clone() + self.receive.clone();
+          let cost = match balance.cost.checked_div(balance.qty) {
+            Some(price) => price * d.qty,
+            None => 0.into(), // TODO handle errors?
+          };
+          self.issue.cost += cost;
+        } else {
+          self.issue.cost += d.cost;
+        }
+      },
+      InternalOperation::Receive(qty, cost) => {
         self.receive.qty += qty;
         self.receive.cost += cost;
       },

@@ -135,11 +135,10 @@ impl CheckpointTopology for CheckDateStoreBatch {
 
     let latest_checkpoint_date = self.get_latest_checkpoint_date()?;
 
-    let ts = if current_date > latest_checkpoint_date {
-      u64::try_from(latest_checkpoint_date.timestamp()).unwrap_or_default()
-    } else {
-      u64::try_from(current_date.timestamp()).unwrap_or_default()
-    };
+    let actual_date =
+      if current_date > latest_checkpoint_date { latest_checkpoint_date } else { current_date };
+
+    let ts = u64::try_from(actual_date.timestamp()).unwrap_or_default();
 
     let from: Vec<u8> = ts
       .to_be_bytes()
@@ -214,6 +213,60 @@ impl CheckpointTopology for CheckDateStoreBatch {
     } else {
       Ok(None)
     }
+  }
+
+  fn get_checkpoints_for_one_goods_with_date(
+    &self,
+    store: Store,
+    goods: Goods,
+    date: DateTime<Utc>,
+  ) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
+    let mut balances: HashMap<Uuid, BalanceForGoods> = HashMap::new();
+    balances.insert(goods, BalanceForGoods::default());
+
+    let current_date = first_day_current_month(date);
+
+    let latest_checkpoint_date = self.get_latest_checkpoint_date()?;
+
+    let actual_date =
+      if current_date > latest_checkpoint_date { latest_checkpoint_date } else { current_date };
+
+    let ts = u64::try_from(actual_date.timestamp()).unwrap_or_default();
+
+    let from: Vec<u8> = ts
+      .to_be_bytes()
+      .iter()
+      .chain(store.as_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(u64::MIN.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
+    let till: Vec<u8> = ts
+      .to_be_bytes()
+      .iter()
+      .chain(store.as_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(u64::MAX.to_be_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
+
+    let mut opts = ReadOptions::default();
+    opts.set_iterate_range(from..till);
+
+    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+
+    while let Some(res) = iter.next() {
+      let (k, v) = res?;
+      let b: BalanceForGoods = serde_json::from_slice(&v)?;
+
+      let (_, _, g, _) = CheckDateStoreBatch::key_to_data(k.to_vec())?;
+
+      balances.entry(g).and_modify(|bal| *bal += b);
+    }
+
+    Ok((actual_date, balances))
   }
 
   fn get_checkpoints_for_many_goods(
