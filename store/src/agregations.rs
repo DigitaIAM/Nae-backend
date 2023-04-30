@@ -13,7 +13,7 @@ use uuid::Uuid;
 trait Agregation {
   fn check(&mut self, op: &OpMutation) -> ReturnType; // если операция валидна, вернет None, если нет - вернет свое значение и обнулит себя и выставит новые ключи
   fn apply_operation(&mut self, op: &Op);
-  fn apply_agregation(&mut self, agr: Option<&AgregationStoreGoods>);
+  fn apply_aggregation(&mut self, agr: Option<&AgregationStoreGoods>);
   fn balance(&mut self, balance: Option<&Balance>) -> ReturnType; // имплементировать для трех возможных ситуаций
   fn is_applyable_for(&self, op: &OpMutation) -> bool;
 }
@@ -94,15 +94,19 @@ impl Default for AgregationStoreGoods {
 
 impl AddAssign<&Op> for AgregationStoreGoods {
   fn add_assign(&mut self, rhs: &Op) {
-    self.store = Some(rhs.store);
-    self.goods = Some(rhs.goods);
-    self.batch = Some(rhs.batch.clone());
-    self.apply_operation(rhs);
+    if let Some(batch) = self.batch.as_ref() {
+      self.store = Some(rhs.store);
+      self.goods = Some(rhs.goods);
+      self.batch = Some(batch.clone());
+      self.apply_operation(rhs);
+    } else {
+      todo!();
+    }
   }
 }
 
 #[derive(PartialEq, Debug, Clone)]
-pub struct AgregationStore {
+pub struct AggregationStore {
   // ключ (контекст)
   pub store: Option<Store>,
   // агрегация
@@ -112,7 +116,7 @@ pub struct AgregationStore {
   pub close_balance: Cost,
 }
 
-impl ToJson for AgregationStore {
+impl ToJson for AggregationStore {
   fn to_json(&self) -> JsonValue {
     if let Some(s) = self.store {
       object! {
@@ -128,7 +132,7 @@ impl ToJson for AgregationStore {
   }
 }
 
-impl AgregationStore {
+impl AggregationStore {
   fn initialize(&mut self, op: &OpMutation) {
     // задаем новый ключ
     self.store = Some(op.store);
@@ -140,7 +144,7 @@ impl AgregationStore {
   }
 }
 
-impl Default for AgregationStore {
+impl Default for AggregationStore {
   fn default() -> Self {
     Self {
       store: None,
@@ -152,7 +156,7 @@ impl Default for AgregationStore {
   }
 }
 
-impl Agregation for AgregationStore {
+impl Agregation for AggregationStore {
   fn check(&mut self, op: &OpMutation) -> ReturnType {
     if let Some(store) = self.store {
       // проверяем валидна ли эта операция к агрегации
@@ -189,7 +193,7 @@ impl Agregation for AgregationStore {
     }
   }
 
-  fn apply_agregation(&mut self, agr: Option<&AgregationStoreGoods>) {
+  fn apply_aggregation(&mut self, agr: Option<&AgregationStoreGoods>) {
     if let Some(agr) = agr {
       self.store = agr.store;
       self.open_balance += agr.open_balance.cost;
@@ -199,11 +203,11 @@ impl Agregation for AgregationStore {
     }
   }
 
-  fn balance(&mut self, balance: Option<&Balance>) -> ReturnType {
+  fn balance(&mut self, _balance: Option<&Balance>) -> ReturnType {
     todo!()
   }
 
-  fn is_applyable_for(&self, op: &OpMutation) -> bool {
+  fn is_applyable_for(&self, _op: &OpMutation) -> bool {
     todo!()
   }
 }
@@ -260,7 +264,7 @@ impl Agregation for AgregationStoreGoods {
     self.close_balance = self.open_balance.clone() + self.receive.clone() + self.issue.clone();
   }
 
-  fn apply_agregation(&mut self, agr: Option<&AgregationStoreGoods>) {
+  fn apply_aggregation(&mut self, agr: Option<&AgregationStoreGoods>) {
     todo!()
   }
 
@@ -357,15 +361,7 @@ pub(crate) fn get_aggregations_for_one_goods(
     } else {
       close_balance += op.to_delta();
     }
-    result.push(
-      object! {
-          date: op.date.to_json(),
-          type: if op.is_issue() { JsonValue::String("issue".to_string()) } else { JsonValue::String("receive".to_string()) },
-          _id: op.id.to_json(),
-          qty: op.qty().to_json(),
-          cost: op.cost().to_json(),
-        }
-    );
+    result.push(op.to_json());
   }
 
   result[0]["qty"] = open_balance.qty.to_json();
@@ -389,7 +385,7 @@ pub(crate) fn new_get_aggregations(
   balances: Vec<Balance>,
   operations: Vec<Op>,
   start_date: DateTime<Utc>,
-) -> (AgregationStore, Vec<AgregationStoreGoods>) {
+) -> (AggregationStore, Vec<AgregationStoreGoods>) {
   let key = |store: &Store, goods: &Goods, batch: &Batch| -> Vec<u8> {
     [].iter()
       .chain(store.as_bytes().iter())
@@ -403,7 +399,7 @@ pub(crate) fn new_get_aggregations(
   let key_for = |op: &Op| -> Vec<u8> { key(&op.store, &op.goods, &op.batch) };
 
   let mut aggregations = BTreeMap::new();
-  let mut master_aggregation = AgregationStore::default();
+  let mut master_aggregation = AggregationStore::default();
 
   for balance in balances {
     aggregations.insert(
@@ -436,7 +432,7 @@ pub(crate) fn new_get_aggregations(
 
   for (_, agr) in aggregations {
     if !agr.is_zero() {
-      master_aggregation.apply_agregation(Some(&agr));
+      master_aggregation.apply_aggregation(Some(&agr));
       res.push(agr);
     }
   }

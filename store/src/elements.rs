@@ -13,7 +13,7 @@ use service::utils::time::{date_to_string, time_to_string};
 use crate::GetWarehouse;
 use service::Services;
 
-use crate::agregations::{AgregationStore, AgregationStoreGoods};
+use crate::agregations::{AggregationStore, AgregationStoreGoods};
 use crate::balance::{BalanceDelta, BalanceForGoods};
 use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
@@ -93,6 +93,15 @@ pub enum Mode {
   Manual,
 }
 
+impl ToJson for Mode {
+  fn to_json(&self) -> JsonValue {
+    match self {
+      Mode::Auto => JsonValue::String("auto".to_string()),
+      Mode::Manual => JsonValue::String("manual".to_string()),
+    }
+  }
+}
+
 pub(crate) trait KeyValueStore {
   fn key(&self, s: &String) -> Result<Vec<u8>, WHError>;
   fn store_date_type_batch_id(&self) -> Vec<u8>;
@@ -102,7 +111,7 @@ pub(crate) trait KeyValueStore {
 
 pub enum ReturnType {
   Good(AgregationStoreGoods),
-  Store(AgregationStore),
+  Store(AggregationStore),
   Empty,
 }
 
@@ -110,7 +119,7 @@ pub enum ReturnType {
 pub struct Report {
   pub from_date: DateTime<Utc>,
   pub till_date: DateTime<Utc>,
-  pub items: (AgregationStore, Vec<AgregationStoreGoods>),
+  pub items: (AggregationStore, Vec<AgregationStoreGoods>),
 }
 
 impl ToJson for Report {
@@ -137,6 +146,7 @@ pub(crate) fn time_to_naive_string(time: DateTime<Utc>) -> String {
 
 pub fn receive_data(
   app: &(impl GetWarehouse + Services),
+  wid: &str,
   time: DateTime<Utc>,
   data: JsonValue,
   ctx: &Vec<String>,
@@ -152,7 +162,7 @@ pub fn receive_data(
   let mut new_data = data.clone();
   let mut new_before = before.clone();
 
-  let before = match json_to_ops(app, &mut new_before, time.clone(), ctx) {
+  let before = match json_to_ops(app, wid, &mut new_before, time.clone(), ctx) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ BEFORE: {}", e.message());
@@ -161,7 +171,7 @@ pub fn receive_data(
     },
   };
 
-  let mut after = match json_to_ops(app, &mut new_data, time, ctx) {
+  let mut after = match json_to_ops(app, wid, &mut new_data, time, ctx) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ AFTER: {}", e.message());
@@ -211,8 +221,17 @@ pub fn receive_data(
   }
 }
 
+#[derive(PartialEq)]
+enum OpType {
+  Inventory,
+  Receive,
+  Dispatch,
+  Transfer,
+}
+
 fn json_to_ops(
   app: &(impl GetWarehouse + Services),
+  wid: &str,
   data: &mut JsonValue,
   time: DateTime<Utc>,
   ctx: &Vec<String>,
@@ -225,28 +244,21 @@ fn json_to_ops(
     return Ok(ops);
   }
 
-  let ctx_str: Vec<&str> = ctx.iter().map(|s| s as &str).collect();
+  let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
 
   log::debug!("ctx: {ctx_str:?}");
 
   let type_of_operation = match ctx_str[..] {
-    ["warehouse", "receive"] => "receive",
-    ["warehouse", "dispatch"] => "dispatch",
-    ["warehouse", "transfer"] => "transfer",
-    ["warehouse", "inventory"] => "inventory",
-    ["production", "material", "produced"] => "receive",
-    ["production", "material", "used"] => "dispatch",
+    ["warehouse", "receive"] => OpType::Receive,
+    ["warehouse", "dispatch"] => OpType::Dispatch,
+    ["warehouse", "transfer"] => OpType::Transfer,
+    ["warehouse", "inventory"] => OpType::Inventory,
+    ["production", "material", "produced"] => OpType::Receive,
+    ["production", "material", "used"] => OpType::Dispatch,
     _ => return Ok(ops),
   };
 
-  let doc_ctx = vec!["warehouse", &type_of_operation, "document"];
-
-  let oid = app.service("companies").find(object! {limit: 1, skip: 0})?;
-  // log::debug!("OID: {:?}", oid["data"][0]["_id"]);
-
-  let oid = oid["data"][0]["_id"].as_str().unwrap_or_default();
-
-  let params = object! {oid: oid, ctx: doc_ctx, enrich: false };
+  let params = object! {oid: wid, ctx: [], enrich: false };
   let document = match app.service("memories").get(data["document"].string(), params) {
     Ok(d) => d,
     Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
@@ -259,26 +271,26 @@ fn json_to_ops(
     Err(_) => return Ok(ops),
   };
 
-  let (store_from, store_into) = if type_of_operation == "transfer" {
+  let (store_from, store_into) = if type_of_operation == OpType::Transfer {
     let store_from = if data["storage_from"].string() == "" {
-      match resolve_store(app, oid, &document, "from") {
+      match resolve_store(app, wid, &document, "from") {
         Ok(uuid) => uuid,
         Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
       }
     } else {
-      match resolve_store(app, oid, &data, "storage_from") {
+      match resolve_store(app, wid, &data, "storage_from") {
         Ok(uuid) => uuid,
         Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
       }
     };
 
     let store_into = if data["storage_into"].string() == "" {
-      match resolve_store(app, oid, &document, "into") {
+      match resolve_store(app, wid, &document, "into") {
         Ok(uuid) => uuid,
         Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
       }
     } else {
-      match resolve_store(app, oid, &data, "storage_into") {
+      match resolve_store(app, wid, &data, "storage_into") {
         Ok(uuid) => uuid,
         Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
       }
@@ -286,22 +298,22 @@ fn json_to_ops(
 
     (store_from, Some(store_into))
   } else if ctx.get(0) == Some(&"production".to_string()) {
-    let store_from = match resolve_store(app, oid, &data, "storage_from") {
+    let store_from = match resolve_store(app, wid, &data, "storage_from") {
       Ok(uuid) => uuid,
       Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
     };
     (store_from, None)
   } else {
-    let store_from = match resolve_store(app, oid, &document, "storage") {
+    let store_from = match resolve_store(app, wid, &document, "storage") {
       Ok(uuid) => uuid,
       Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
     };
     (store_from, None)
   };
 
-  println!("store_from: {store_from:?} store_into: {store_into:?}");
+  println!("store from: {store_from:?} into: {store_into:?}");
 
-  let params = object! {oid: oid, ctx: vec!["goods"] };
+  let params = object! {oid: wid, ctx: vec!["goods"] };
   let item = match app.service("memories").get(data["goods"].string(), params) {
     Ok(d) => d,
     Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
@@ -314,10 +326,8 @@ fn json_to_ops(
 
   // log::debug!("before op");
 
-  let mut is_negative_inventory = false;
-
   let op = match type_of_operation {
-    "inventory" => {
+    OpType::Inventory => {
       let qty = data["qty"]["number"].number_or_none();
       let cost = data["cost"]["number"].number_or_none();
 
@@ -327,21 +337,12 @@ fn json_to_ops(
         let (cost, mode) =
           if let Some(cost) = cost { (cost, Mode::Manual) } else { (0.into(), Mode::Auto) };
 
-        let _qty = qty.unwrap_or_default();
+        let qty = qty.unwrap_or_default();
 
-        let delta = inventory_delta(app, date, &store_from, &goods, _qty, cost)?;
-
-        if !delta.is_zero() {
-          if delta.qty < Decimal::ZERO {
-            is_negative_inventory = true;
-          }
-          InternalOperation::Inventory(BalanceForGoods { qty: _qty, cost }, delta, mode)
-        } else {
-          return Ok(ops);
-        }
+        InternalOperation::Inventory(BalanceForGoods { qty, cost }, BalanceDelta::default(), mode)
       }
     },
-    "receive" => {
+    OpType::Receive => {
       let qty = data["qty"]["number"].number_or_none();
       let cost = data["cost"]["number"].number_or_none();
 
@@ -351,7 +352,7 @@ fn json_to_ops(
         InternalOperation::Receive(qty.unwrap_or_default(), cost.unwrap_or_default())
       }
     },
-    "transfer" | "dispatch" => {
+    OpType::Transfer | OpType::Dispatch => {
       let qty = data["qty"]["number"].number_or_none();
       let cost = data["cost"]["number"].number_or_none();
 
@@ -363,7 +364,6 @@ fn json_to_ops(
         InternalOperation::Issue(qty.unwrap_or_default(), cost, mode)
       }
     },
-    _ => return Ok(ops),
   };
 
   log::debug!("after op {op:?}");
@@ -376,20 +376,12 @@ fn json_to_ops(
     tid
   };
 
-  let batch = if type_of_operation == "receive" {
+  let batch = if type_of_operation == OpType::Receive {
     Batch { id: tid, date }
-  } else if type_of_operation == "inventory" {
-    // TODO try to read batch from document
-    if is_negative_inventory {
-      match &data["batch"] {
-        JsonValue::Object(d) => Batch {
-          id: data["batch"]["_uuid"].uuid()?,
-          date: data["batch"]["date"].date_with_check()?,
-        },
-        _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
-      }
-    } else {
-      Batch { id: tid, date }
+  } else if type_of_operation == OpType::Inventory {
+    match &data["batch"] {
+      JsonValue::Object(d) => Batch { id: d["_uuid"].uuid()?, date: d["date"].date_with_check()? },
+      _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? }, // TODO is it ok?
     }
   } else {
     match &data["batch"] {
@@ -436,46 +428,9 @@ fn json_to_ops(
   Ok(ops)
 }
 
-fn inventory_delta(
-  app: &(impl GetWarehouse + Services),
-  date: DateTime<Utc>,
-  storage: &Store,
-  goods: &Goods,
-  inv_qty: Decimal,
-  inv_cost: Decimal,
-) -> Result<BalanceDelta, WHError> {
-  let old_balances = app
-    .warehouse()
-    .database
-    .get_balance_for_one_goods_and_store(date, storage, goods)?;
-
-  let mut delta = BalanceDelta::new();
-
-  if let Some(balance) = old_balances.get(goods) {
-    if balance.qty != inv_qty {
-      delta.qty = inv_qty - balance.qty;
-    }
-
-    if inv_cost != Decimal::ZERO && balance.cost != inv_cost {
-      delta.cost = inv_cost - balance.cost;
-    } else if inv_cost == Decimal::ZERO && balance.cost != Decimal::ZERO {
-      if let Some(price) = balance.cost.checked_div(balance.qty) {
-        delta.cost = price * inv_qty - balance.cost;
-      } else {
-        delta.cost = balance.cost; // TODO is this ok?
-      }
-    }
-  } else {
-    delta.qty = inv_qty;
-    delta.cost = inv_cost;
-  }
-
-  Ok(delta)
-}
-
 fn resolve_store(
   app: &impl Services,
-  oid: &str,
+  wid: &str,
   document: &JsonValue,
   name: &str,
 ) -> Result<Uuid, service::error::Error> {
@@ -483,7 +438,7 @@ fn resolve_store(
 
   log::debug!("store_id {name} {store_id:?}");
 
-  let params = object! {oid: oid, ctx: vec!["warehouse", "storage"] };
+  let params = object! {oid: wid, ctx: vec!["warehouse", "storage"] };
   let storage = app.service("memories").get(store_id, params)?;
   log::debug!("storage {:?}", storage.dump());
   storage["_uuid"].uuid()

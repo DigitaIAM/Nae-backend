@@ -33,6 +33,7 @@ pub struct Memories {
 
 fn save_data(
   app: &Application,
+  ws: &Workspace,
   top_folder: &PathBuf,
   folder: &PathBuf,
   ctx: &Vec<String>,
@@ -80,8 +81,8 @@ fn save_data(
 
   crate::text_search::handle_mutation(app, ctx, &before, &data);
 
-  let data =
-    receive_data(app, time, data, ctx, before).map_err(|e| Error::GeneralError(e.message()))?;
+  let data = receive_data(app, ws.id.to_string().as_str(), time, data, ctx, before)
+    .map_err(|e| Error::GeneralError(e.message()))?;
 
   let uuid = data["_uuid"].as_str();
 
@@ -200,7 +201,8 @@ impl Memories {
     data["_id"] = id.clone().into();
     data["_uuid"] = uuid.to_string().into();
 
-    let data = save_data(app, &self.top_folder, &folder, &self.ctx, &id, Some(uuid), time, data)?;
+    let data =
+      save_data(app, &self.ws, &self.top_folder, &folder, &self.ctx, &id, Some(uuid), time, data)?;
 
     Ok(data.enrich(&self.ws))
   }
@@ -218,7 +220,8 @@ impl Memories {
       None => return Err(Error::IOError(format!("fail on folder path for id: {}", id))),
     };
 
-    let data = save_data(app, &self.top_folder, &folder, &self.ctx, &id, None, time, data)?;
+    let data =
+      save_data(app, &self.ws, &self.top_folder, &folder, &self.ctx, &id, None, time, data)?;
 
     Ok(data.enrich(&self.ws))
   }
