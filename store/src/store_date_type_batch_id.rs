@@ -10,7 +10,7 @@ use crate::balance::Balance;
 use crate::batch::Batch;
 use crate::elements::Goods;
 use crate::elements::{UUID_MAX, UUID_NIL};
-use crate::operations::{InternalOperation, Op};
+use crate::operations::Op;
 use crate::ordered_topology::OrderedTopology;
 use chrono::{DateTime, Utc};
 use json::JsonValue;
@@ -438,17 +438,13 @@ impl OrderedTopology for StoreDateTypeBatchId {
   fn key(&self, op: &Op) -> Vec<u8> {
     let ts = op.date.timestamp() as u64;
 
-    let op_type = match op.op {
-      InternalOperation::Inventory(..) => 0_u8,
-      InternalOperation::Receive(..) => 1_u8,
-      InternalOperation::Issue(..) => 2_u8,
-    };
+    let op_order = op.op.order();
 
     op.store
       .as_bytes()
       .iter()
       .chain(ts.to_be_bytes().iter())
-      .chain(op_type.to_be_bytes().iter())
+      .chain(op_order.to_be_bytes().iter())
       .chain(op.batch().iter())
       .chain(op.id.as_bytes().iter())
       .map(|b| *b)

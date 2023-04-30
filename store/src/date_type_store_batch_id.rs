@@ -47,16 +47,12 @@ impl DateTypeStoreBatchId {
     batch: &Batch,
     op: &InternalOperation,
   ) -> Vec<u8> {
-    let op_type = match op {
-      InternalOperation::Inventory(..) => 0_u8,
-      InternalOperation::Receive(..) => 1_u8,
-      InternalOperation::Issue(..) => 2_u8,
-    };
+    let op_order = op.order();
 
     let ts = date.timestamp() as u64;
     ts.to_be_bytes()
       .iter()
-      .chain(op_type.to_be_bytes().iter())
+      .chain(op_order.to_be_bytes().iter())
       .chain(store.as_bytes().iter())
       .chain(batch.to_bytes(goods).iter())
       .chain(id.as_bytes().iter())

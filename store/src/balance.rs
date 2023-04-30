@@ -139,6 +139,7 @@ pub struct BalanceDelta {
   pub qty: Qty,
   pub cost: Cost,
 }
+
 impl BalanceDelta {
   pub(crate) fn is_zero(&self) -> bool {
     self.qty.is_zero() && self.cost.is_zero()

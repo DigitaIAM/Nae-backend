@@ -44,7 +44,8 @@ impl Db {
   pub fn record_ops(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
     for op in ops {
       // TODO redesign
-      let checkpoints: Vec<Balance> = if op.is_issue() && op.batch.is_empty() {
+      let checkpoints: Vec<Balance> = if (op.is_issue() && op.batch.is_empty()) || op.is_inventory()
+      {
         self.get_checkpoints_for_goods(op.store, op.goods, op.date)?
       } else {
         Vec::new()

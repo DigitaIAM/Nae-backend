@@ -162,18 +162,38 @@ impl Op {
 
 impl ToJson for Op {
   fn to_json(&self) -> JsonValue {
-    object! {
+    let op_type = match self.op {
+      InternalOperation::Inventory(..) => "inventory",
+      InternalOperation::Receive(..) => "receive",
+      InternalOperation::Issue(..) => "issue",
+    };
+
+    let mut obj = object! {
       id: self.id.to_json(),
       date: self.date.to_json(),
-      store: self.store.to_json(),
+      type: op_type,
+      from: self.store.to_json(),
       goods: self.goods.to_json(),
-      batch: self.batch.to_json(),
-      transfer: match self.store_into {
-        Some(t) => t.to_json(),
-        None => JsonValue::Null,
-      },
+
       op: self.op.to_json(),
+    };
+
+    match self.store_into.as_ref() {
+      None => {},
+      Some(into) => obj["into"] = into.to_json(),
     }
+
+    obj["batch"] = self.batch.to_json();
+
+    obj
+
+    // object! {
+    //   date: op.date.to_json(),
+    //   type: if op.is_issue() { JsonValue::String("issue".to_string()) } else { JsonValue::String("receive".to_string()) },
+    //   _id: op.id.to_json(),
+    //   qty: op.qty().to_json(),
+    //   cost: op.cost().to_json(),
+    // }
   }
 }
 
@@ -377,9 +397,20 @@ impl OpMutation {
   pub fn is_issue(&self) -> bool {
     match &self.after {
       Some(o) => match o {
-        InternalOperation::Inventory(_, _, _) => false,
-        InternalOperation::Receive(_, _) => false,
-        InternalOperation::Issue(_, _, _) => true,
+        InternalOperation::Inventory(..) => false,
+        InternalOperation::Receive(..) => false,
+        InternalOperation::Issue(..) => true,
+      },
+      None => false,
+    }
+  }
+
+  pub fn is_inventory(&self) -> bool {
+    match &self.after {
+      Some(o) => match o {
+        InternalOperation::Inventory(..) => true,
+        InternalOperation::Receive(..) => false,
+        InternalOperation::Issue(..) => false,
       },
       None => false,
     }
@@ -388,16 +419,23 @@ impl OpMutation {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum InternalOperation {
-  // TODO Inventory(Qty, Cost), // actual qty, calculated qty; calculated qty +/- delta = actual qty (delta qty, delta cost)
   Inventory(BalanceForGoods, BalanceDelta, Mode),
   Receive(Qty, Cost),     // FROM // TODO Option<Store>
   Issue(Qty, Cost, Mode), // INTO // TODO Option<Store>
 }
 
 impl InternalOperation {
+  pub(crate) fn order(&self) -> u8 {
+    match self {
+      InternalOperation::Inventory(..) => 1_u8,
+      InternalOperation::Receive(..) => 2_u8,
+      InternalOperation::Issue(..) => 3_u8,
+    }
+  }
+
   pub(crate) fn is_zero(&self) -> bool {
     match self {
-      InternalOperation::Inventory(q, c, _) => q.is_zero() && c.is_zero(),
+      InternalOperation::Inventory(q, c, _) => false,
       InternalOperation::Receive(q, c) => q.is_zero() && c.is_zero(),
       InternalOperation::Issue(q, c, _) => q.is_zero() && c.is_zero(),
     }
@@ -411,31 +449,25 @@ impl ToJson for InternalOperation {
     match self {
       InternalOperation::Inventory(b, d, m) => {
         object! {
-          type: JsonValue::String("Inventory".to_string()),
+          type: JsonValue::String("inventory".to_string()),
           balance: b.to_json(),
           delta: d.to_json(),
-          mode: match m {
-            Mode::Auto => JsonValue::String("Auto".to_string()),
-            Mode::Manual => JsonValue::String("Manual".to_string()),
-          }
+          mode: m.to_json()
         }
       },
       InternalOperation::Receive(q, c) => {
         object! {
-          type: JsonValue::String("Receive".to_string()),
+          type: JsonValue::String("receive".to_string()),
           qty: q.to_json(),
           cost: c.to_json(),
         }
       },
       InternalOperation::Issue(q, c, m) => {
         object! {
-          type: JsonValue::String("Issue".to_string()),
+          type: JsonValue::String("issue".to_string()),
           qty: q.to_json(),
           cost: c.to_json(),
-          mode: match m {
-            Mode::Auto => JsonValue::String("Auto".to_string()),
-            Mode::Manual => JsonValue::String("Manual".to_string()),
-          }
+          mode: m.to_json(),
         }
       },
     }
@@ -447,7 +479,7 @@ trait Operation {}
 impl Into<BalanceDelta> for InternalOperation {
   fn into(self) -> BalanceDelta {
     match self {
-      InternalOperation::Inventory(b, d, _) => BalanceDelta { qty: d.qty, cost: d.cost },
+      InternalOperation::Inventory(b, d, _) => todo!("undefined?"),
       InternalOperation::Receive(qty, cost) => BalanceDelta { qty, cost },
       InternalOperation::Issue(qty, cost, _) => BalanceDelta { qty: -qty, cost: -cost },
     }

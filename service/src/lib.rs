@@ -17,6 +17,14 @@ use utils::time::DateRange;
 #[macro_use]
 extern crate quick_error;
 
+// trait Workspace {
+//   fn memories(&self, ctx: Vec<String>) -> Memories;
+// }
+//
+// trait Memories {
+//   fn create(&self, app: &Application, data: JsonValue) -> Result;
+// }
+
 pub type Result = std::result::Result<JsonValue, Error>;
 pub(crate) type Data = JsonValue;
 pub(crate) type Params = JsonValue;
