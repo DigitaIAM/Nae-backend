@@ -97,40 +97,34 @@ impl SearchEngine {
       result_full.len(), result_tan.len(), result_sim.len()
     );
 
+    // PAGINATION
+    let page_number = offset;
+
+    let cat_0_and_1: Vec<_> = [result_tan, result_full].concat();
+
+    if page_number > (cat_0_and_1.len() + result_sim.len()) / page_size + 1 {
+        return vec![]
+    }
+
     let half_page = page_size / 2;
 
-    let mut skip_full = 0;
-    let mut skip_tan = 0;
-    let mut skip_sim = 0;
+    let full_page_tan = cat_0_and_1.len() / half_page;
+    let full_page_sim = result_sim.len() / half_page;
 
-// -------------------
-  let page_number = offset;
+    let full_page = full_page_tan.min(full_page_sim);
 
-  let cat_0_and_1: Vec<_> = [result_tan, result_full].concat();
+    println!("full_page_tan = {full_page_tan} full_page_sim = {full_page_sim}");
 
-  if page_number > (cat_0_and_1.len() + result_sim.len()) / page_size + 1 {
-      return vec![]
-  }
+    if page_number < full_page {
+        println!("BLOCK 1");
+        let offset = page_number * half_page;
+        let mut result: Vec<Uuid> = cat_0_and_1.iter().skip(offset).take(half_page).map(|s| *s).collect();
+        result.extend(
+          result_sim.into_iter().skip(offset).take(half_page)
+        );
 
-  let half_page = page_size / 2;
-
-  let full_page_tan = cat_0_and_1.len() / half_page;
-  let full_page_sim = result_sim.len() / half_page;
-
-  let full_page = full_page_tan.min(full_page_sim);
-
-  println!("full_page_tan = {full_page_tan} full_page_sim = {full_page_sim}");
-
-  if page_number < full_page {
-      println!("BLOCK 1");
-      let offset = page_number * half_page;
-      let mut result: Vec<Uuid> = cat_0_and_1.iter().skip(offset).take(half_page).map(|s| *s).collect();
-      result.extend(
-        result_sim.into_iter().skip(offset).take(half_page)
-      );
-
-      return result
-  } else if page_number == full_page {
+        return result
+    } else if page_number == full_page {
       println!("BLOCK 2");
       if full_page == full_page_tan {
           println!("min - tan");
@@ -158,7 +152,7 @@ impl SearchEngine {
 
           return result
       }
-  } else {
+    } else {
       println!("BLOCK 3");
       if full_page == full_page_tan {
           let offset_a = full_page * half_page;
@@ -182,21 +176,8 @@ impl SearchEngine {
           let result: Vec<Uuid> = cat_0_and_1.iter().skip(offset_full).take(page_size).map(|s| *s).collect();
 
           return result
-
       }
-  }
-
-// -------------------
-
-    // let mut result: Vec<Uuid> = Vec::with_capacity(page_size);
-
-    // result.extend(result_full.iter().skip(skip_full).take(half_page));
-    // println!("skip_full = {skip_full}; result.len() = {}", result.len());
-    // result.extend(result_tan.iter().skip(skip_tan).take(half_page - result.len()));
-    // println!("skip_tan = {skip_tan}; result.len() = {}", result.len());
-    // result.extend(result_sim.iter().skip(skip_sim).take(page_size - result.len()));
-    // println!("skip_sim = {skip_sim}; result.len() = {}", result.len());
-    // result
+    }
   }
 
   pub fn commit(&mut self) -> Result<(), Error> {
