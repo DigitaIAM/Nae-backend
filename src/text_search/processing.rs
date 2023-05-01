@@ -125,8 +125,8 @@ impl SearchEngine {
       println!("BLOCK 1");
       let offset = page_number * half_page;
       let mut result: Vec<Uuid> = cat_0_and_1.iter().skip(offset).take(half_page).map(|s| *s).collect();
-      result.extend::<Uuid>(
-        result_sim.into_iter().skip(offset).take(half_page).map(Into::into).collect()
+      result.extend(
+        result_sim.into_iter().skip(offset).take(half_page)
       );
 
       return result
@@ -140,7 +140,7 @@ impl SearchEngine {
 
           let take_sim = page_size - take_tan;
           result.extend(
-            result_sim.into_iter().skip(offset).take(take_sim).map(Into::into)
+            result_sim.into_iter().skip(offset).take(take_sim)
           );
           
           return result
