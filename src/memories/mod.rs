@@ -4,6 +4,7 @@ pub(crate) mod stock;
 use crate::storage::organizations::Workspace;
 use json::JsonValue;
 pub use memories_in_files::MemoriesInFiles;
+use uuid::{Error, Uuid};
 
 pub trait Enrich {
   fn enrich(&self, ws: &crate::storage::organizations::Workspace) -> JsonValue;
@@ -70,7 +71,7 @@ pub trait Resolve {
 }
 
 impl Resolve for uuid::Uuid {
-  fn resolve_to_json_object(&self, ws: &Workspace) -> json::JsonValue {
+  fn resolve_to_json_object(&self, ws: &Workspace) -> JsonValue {
     ws.resolve_uuid(self)
       .and_then(|s| s.json().ok())
       .and_then(|data| Some(data.enrich(ws)))
@@ -97,6 +98,14 @@ impl Resolve for &String {
 
 impl Resolve for &str {
   fn resolve_to_json_object(&self, ws: &Workspace) -> JsonValue {
+    // try to resolve by UUID
+    match Uuid::parse_str(self) {
+      Ok(uuid) => {
+        return uuid.resolve_to_json_object(ws);
+      },
+      Err(_) => {},
+    }
+
     if let Some(doc) = ws.resolve_id(self) {
       match doc.json() {
         Ok(o) => o,
