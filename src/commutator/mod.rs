@@ -36,7 +36,6 @@ pub struct Application {
   pub(crate) events: Sender<Event>,
   pub(crate) sender: Sender<Mutation>,
 
-  // search
   pub search: Arc<RwLock<SearchEngine>>,
 }
 
