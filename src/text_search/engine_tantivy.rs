@@ -64,7 +64,7 @@ impl TantivyEngine {
     if force || (self.added_events > 0 &&
       (self.added_events >= COMMIT_RATE || self.commit_timestamp.elapsed() >= COMMIT_TIME))
     {
-      println!("TantivyEngine: commit, {} {:?}", self.added_events, self.commit_timestamp.elapsed());
+      // println!("TantivyEngine: commit, {} {:?}", self.added_events, self.commit_timestamp.elapsed());
       self.writer.lock().unwrap().commit()?;
       self.added_events = 0;
       self.commit_timestamp = std::time::Instant::now();
