@@ -145,98 +145,114 @@ pub trait OrderedTopology {
 
         log::debug!("INVENTORY_BEFORE_BALANCE: {:?}", before_balance);
 
-        let (mut qty, cost, mode) = match &op.op {
-          InternalOperation::Inventory(_, d, m) => (d.qty, d.cost, m.clone()),
-          InternalOperation::Receive(_, _) | InternalOperation::Issue(_, _, _) => unreachable!(),
-        };
-
-        for (batch, balance) in before_balance {
-          if balance.qty <= Decimal::ZERO {
-            continue;
-          } else if qty.abs() >= balance.qty {
-            batches.push(batch.clone());
-
-            let mut new = op.clone();
-            new.is_dependent = true;
-            new.batch = batch;
-            new.op = InternalOperation::Issue(balance.qty, balance.cost, Mode::Auto);
-            log::debug!("NEW_OP partly: qty {qty} balance {balance:?} op {new:?}");
-            ops.push(new);
-
-            qty += balance.qty; // qty is always negative here
-          } else if qty.abs() < balance.qty {
-            batches.push(batch.clone());
-
-            let mut new = op.clone();
-            new.is_dependent = true;
-            new.batch = batch;
-            new.op = InternalOperation::Issue(
-              qty.abs(),
-              qty.abs() * (balance.cost / balance.qty),
-              Mode::Auto,
-            );
-            log::debug!("NEW_OP full: qty {qty} balance {balance:?} op {new:?}");
-            ops.push(new);
-
-            qty -= qty.abs();
-          }
-
-          if qty == Decimal::ZERO {
-            break;
-          }
+        let mut stock_balance = BalanceForGoods::default();
+        for (batch, balance) in before_balance.iter() {
+          stock_balance.qty += balance.qty;
+          stock_balance.cost += balance.cost;
         }
 
-        log::debug!("inventory qty left {qty}");
-
-        op.op = match &op.op {
-          InternalOperation::Receive(_, _) | InternalOperation::Issue(_, _, _) => unreachable!(),
-          InternalOperation::Inventory(b, d, m) => {
-            if let Some(price) = d.cost.checked_div(d.qty) {
-              InternalOperation::Issue(qty, qty * price, m.clone())
-            } else {
-              op.op.clone() // TODO is this correct when qty = 0 ?
-            }
-          },
+        let inv_balance = match &op.op {
+          InternalOperation::Inventory(b, ..) => b,
+          InternalOperation::Receive(..) => unreachable!(),
+          InternalOperation::Issue(..) => unreachable!(),
         };
+        let diff_balance = inv_balance.delta(&stock_balance);
 
-        op.batches = batches.clone();
+        // TODO cover cost difference
 
-        // calculate balance
-        let before_balance: BalanceForGoods = self.balance_before(&op)?; // Vec<(Batch, BalanceForGoods)>
-        let (calculated_op, new_balance) = self.evaluate(&before_balance, &op);
+        if diff_balance.qty == Decimal::ZERO && diff_balance.cost == Decimal::ZERO {
+        } else if diff_balance.qty > Decimal::ZERO {
+          let batch = Batch { id: op.id, date: op.date };
+          let mut new = op.clone();
+          new.is_dependent = true;
+          new.batch = batch.clone();
+          new.op = InternalOperation::Receive(diff_balance.qty, diff_balance.cost);
+          log::debug!("NEW_OP inventory receive: op {new:?}");
+          ops.push(new);
 
-        let current_balance =
-          if let Some((o, b)) = self.get(&op)? { b } else { BalanceForGoods::default() };
+          batches.push(batch);
 
-        log::debug!("_before_balance: {before_balance:?}");
-        log::debug!("_calculated_op: {calculated_op:?}");
-        log::debug!("_current_balance: {current_balance:?}");
-        log::debug!("_new_balance: {new_balance:?}");
-
-        // store update op with balance or delete
-        if calculated_op.is_zero() && batches.is_empty() {
-          self.del(&calculated_op)?;
+          op.batches = batches.clone();
         } else {
-          //   self.put(&calculated_op, &new_balance, batches)?;
-          self.put(&calculated_op, &new_balance)?;
-          result.push(OpMutation {
-            id: calculated_op.id,
-            date: calculated_op.date,
-            store: calculated_op.store,
-            transfer: calculated_op.store_into,
-            goods: calculated_op.goods,
-            batch: calculated_op.batch.clone(),
-            before: None,
-            after: Some(calculated_op.op.clone()),
-            is_dependent: calculated_op.is_dependent,
-            batches: calculated_op.batches.clone(),
-          });
-        }
+          let (mut qty, cost, mode) = (diff_balance.qty, Decimal::ZERO, Mode::Auto);
 
-        // if next op have dependant add it to ops
-        if let Some(dep) = calculated_op.dependent() {
-          log::debug!("_new dependent: {dep:?}");
-          ops.push(dep);
+          for (batch, balance) in before_balance {
+            if balance.qty <= Decimal::ZERO {
+              continue;
+            } else if qty.abs() >= balance.qty {
+              batches.push(batch.clone());
+
+              let mut new = op.clone();
+              new.is_dependent = true;
+              new.batch = batch;
+              new.op = InternalOperation::Issue(balance.qty, balance.cost, Mode::Auto);
+              log::debug!("NEW_OP inventory partly: qty {qty} balance {balance:?} op {new:?}");
+              ops.push(new);
+
+              qty += balance.qty; // qty is always negative here
+            } else if qty.abs() < balance.qty {
+              batches.push(batch.clone());
+
+              let mut new = op.clone();
+              new.is_dependent = true;
+              new.batch = batch;
+              new.op = InternalOperation::Issue(
+                qty.abs(),
+                qty.abs() * (balance.cost / balance.qty),
+                Mode::Auto,
+              );
+              log::debug!("NEW_OP inventory full: qty {qty} balance {balance:?} op {new:?}");
+              ops.push(new);
+
+              qty -= qty.abs();
+            }
+
+            if qty == Decimal::ZERO {
+              break;
+            }
+          }
+
+          log::debug!("inventory qty left {qty}");
+
+          op.batches = batches.clone();
+
+          // calculate balance
+          let before_balance: BalanceForGoods = self.balance_before(&op)?; // Vec<(Batch, BalanceForGoods)>
+          let (calculated_op, new_balance) = self.evaluate(&before_balance, &op);
+
+          let current_balance =
+            if let Some((o, b)) = self.get(&op)? { b } else { BalanceForGoods::default() };
+
+          log::debug!("_before_balance: {before_balance:?}");
+          log::debug!("_calculated_op: {calculated_op:?}");
+          log::debug!("_current_balance: {current_balance:?}");
+          log::debug!("_new_balance: {new_balance:?}");
+
+          // store update op with balance or delete
+          if calculated_op.is_zero() && batches.is_empty() {
+            self.del(&calculated_op)?;
+          } else {
+            //   self.put(&calculated_op, &new_balance, batches)?;
+            self.put(&calculated_op, &new_balance)?;
+            result.push(OpMutation {
+              id: calculated_op.id,
+              date: calculated_op.date,
+              store: calculated_op.store,
+              transfer: calculated_op.store_into,
+              goods: calculated_op.goods,
+              batch: calculated_op.batch.clone(),
+              before: None,
+              after: Some(calculated_op.op.clone()),
+              is_dependent: calculated_op.is_dependent,
+              batches: calculated_op.batches.clone(),
+            });
+          }
+
+          // if next op have dependant add it to ops
+          if let Some(dep) = calculated_op.dependent() {
+            log::debug!("_new dependent: {dep:?}");
+            ops.push(dep);
+          }
         }
       } else if op.is_issue() && op.batch.is_empty() && !op.is_dependent {
         // calculate balance

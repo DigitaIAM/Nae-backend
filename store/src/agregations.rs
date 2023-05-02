@@ -94,14 +94,14 @@ impl Default for AgregationStoreGoods {
 
 impl AddAssign<&Op> for AgregationStoreGoods {
   fn add_assign(&mut self, rhs: &Op) {
-    if let Some(batch) = self.batch.as_ref() {
-      self.store = Some(rhs.store);
-      self.goods = Some(rhs.goods);
-      self.batch = Some(batch.clone());
-      self.apply_operation(rhs);
-    } else {
-      todo!();
-    }
+    // if let Some(batch) = rhs.batch.as_ref() {
+    self.store = Some(rhs.store);
+    self.goods = Some(rhs.goods);
+    self.batch = Some(rhs.batch.clone());
+    self.apply_operation(rhs);
+    // } else {
+    //   todo!();
+    // }
   }
 }
 

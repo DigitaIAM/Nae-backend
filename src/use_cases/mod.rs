@@ -5,7 +5,6 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) mod csv;
 pub(crate) mod uc_001;
 pub(crate) mod uc_002;
 pub(crate) mod uc_003;

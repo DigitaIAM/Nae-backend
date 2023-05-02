@@ -12,7 +12,7 @@ pub(crate) fn import(app: &Application) {
   let ctx = DRUGS.to_vec();
   for item in items {
     let start = Instant::now();
-    crate::use_cases::csv::memories_create(app, item, ctx.clone());
+    store::process_records::memories_create(app, item, ctx.clone()).expect("TODO: panic message");
     let duration = start.elapsed();
     println!("elapsed {:?}", duration);
   }
