@@ -36,26 +36,37 @@ pub(crate) fn report(app: &Application) {
       .service("memories")
       .find(object! {oid: oid, ctx: ctx.clone(), search: search})
       .unwrap();
-    let json_to_string = result.dump();
-    print_only_name(&json_to_string);
+    // let json_to_string = result.dump();
+    // print_only_name(&json_to_string);
+    print_only_name(result)
   }
 }
-
-fn print_only_name(json: &str) {
-  let mut vektor: Vec<&str> = json.split('{').collect();
-  vektor.remove(0);
-  let mut namevek: Vec<&str> = Vec::new();
-  for i in 1..vektor.len() {
-    let name = vektor[i].split("manufacturer").nth(0).unwrap();
-    let end = name.len() - 2;
-    namevek.push(&name[7..end]);
-  }
+fn print_only_name(result: JsonValue) {
   let mut index = 1;
-  for i in namevek.clone() {
-    println!("\t{index:>2}) {}", i);
+  for item in result["data"].members() {
+    println!(
+      "\t{index:>2}) {} {}",
+      item["name"].as_str().unwrap_or_default(),
+      item["_uuid"].as_str().unwrap_or_default()
+    );
     index += 1
   }
 }
+// fn print_only_name(json: &str) {
+//   let mut vektor: Vec<&str> = json.split('{').collect();
+//   vektor.remove(0);
+//   let mut namevek: Vec<&str> = Vec::new();
+//   for i in 1..vektor.len() {
+//     let name = vektor[i].split("manufacturer").nth(0).unwrap();
+//     let end = name.len() - 2;
+//     namevek.push(&name[7..end]);
+//   }
+//   let mut index = 1;
+//   for i in namevek.clone() {
+//     println!("\t{index:>2}) {}", i);
+//     index += 1
+//   }
+// }
 
 fn load() -> Vec<JsonValue> {
   let text_file = "./import/utf8_dbo.GOOD.Table.sql";

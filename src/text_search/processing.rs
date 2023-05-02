@@ -79,23 +79,24 @@ impl SearchEngine {
   }
 
   pub fn search(&self, text: &str, page_size: usize, offset: usize) -> Vec<Uuid> {
+    // println!("page_size = {page_size}, offset = {offset}");
     let text = &text.to_lowercase().replace("ё", "е")[..];
 
     let result_full = self.tan.search(&format!("\"{}\"", text));
     let result_tan = self.tan.search(text);
     let result_sim = self.sim.search(text);
 
-    println!("result_full.len() = {}\tresult_tan.len() = {}\tresult_sim.len() = {}", 
-      result_full.len(), result_tan.len(), result_sim.len()
-    );
+    // println!("result_full.len() = {}\tresult_tan.len() = {}\tresult_sim.len() = {}", 
+    //   result_full.len(), result_tan.len(), result_sim.len()
+    // );
 
     let result_tan = remove_duplicates(result_tan, &result_full);
     let result_sim = remove_duplicates(result_sim, &result_tan);
     let result_sim = remove_duplicates(result_sim, &result_full);
 
-    println!("result_full.len() = {}\tresult_tan.len() = {}\tresult_sim.len() = {}", 
-      result_full.len(), result_tan.len(), result_sim.len()
-    );
+    // println!("result_full.len() = {}\tresult_tan.len() = {}\tresult_sim.len() = {}", 
+    //   result_full.len(), result_tan.len(), result_sim.len()
+    // );
 
     // PAGINATION
     let page_number = offset;
@@ -113,10 +114,9 @@ impl SearchEngine {
 
     let full_page = full_page_tan.min(full_page_sim);
 
-    println!("full_page_tan = {full_page_tan} full_page_sim = {full_page_sim}");
+    // println!("full_page_tan = {full_page_tan} full_page_sim = {full_page_sim}");
 
     if page_number < full_page {
-        println!("BLOCK 1");
         let offset = page_number * half_page;
         let mut result: Vec<Uuid> = cat_0_and_1.iter().skip(offset).take(half_page).map(|s| *s).collect();
         result.extend(
@@ -125,9 +125,8 @@ impl SearchEngine {
 
         return result
     } else if page_number == full_page {
-      println!("BLOCK 2");
       if full_page == full_page_tan {
-          println!("min - tan");
+          // println!("min - tan");
           let offset = page_number * half_page;
           let take_tan = cat_0_and_1.len() - offset;
           let mut result: Vec<Uuid> = cat_0_and_1.iter().skip(offset).take(take_tan).map(|s| *s).collect();
@@ -139,8 +138,8 @@ impl SearchEngine {
           
           return result
       } else {
-          println!("min - sim");
-          println!("page_number = {page_number} half_page = {half_page} full_page_tan = {full_page_tan} full_page_sim = {full_page_sim} {} {}", cat_0_and_1.len(), result_sim.len());
+          // println!("min - sim");
+          // println!("page_number = {page_number} half_page = {half_page} full_page_tan = {full_page_tan} full_page_sim = {full_page_sim} {} {}", cat_0_and_1.len(), result_sim.len());
           //sim < tan
           let offset = page_number * half_page;
           let take = result_sim.len() - offset;
@@ -153,14 +152,13 @@ impl SearchEngine {
           return result
       }
     } else {
-      println!("BLOCK 3");
       if full_page == full_page_tan {
           let offset_a = full_page * half_page;
           let offset_b = page_size - (cat_0_and_1.len() - full_page * half_page);
           let offset_c = page_size * (page_number - full_page - 1);
           let offset_full = offset_a + offset_b + offset_c;
 
-          println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
+          // println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
 
           let result: Vec<Uuid> = result_sim.iter().skip(offset_full).take(page_size).map(|s| *s).collect();
 
@@ -171,7 +169,7 @@ impl SearchEngine {
           let offset_c = page_size * (page_number - full_page - 1);
           let offset_full = offset_a + offset_b + offset_c;
 
-          println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
+          // println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
 
           let result: Vec<Uuid> = cat_0_and_1.iter().skip(offset_full).take(page_size).map(|s| *s).collect();
 
