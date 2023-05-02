@@ -80,11 +80,11 @@ impl SearchEngine {
 
   pub fn search(&self, text: &str, page_size: usize, offset: usize) -> Vec<Uuid> {
     // println!("page_size = {page_size}, offset = {offset}");
-    let text = &text.to_lowercase().replace("ё", "е")[..];
+    let text = text.to_lowercase().replace("ё", "е");
 
     let result_full = self.tan.search(&format!("\"{}\"", text));
-    let result_tan = self.tan.search(text);
-    let result_sim = self.sim.search(text);
+    let result_tan = self.tan.search(&text);
+    let result_sim = self.sim.search(&text);
 
     // println!("result_full.len() = {}\tresult_tan.len() = {}\tresult_sim.len() = {}", 
     //   result_full.len(), result_tan.len(), result_sim.len()
