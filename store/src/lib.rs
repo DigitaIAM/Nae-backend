@@ -18,6 +18,7 @@ pub mod elements;
 pub mod error;
 pub mod operations;
 pub mod ordered_topology;
+pub mod process_records;
 pub mod store_date_type_batch_id;
 pub mod wh_storage;
 
