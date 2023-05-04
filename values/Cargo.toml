@@ -1,0 +1,19 @@
+[package]
+name = "values"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-web = "4"
+
+serde = { version = "1.0", features = ["derive", "rc"] }
+rkyv = { version = "0.7.38", features = ["validation"] }
+bytecheck = "0.7.0"
+
+rand = "0.8.5"
+
+base64 = "0.21"
+
+blake2 = "0.10.4"
