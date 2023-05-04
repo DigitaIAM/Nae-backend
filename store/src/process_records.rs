@@ -5,7 +5,7 @@ use rust_decimal::Decimal;
 // use serde_json::json;
 use crate::elements::ToJson;
 use service::error::Error;
-use service::Services;
+use service::{Context, Services};
 
 const COUNTERPARTY: [&str; 1] = ["counterparty"];
 const STORAGE: [&str; 2] = ["warehouse", "storage"];
@@ -35,7 +35,9 @@ pub fn report(
 
   println!("STORAGE: {:?}", storage["_uuid"]);
 
-  let result = app.service("inventory").find(object!{ctx: ctx, oid: oid, storage: storage["_uuid"].clone(), dates: {"from": from_date, "till": till_date}}).unwrap();
+  let params: JsonValue = object! {ctx: ctx, oid: oid, storage: storage["_uuid"].clone(), dates: {"from": from_date, "till": till_date}};
+
+  let result = app.service("inventory").find(Context::local(), params).unwrap();
 
   println!("report: {:#?}", result);
 }
@@ -62,7 +64,8 @@ pub(crate) fn memories_find(
   ctx: Vec<&str>,
 ) -> Result<Vec<JsonValue>, Error> {
   let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-  let result = app.service("memories").find(object! {oid: oid, ctx: ctx, filter: filter})?;
+  let params = object! {oid: oid, ctx: ctx, filter: filter};
+  let result = app.service("memories").find(Context::local(), params)?;
 
   Ok(result["data"].members().map(|o| o.clone()).collect())
 }
@@ -73,7 +76,8 @@ pub fn memories_create(
   ctx: Vec<&str>,
 ) -> Result<JsonValue, Error> {
   let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-  let result = app.service("memories").create(data, object! {oid: oid, ctx: ctx })?;
+  let params = object! {oid: oid, ctx: ctx };
+  let result = app.service("memories").create(Context::local(), data, params)?;
 
   // println!("create_result: {result:?}");
   Ok(result)
