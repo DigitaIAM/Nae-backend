@@ -16,6 +16,8 @@ strip = true
 service = { path = "./service" }
 store = { path = "./store" }
 derives = { path = "./derives" }
+values = { path = "./values" }
+
 lazy_static = "1.4.0"
 
 walkdir = "2.3.2"

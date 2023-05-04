@@ -1,20 +1,16 @@
 use chrono::{DateTime, SecondsFormat, Utc};
-
 use json::JsonValue;
-
 use std::collections::HashMap;
-
 use std::ops::Sub;
-
 use std::sync::Arc;
 
 use crate::services::{Data, Params};
 use crate::storage::SCamera;
-
-use crate::{animo::memory::ID, commutator::Application, storage::Workspaces};
+use crate::{commutator::Application, storage::Workspaces};
 use service::error::Error;
 use service::utils::json::JsonParams;
-use service::Service;
+use service::{Context, Service};
+use values::ID;
 
 pub struct AttendanceReport {
   app: Application,
@@ -89,7 +85,7 @@ impl Service for AttendanceReport {
     &self.name
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     let _limit = self.limit(&params);
     let _skip = self.skip(&params);
 
@@ -278,23 +274,35 @@ impl Service for AttendanceReport {
     })
   }
 
-  fn get(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn create(&self, _data: Data, _params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
+  fn update(
+    &self,
+    _ctx: Context,
+    _id: String,
+    _data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
+  fn patch(
+    &self,
+    _ctx: Context,
+    _id: String,
+    _data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

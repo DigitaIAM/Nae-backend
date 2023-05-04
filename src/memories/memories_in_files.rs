@@ -5,7 +5,7 @@ use json::JsonValue;
 use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
-use service::Service;
+use service::{Context, Service};
 use std::collections::HashMap;
 use std::sync::Arc;
 use store::balance::BalanceForGoods;
@@ -41,7 +41,9 @@ impl Service for MemoriesInFiles {
     &self.name
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, ctx: Context, params: Params) -> crate::services::Result {
+    println!("find account {:?}", ctx.account.read().unwrap());
+
     let wsid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
@@ -235,7 +237,7 @@ impl Service for MemoriesInFiles {
     })
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, id: String, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
     let do_enrich = self.enrich(&params);
@@ -257,7 +259,7 @@ impl Service for MemoriesInFiles {
     }
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, data: Data, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
@@ -268,7 +270,13 @@ impl Service for MemoriesInFiles {
     Ok(data.enrich(&ws))
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(
+    &self,
+    _ctx: Context,
+    id: String,
+    data: Data,
+    params: Params,
+  ) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -288,7 +296,7 @@ impl Service for MemoriesInFiles {
     }
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, _ctx: Context, id: String, data: Data, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
@@ -324,7 +332,7 @@ impl Service for MemoriesInFiles {
     }
   }
 
-  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

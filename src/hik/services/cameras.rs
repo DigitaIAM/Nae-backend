@@ -8,8 +8,9 @@ use crate::hik::{ConfigCamera, StatusCamera};
 use crate::services::{string_to_id, Data, Params};
 use crate::storage::{SCamera, Workspaces};
 
-use crate::{animo::memory::ID, commutator::Application};
-use service::Service;
+use crate::commutator::Application;
+use service::{Context, Service};
+use values::ID;
 
 pub struct Cameras {
   app: Application,
@@ -100,7 +101,7 @@ impl Service for Cameras {
     &self.path
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
 
     let limit = self.limit(&params);
@@ -128,7 +129,7 @@ impl Service for Cameras {
     })
   }
 
-  fn get(&self, id: String, _params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
     let objs = self.objs.read().unwrap();
@@ -138,7 +139,7 @@ impl Service for Cameras {
     }
   }
 
-  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, data: Data, _params: Params) -> crate::services::Result {
     let oid = data["oid"].as_str().unwrap_or("").trim().to_string();
     let oid = string_to_id(oid)?;
 
@@ -198,11 +199,17 @@ impl Service for Cameras {
     Ok(json)
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
-    self.patch(id, data, params)
+  fn update(&self, ctx: Context, id: String, data: Data, params: Params) -> crate::services::Result {
+    self.patch(ctx, id, data, params)
   }
 
-  fn patch(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
+  fn patch(
+    &self,
+    _ctx: Context,
+    id: String,
+    data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
     println!("patch {:?}", data.dump());
@@ -275,7 +282,7 @@ impl Service for Cameras {
     }
   }
 
-  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(service::error::Error::NotImplemented)
   }
 }

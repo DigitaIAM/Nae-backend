@@ -1,13 +1,15 @@
-use crate::services::{Data, Params};
-use crate::{
-  animo::memory::{ChangeTransformation, Memory, TransformationKey, Value, ID},
-  commutator::Application,
-};
 use json::object::Object;
 use json::JsonValue;
-use service::error::Error;
-use service::Service;
 use std::sync::Arc;
+
+use crate::services::{Data, Params};
+use crate::{
+  animo::memory::{ChangeTransformation, Memory, TransformationKey, Value},
+  commutator::Application,
+};
+use service::error::Error;
+use service::{Context, Service};
+use values::ID;
 
 pub(crate) struct InKV {
   app: Application,
@@ -56,7 +58,7 @@ impl Service for InKV {
     &self.path
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     let _limit = self.limit(&params);
     let _skip = self.skip(&params);
 
@@ -79,7 +81,7 @@ impl Service for InKV {
     // )
   }
 
-  fn get(&self, id: String, _params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
     let keys = self.properties.iter().map(|name| TransformationKey::simple(id, name)).collect();
@@ -105,12 +107,18 @@ impl Service for InKV {
     }
   }
 
-  fn create(&self, data: Data, params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, data: Data, params: Params) -> crate::services::Result {
     let id = ID::random();
     self.save(id, data, params)
   }
 
-  fn update(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn update(
+    &self,
+    _ctx: Context,
+    id: String,
+    data: Data,
+    params: Params,
+  ) -> crate::services::Result {
     let id = ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))?;
 
     // TODO check that record exist
@@ -118,7 +126,7 @@ impl Service for InKV {
     self.save(id, data, params)
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, _ctx: Context, id: String, data: Data, params: Params) -> crate::services::Result {
     let id = ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))?;
 
     // TODO check that record exist
@@ -126,7 +134,7 @@ impl Service for InKV {
     self.save(id, data, params)
   }
 
-  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

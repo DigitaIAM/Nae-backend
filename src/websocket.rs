@@ -1,16 +1,15 @@
-
+use crate::commutator::Commutator;
 use crate::ws::{engine_io, error_general, socket_io, Connect, Disconnect, Event, WsMessage};
-use crate::{commutator::Commutator};
 use actix::{
   fut, Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
   Running, StreamHandler, WrapFuture,
 };
-
+use std::sync::RwLock;
 
 use actix_web_actors::ws;
 
-
-
+use actix_web::HttpRequest;
+use service::Context;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -25,11 +24,12 @@ pub(crate) struct WsConn {
   id: Uuid,
   hb: Instant,
   com: Addr<Commutator>,
+  ctx: Context,
 }
 
 impl WsConn {
-  pub(crate) fn new(com: Addr<Commutator>) -> Self {
-    WsConn { id: Uuid::new_v4(), hb: Instant::now(), com }
+  pub(crate) fn new(request: actix_web::dev::RequestHead, com: Addr<Commutator>) -> Self {
+    WsConn { id: Uuid::new_v4(), hb: Instant::now(), com, ctx: Context::websocket(request) }
   }
 
   fn hb(&self, ctx: &mut ws::WebsocketContext<Self>) {
@@ -74,6 +74,7 @@ impl Actor for WsConn {
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
   fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
     println!("msg {:?}", msg);
+
     match msg {
       Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
       Ok(ws::Message::Text(text)) => {
@@ -81,8 +82,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
         let code = &payload[..1];
         let data = &payload[1..];
         match code {
-          engine_io::OPEN => todo!(),
-          engine_io::CLOSE => todo!(),
+          engine_io::OPEN => {},  // TODO
+          engine_io::CLOSE => {}, // TODO
           engine_io::PING => {
             self.hb = Instant::now();
             ctx.text(engine_io::PONG);
@@ -97,7 +98,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
               socket_io::CONNECT => {
                 ctx.text(WsMessage::connect(&self.id).data());
               },
-              socket_io::DISCONNECT => todo!(),
+              socket_io::DISCONNECT => {}, // TODO
               socket_io::EVENT => {
                 println!("data: {:?}", data);
                 // "16[\"create\",\"authentication\",{\"strategy\":\"local\",\"email\":\"admin\",\"password\":\"111\"},{}]"
@@ -134,7 +135,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
                           return;
                         };
 
-                        self.com.do_send(Event { sid: self.id, event_id, path, command, data });
+                        self.com.do_send(Event {
+                          ctx: self.ctx.clone(),
+                          sid: self.id,
+                          event_id,
+                          path,
+                          command,
+                          data,
+                        });
                       },
                       Err(msg) => {
                         ctx.text(WsMessage::ack(event_id, error_general(msg.to_string())).data());
@@ -143,16 +151,16 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
                   }
                 }
               },
-              engine_io::UPGRADE => todo!(),
-              engine_io::NOON => todo!(),
-              _ => todo!("handle errors"),
+              engine_io::UPGRADE => {}, // TODO
+              engine_io::NOON => {},    // TODO
+              _ => {},                  // TODO handle errors
             }
           },
-          _ => todo!("handle unknown message"),
+          _ => {}, // TODO handle unknown message
         }
       },
-      Ok(ws::Message::Binary(bin)) => {
-        todo!("binary {:?}", bin);
+      Ok(ws::Message::Binary(_)) => {
+        // TODO handle binary
       },
       _ => (),
     }

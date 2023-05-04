@@ -7,11 +7,12 @@ use dbase::{FieldValue, Record};
 use crate::animo::TimeInterval;
 use crate::animo::{
   db::AnimoDB,
-  memory::{create, Context, Value, ID},
-  shared::{COST, CUSTOMER, DATE, DESC, GOODS, GOODS_ISSUE, GOODS_RECEIVE, QTY, SPECIFIC_OF, STORE},
+  memory::{create, Context, Value},
+  shared::*,
   Time,
 };
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
+use values::ID;
 
 pub fn import(db: &AnimoDB) {
   println!("running import");

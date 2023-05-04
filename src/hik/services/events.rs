@@ -10,7 +10,7 @@ use crate::storage::SEvent;
 use crate::{commutator::Application, storage::Workspaces};
 use service::error::Error;
 use service::utils::time::string_to_time;
-use service::Service;
+use service::{Context, Service};
 pub struct Events {
   app: Application,
   path: Arc<String>,
@@ -29,7 +29,7 @@ impl Service for Events {
     &self.path
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
     // let cid = self.cid(&params)?;
 
@@ -59,7 +59,7 @@ impl Service for Events {
     })
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, id: String, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
     let cid = crate::services::cid(&params)?;
 
@@ -68,7 +68,7 @@ impl Service for Events {
     self.ws.get(&oid).camera(&cid).event(&id, &ts).load()
   }
 
-  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, data: Data, _params: Params) -> crate::services::Result {
     let event = &data["event"];
     if event["major"].as_usize().unwrap_or(0) != 5 {
       return Err(Error::GeneralError("major is not equal to 5".into()));
@@ -93,15 +93,27 @@ impl Service for Events {
     Ok(obj)
   }
 
-  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
+  fn update(
+    &self,
+    _ctx: Context,
+    _id: String,
+    _data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
+  fn patch(
+    &self,
+    _ctx: Context,
+    _id: String,
+    _data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

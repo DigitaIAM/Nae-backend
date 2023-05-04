@@ -5,11 +5,10 @@ use actix_web::{get, post, web, Error, HttpRequest, HttpResponse, Responder};
 use json::{object, JsonValue};
 
 use crate::animo::db::AnimoDB;
+use crate::animo::memory::Memory;
 use crate::animo::memory::{ChangeTransformation, TransformationKey};
 use crate::commutator::Application;
-use service::Services;
-use crate::animo::memory::Memory;
-
+use service::{Context, Services};
 
 pub async fn not_implemented() -> impl Responder {
   HttpResponse::NotImplemented().json("")
@@ -43,7 +42,7 @@ pub(crate) async fn memory_modify(
 
 #[post("/api/docs")]
 pub async fn docs_create(
-  _req: HttpRequest,
+  req: HttpRequest,
   app: web::Data<Application>,
   data: web::Json<serde_json::Value>,
   params: web::Query<HashMap<String, String>>,
@@ -55,7 +54,9 @@ pub async fn docs_create(
 
   let params: JsonValue = object! {"ctx": ctx, "oid": oid};
 
-  let result = web::block(move || app.service("docs").create(data, params))
+  let ctx = Context::rest(req.head().clone());
+
+  let result = web::block(move || app.service("docs").create(ctx, data, params))
     .await?
     .map_err(actix_web::error::ErrorInternalServerError)?;
 
@@ -85,7 +86,9 @@ pub async fn docs_update(
 
   let params: JsonValue = object! {"ctx": ctx, "oid": oid};
 
-  let result = web::block(move || app.service("docs").update(id, data, params))
+  let ctx = Context::rest(req.head().clone());
+
+  let result = web::block(move || app.service("docs").update(ctx, id, data, params))
     .await?
     .map_err(actix_web::error::ErrorInternalServerError)?;
 
@@ -96,11 +99,10 @@ pub async fn docs_update(
 
 #[get("/api/docs/find")]
 pub async fn docs_find(
-  _req: HttpRequest,
+  req: HttpRequest,
   app: web::Data<Application>,
   params: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
-
   let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
 
   let oid = params["oid"].clone();
@@ -109,9 +111,11 @@ pub async fn docs_find(
 
   let params: JsonValue = object! {"oid": oid, "ctx": ctx, "limit": 2, "skip": 0, "filter": filter};
 
-  let result = web::block(move || app.service("docs").find(params))
-      .await?
-      .map_err(actix_web::error::ErrorInternalServerError)?;
+  let ctx = Context::rest(req.head().clone());
+
+  let result = web::block(move || app.service("docs").find(ctx, params))
+    .await?
+    .map_err(actix_web::error::ErrorInternalServerError)?;
 
   let result: serde_json::Value = serde_json::from_str(&result.dump()).unwrap();
 
@@ -120,7 +124,7 @@ pub async fn docs_find(
 
 #[get("/api/inventory")]
 pub async fn inventory_find(
-  _req: HttpRequest,
+  req: HttpRequest,
   app: web::Data<Application>,
   params: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
@@ -133,7 +137,9 @@ pub async fn inventory_find(
 
   let params: JsonValue = object! {"ctx": ctx, "oid": oid, "storage": storage, dates: {"from": from_date, "till": till_date}};
 
-  let result = web::block(move || app.service("inventory").find(params))
+  let ctx = Context::rest(req.head().clone());
+
+  let result = web::block(move || app.service("inventory").find(ctx, params))
     .await?
     .map_err(actix_web::error::ErrorInternalServerError)?;
 

@@ -1,15 +1,24 @@
-use crate::animo::error::DBError;
-use crate::animo::memory::{ChangeTransformation, TransformationKey, Value, ID};
-use crate::{animo::memory::Memory, animo::shared::DESC, commutator::Application};
-use actix_web::{post, web, Error, HttpResponse};
+use std::future::{ready, Ready};
+
+use actix_web::dev::ServiceRequest;
+use actix_web::error::ErrorUnauthorized;
+use actix_web::{http, post, web, Error, FromRequest, HttpMessage, HttpRequest, HttpResponse};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use chrono::Duration;
+use json::JsonValue;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use pbkdf2::{
   password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
   Pbkdf2,
 };
+
+use crate::animo::error::DBError;
+use crate::animo::memory::{ChangeTransformation, TransformationKey, Value};
+use crate::warehouse::primitive_types;
+use crate::{animo::memory::Memory, animo::shared::DESC, commutator::Application};
 use service::utils::time::now_in_millis;
+use service::{Account, Context, Services};
+use values::ID;
 
 const ALGORITHM: Algorithm = Algorithm::HS256;
 
@@ -71,41 +80,88 @@ pub(crate) fn decode_token(app: &Application, token: &str) -> Result<String, DBE
   }
 }
 
-// pub(crate) async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<ServiceRequest, actix_web::Error> {
-//     eprintln!("{:?}", credentials);
+// pub(crate) async fn validator(
+//   req: ServiceRequest,
+//   credentials: BearerAuth,
+// ) -> Result<ServiceRequest, (Error, ServiceRequest)> {
+//   println!("validator: {:?}", credentials);
 //
-//     let config = req
-//         .app_data::<Settings>()
-//         .map(|data| data.clone())
-//         .unwrap();
+//   let app = req.app_data::<Application>().unwrap();
 //
-//     match validate_token(config, credentials.token()) {
-//         Ok(res) => {
-//             if res == true {
-//                 Ok(req)
-//             } else {
-//                 Err(actix_web::errors::ErrorUnauthorized(""))
-//             }
-//         }
-//         Err(_) => Err(actix_web::errors::ErrorUnauthorized("")),
-//     }
+//   let token = credentials.token();
+//   match Account::jwt(&app, token) {
+//     Ok(account) => {
+//       // let user =
+//       //   app
+//       //     .service("users")
+//       //     .get(Context::local(), account.id.to_base64(), JsonValue::Null)?;
+//
+//       req.extensions_mut().insert(account);
+//       Ok(req)
+//     },
+//     Err(_) => {
+//       let error =
+//         json::object! { status: "fail".to_string(), message: "Invalid token".to_string() }.dump();
+//       Err((ErrorUnauthorized(error), req))
+//     },
+//   }
 // }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub(crate) struct Account {
-  pub(crate) id: ID,
-  // first_name: String,
-  // last_name: String,
-  email: String,
+pub trait JWTAuth<T> {
+  fn jwt(app: &Application, token: &str) -> Result<T, DBError>;
 }
 
-impl Account {
-  pub(crate) fn jwt(app: &Application, token: &str) -> Result<Self, DBError> {
+impl JWTAuth<Account> for Account {
+  fn jwt(app: &Application, token: &str) -> Result<Account, DBError> {
     let email = decode_token(app, token)?;
     let id = ID::from(email.as_str());
     Ok(Account { id, email })
   }
 }
+
+// impl FromRequest for Account {
+//   type Error = Error;
+//   type Future = Ready<Result<Self, Self::Error>>;
+//   fn from_request(req: &HttpRequest, _: &mut actix_web::dev::Payload) -> Self::Future {
+//     let token = req.cookie("token").map(|c| c.value().to_string()).or_else(|| {
+//       req
+//         .headers()
+//         .get(http::header::AUTHORIZATION)
+//         .map(|h| h.to_str().unwrap().split_at(7).1.to_string())
+//     });
+//
+//     println!("validator: {:?}", token);
+//
+//     if token.is_none() {
+//       let error = json::object! {
+//         status: "fail".to_string(),
+//         message: "You are not logged in, please provide token".to_string(),
+//       }
+//       .dump();
+//       return ready(Err(ErrorUnauthorized(error)));
+//     }
+//
+//     let app = req.app_data::<Application>().unwrap();
+//
+//     match Account::jwt(&app, token.unwrap().as_str()) {
+//       Ok(account) => {
+//         // let user =
+//         //   app
+//         //     .service("users")
+//         //     .get(Context::local(), account.id.to_base64(), JsonValue::Null)?;
+//
+//         req.extensions_mut().insert(account.clone());
+//
+//         ready(Ok(account))
+//       },
+//       Err(_) => {
+//         let error =
+//           json::object! { status: "fail".to_string(), message: "Invalid token".to_string() }.dump();
+//         ready(Err(ErrorUnauthorized(error)))
+//       },
+//     }
+//   }
+// }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SignUpRequest {

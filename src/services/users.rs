@@ -1,13 +1,14 @@
-use crate::services::{string_to_id, Data, Params};
-
-use crate::{animo::memory::ID, auth, commutator::Application};
-
 use json::JsonValue;
-use service::error::Error;
-use service::Service;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::{Arc, RwLock};
+
+use crate::services::{string_to_id, Data, Params};
+use crate::{auth, commutator::Application};
+
+use service::error::Error;
+use service::{Context, Service};
+use values::ID;
 
 pub const PATH: &str = "./data/services/users/";
 
@@ -83,7 +84,7 @@ impl Service for Users {
     &self.path
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
@@ -102,7 +103,7 @@ impl Service for Users {
     })
   }
 
-  fn get(&self, id: String, _params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
 
     let obj = {
@@ -138,7 +139,7 @@ impl Service for Users {
     // }
   }
 
-  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, data: Data, _params: Params) -> crate::services::Result {
     let email = data["email"].as_str().unwrap_or("").trim().to_lowercase();
     let password = data["password"].as_str().unwrap_or("").trim().to_string();
 
@@ -172,7 +173,13 @@ impl Service for Users {
     }
   }
 
-  fn update(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
+  fn update(
+    &self,
+    _ctx: Context,
+    id: String,
+    data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -192,7 +199,13 @@ impl Service for Users {
     }
   }
 
-  fn patch(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
+  fn patch(
+    &self,
+    _ctx: Context,
+    id: String,
+    data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -223,7 +236,7 @@ impl Service for Users {
     }
   }
 
-  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

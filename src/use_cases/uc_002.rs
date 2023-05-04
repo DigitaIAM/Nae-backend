@@ -2,7 +2,7 @@ use csv::{ReaderBuilder, Trim};
 
 use crate::animo::{
   db::AnimoDB,
-  memory::{create, ID},
+  memory::create,
   shared::{
     CAN_BUY_FROM, DATE, DESC, LABEL, MINIMUM_ORDER_QTY, NUMBER, PRICE, REFERENCE, UOM, UOM_METER,
     UOM_PIECE,
@@ -10,7 +10,8 @@ use crate::animo::{
   Time,
 };
 use crate::use_cases::write;
-use crate::warehouse::primitives::Decimal;
+use crate::warehouse::primitive_types::Decimal;
+use values::ID;
 
 pub fn import(db: &AnimoDB) {
   let mut changes = Vec::with_capacity(1_000_000);

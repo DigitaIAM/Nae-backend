@@ -11,7 +11,7 @@ pub use super::error::WHError;
 use service::utils::time::{date_to_string, time_to_string};
 
 use crate::GetWarehouse;
-use service::Services;
+use service::{Context, Services};
 
 use crate::agregations::{AggregationStore, AgregationStoreGoods};
 use crate::balance::{BalanceDelta, BalanceForGoods};
@@ -259,10 +259,11 @@ fn json_to_ops(
   };
 
   let params = object! {oid: wid, ctx: [], enrich: false };
-  let document = match app.service("memories").get(data["document"].string(), params) {
-    Ok(d) => d,
-    Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-  };
+  let document =
+    match app.service("memories").get(Context::local(), data["document"].string(), params) {
+      Ok(d) => d,
+      Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+    };
 
   log::debug!("DOCUMENT: {:?}", document.dump());
 
@@ -314,7 +315,7 @@ fn json_to_ops(
   println!("store from: {store_from:?} into: {store_into:?}");
 
   let params = object! {oid: wid, ctx: vec!["goods"] };
-  let item = match app.service("memories").get(data["goods"].string(), params) {
+  let item = match app.service("memories").get(Context::local(), data["goods"].string(), params) {
     Ok(d) => d,
     Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
   };
@@ -439,7 +440,7 @@ fn resolve_store(
   log::debug!("store_id {name} {store_id:?}");
 
   let params = object! {oid: wid, ctx: vec!["warehouse", "storage"] };
-  let storage = app.service("memories").get(store_id, params)?;
+  let storage = app.service("memories").get(Context::local(), store_id, params)?;
   log::debug!("storage {:?}", storage.dump());
   storage["_uuid"].uuid()
 }

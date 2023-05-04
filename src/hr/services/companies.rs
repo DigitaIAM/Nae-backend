@@ -1,13 +1,12 @@
 use json::JsonValue;
-
 use std::sync::Arc;
 
-use crate::services::JsonData;
 use crate::services::{Data, Params};
-
-use crate::{animo::memory::ID, commutator::Application, storage::Workspaces};
+use crate::{commutator::Application, storage::Workspaces};
 use service::error::Error;
-use service::Service;
+use service::{Context, Service};
+use values::ID;
+
 pub struct Companies {
   app: Application,
   name: String,
@@ -26,7 +25,7 @@ impl Service for Companies {
     &self.name
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     let _limit = self.limit(&params);
     let skip = self.skip(&params);
 
@@ -42,12 +41,12 @@ impl Service for Companies {
     })
   }
 
-  fn get(&self, id: String, _params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
     self.ws.get(&id).load()
   }
 
-  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, data: Data, _params: Params) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -62,7 +61,13 @@ impl Service for Companies {
     }
   }
 
-  fn update(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
+  fn update(
+    &self,
+    _ctx: Context,
+    id: String,
+    data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -77,7 +82,13 @@ impl Service for Companies {
     }
   }
 
-  fn patch(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
+  fn patch(
+    &self,
+    _ctx: Context,
+    id: String,
+    data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
@@ -98,7 +109,7 @@ impl Service for Companies {
     }
   }
 
-  fn remove(&self, id: String, _params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, id: String, _params: Params) -> crate::services::Result {
     let id = ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))?;
 
     self.ws.get(&id).delete()

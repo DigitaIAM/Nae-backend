@@ -3,7 +3,7 @@ use crate::services::{Data, Params};
 use chrono::{DateTime, Utc};
 use service::error::Error;
 use service::utils::json::JsonParams;
-use service::Service;
+use service::{Context, Service};
 use std::sync::Arc;
 use store::batch::Batch;
 use store::elements::ToJson;
@@ -24,7 +24,7 @@ impl Service for Inventory {
     &self.path
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, ctx: Context, params: Params) -> crate::services::Result {
     let _oid = crate::services::oid(&params)?;
 
     // let limit = self.limit(&params);
@@ -106,23 +106,35 @@ impl Service for Inventory {
     }
   }
 
-  fn get(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn create(&self, _data: Data, _params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, _data: Data, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
+  fn update(
+    &self,
+    _ctx: Context,
+    _id: String,
+    _data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
+  fn patch(
+    &self,
+    _ctx: Context,
+    _id: String,
+    _data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

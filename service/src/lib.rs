@@ -8,7 +8,9 @@ pub mod utils;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use json::JsonValue;
 use std::convert::TryFrom;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+use uuid::Uuid;
 
 use error::Error;
 use utils::json::JsonParams;
@@ -17,17 +19,50 @@ use utils::time::DateRange;
 #[macro_use]
 extern crate quick_error;
 
-// trait Workspace {
-//   fn memories(&self, ctx: Vec<String>) -> Memories;
-// }
-//
-// trait Memories {
-//   fn create(&self, app: &Application, data: JsonValue) -> Result;
-// }
+use values::{ID, ID_MIN};
 
 pub type Result = std::result::Result<JsonValue, Error>;
 pub(crate) type Data = JsonValue;
 pub(crate) type Params = JsonValue;
+
+#[derive(Debug, Clone)] //, serde::Serialize, serde::Deserialize)]
+pub struct Account {
+  pub id: ID,
+  // first_name: String,
+  // last_name: String,
+  pub email: String,
+  // data: Option<JsonValue>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Context {
+  pub request: Option<actix_web::dev::RequestHead>,
+  pub account: Arc<RwLock<Account>>,
+  pub timestamp: Duration,
+}
+
+impl Context {
+  fn guest() -> Arc<RwLock<Account>> {
+    Arc::new(RwLock::new(Account { id: ID_MIN, email: "".to_string() }))
+  }
+
+  pub fn local() -> Self {
+    Self { request: None, timestamp: Context::since_the_epoch(), account: Self::guest() }
+  }
+
+  pub fn rest(request: actix_web::dev::RequestHead) -> Self {
+    Self { request: Some(request), timestamp: Context::since_the_epoch(), account: Self::guest() }
+  }
+
+  pub fn websocket(request: actix_web::dev::RequestHead) -> Self {
+    Self { request: Some(request), timestamp: Context::since_the_epoch(), account: Self::guest() }
+  }
+
+  fn since_the_epoch() -> Duration {
+    let start = std::time::SystemTime::now();
+    start.duration_since(std::time::UNIX_EPOCH).expect("Time went backwards")
+  }
+}
 
 pub trait Services: Send + Sync {
   fn register(&mut self, service: Arc<dyn Service>);
@@ -37,12 +72,12 @@ pub trait Services: Send + Sync {
 pub trait Service: Send + Sync {
   fn path(&self) -> &str;
 
-  fn find(&self, params: Params) -> Result;
-  fn get(&self, id: String, params: Params) -> Result;
-  fn create(&self, data: Data, params: Params) -> Result;
-  fn update(&self, id: String, data: Data, params: Params) -> Result;
-  fn patch(&self, id: String, data: Data, params: Params) -> Result;
-  fn remove(&self, id: String, params: Params) -> Result;
+  fn find(&self, ctx: Context, params: Params) -> Result;
+  fn get(&self, ctx: Context, id: String, params: Params) -> Result;
+  fn create(&self, ctx: Context, data: Data, params: Params) -> Result;
+  fn update(&self, ctx: Context, id: String, data: Data, params: Params) -> Result;
+  fn patch(&self, ctx: Context, id: String, data: Data, params: Params) -> Result;
+  fn remove(&self, ctx: Context, id: String, params: Params) -> Result;
 
   fn enrich(&self, params: &Params) -> bool {
     self.params(params)["enrich"].as_bool().unwrap_or(true)
@@ -157,27 +192,27 @@ impl Service for NoService {
     self.0.as_str()
   }
 
-  fn find(&self, _params: Params) -> Result {
+  fn find(&self, _ctx: Context, _params: Params) -> Result {
     self.error()
   }
 
-  fn get(&self, _id: String, _params: Params) -> Result {
+  fn get(&self, _ctx: Context, _id: String, _params: Params) -> Result {
     self.error()
   }
 
-  fn create(&self, _data: Data, _params: Params) -> Result {
+  fn create(&self, _ctx: Context, _data: Data, _params: Params) -> Result {
     self.error()
   }
 
-  fn update(&self, _id: String, _data: Data, _params: Params) -> Result {
+  fn update(&self, _ctx: Context, _id: String, _data: Data, _params: Params) -> Result {
     self.error()
   }
 
-  fn patch(&self, _id: String, _data: Data, _params: Params) -> Result {
+  fn patch(&self, _ctx: Context, _id: String, _data: Data, _params: Params) -> Result {
     self.error()
   }
 
-  fn remove(&self, _id: String, _params: Params) -> Result {
+  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> Result {
     self.error()
   }
 }

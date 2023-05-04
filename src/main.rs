@@ -101,16 +101,17 @@ async fn server(
   app: Application,
   com: Addr<Commutator>,
 ) -> std::io::Result<()> {
+  let domain = "https://animi.ws";
   let address = "localhost"; // "127.0.0.1"
   let port = 3030;
 
-  log::info!("starting up {address}:{port}");
+  log::info!("starting up {address}:{port} for {domain}");
 
   HttpServer::new(move || {
     // let auth = HttpAuthentication::bearer(auth::validator);
 
     let cors = Cors::default()
-      .allowed_origin("https://www.rust-lang.org/")
+      .allowed_origin(domain)
       .allow_any_origin()
       .allow_any_method()
       // .allowed_origin_fn(|origin, _req_head| {
@@ -138,8 +139,8 @@ async fn server(
       .service(
         web::scope("/v1")
           // .service(websocket::start_connection_route)
-          .service(crate::file::get_file)
-          .service(crate::file::post_file)
+          .service(file::get_file)
+          .service(file::post_file)
           .service(api::memory_query)
           .service(api::memory_modify),
       )
@@ -172,7 +173,7 @@ async fn startup() -> std::io::Result<()> {
 
   {
     let mut engine = app.search.write().unwrap();
-    engine.load(storage.clone());
+    engine.load(storage.clone()).unwrap();
   }
 
   app.register(Actions::new(app.clone(), "actions", storage.clone()));

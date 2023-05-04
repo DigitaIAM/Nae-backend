@@ -2,7 +2,7 @@ use csv::{ReaderBuilder, Trim};
 use json::JsonValue;
 
 use crate::commutator::Application;
-use service::Services;
+use service::{Context, Services};
 
 pub fn import(app: &Application) {
   let mut reader = ReaderBuilder::new()
@@ -52,7 +52,7 @@ pub fn import(app: &Application) {
       "gender": gender.to_string(),
     };
 
-    app.service("people").create(data, JsonValue::Null);
+    app.service("people").create(Context::local(), data, JsonValue::Null).unwrap();
 
     count += 1;
   }

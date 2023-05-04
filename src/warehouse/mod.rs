@@ -1,12 +1,10 @@
 pub(crate) mod balance;
 pub(crate) mod balance_operation;
 pub(crate) mod balance_operations;
-pub(crate) mod primitives;
+pub(crate) mod primitive_types;
 pub mod store_aggregation_topology;
 pub mod store_topology;
 pub(crate) mod turnover;
-
-
 
 // Report for dates
 //           | open       | in         | out        | close      |
@@ -49,7 +47,7 @@ pub mod test_util {
   use crate::{animo::db::AnimoDB, animo::memory::Memory, settings::Settings};
   use chrono::DateTime;
   use std::sync::Arc;
-  use tempfile::{TempDir, tempdir};
+  use tempfile::{tempdir, TempDir};
 
   pub fn init() -> (TempDir, Settings, AnimoDB) {
     std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");

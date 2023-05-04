@@ -63,6 +63,7 @@ impl WsMessage {
 #[derive(Message, Debug)]
 #[rtype(result = "()")]
 pub(crate) struct Event {
+  pub(crate) ctx: service::Context,
   pub(crate) sid: Uuid,
   pub(crate) event_id: String,
   pub(crate) path: String,

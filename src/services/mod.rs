@@ -3,12 +3,12 @@ mod people;
 pub(crate) mod persistent;
 mod users;
 
-use crate::animo::memory::ID;
 pub use authentication::Authentication;
 use json::JsonValue;
 pub use people::People;
 use service::error::Error;
 pub use users::Users;
+use values::ID;
 
 pub(crate) type Result = std::result::Result<JsonValue, Error>;
 pub(crate) type Data = JsonValue;
@@ -16,11 +16,11 @@ pub(crate) type Params = JsonValue;
 
 #[derive(Debug)]
 pub enum Mutation {
-  // service name, data and etc
-  Create(String, Data, Params),
-  Update(String, String, Data, Params),
-  Patch(String, String, Data, Params),
-  Remove(String, String, Params),
+  // context, service name, data and etc
+  Create(service::Context, String, Data, Params),
+  Update(service::Context, String, String, Data, Params),
+  Patch(service::Context, String, String, Data, Params),
+  Remove(service::Context, String, String, Params),
 }
 
 #[derive(Debug)]

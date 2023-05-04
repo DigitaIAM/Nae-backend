@@ -1,13 +1,13 @@
 use bytecheck::CheckBytes;
 use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
+use values::ID;
 
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::animo::error::DBError;
-use crate::animo::memory::ID;
 use crate::animo::shared::*;
 use crate::animo::Operation;
 use crate::warehouse::balance::WHBalance;
-use crate::warehouse::primitives::{Money, MoneyOp, Qty};
+use crate::warehouse::primitive_types::{Money, MoneyOp, Qty};
 
 // #[derive(Debug, Clone, Serialize, Deserialize)]
 #[derive(Clone, Archive, Deserialize, Serialize, Debug, PartialEq)]

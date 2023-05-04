@@ -3,7 +3,7 @@ use crate::hik::error::Error;
 use crate::hik::ConfigCamera;
 use crate::services::Mutation;
 
-use crate::{animo::memory::ID, commutator::Application};
+use crate::commutator::Application;
 use actix::prelude::*;
 use async_trait::async_trait;
 use json::JsonValue;
@@ -14,6 +14,7 @@ use tokio::fs::File;
 
 use chrono::{Datelike, Utc};
 use rand::Rng;
+use values::ID;
 
 #[async_trait]
 trait ToHttpRequest {
@@ -302,10 +303,18 @@ impl HttpClient {
     HttpClient { app, client }
   }
 
-  async fn process(app: Application, client: Client, id: ID, msg: impl ToHttpRequest) {
+  async fn process(
+    app: Application,
+    client: Client,
+    id: ID,
+    msg: impl ToHttpRequest,
+  ) -> Result<(), service::error::Error> {
+    let ctx: service::Context = service::Context::local();
+
     let data = json::object! { "state": crate::hik::actions::task::Stage::requested().to_json() };
-    let mutation = Mutation::Patch("actions".into(), id.to_base64(), data, JsonValue::Null);
-    app.handle(mutation);
+    let mutation =
+      Mutation::Patch(ctx.clone(), "actions".into(), id.to_base64(), data, JsonValue::Null);
+    app.handle(mutation)?;
 
     let response = msg.request(client).await;
 
@@ -318,11 +327,12 @@ impl HttpClient {
           Err(_) => json::object! { "body": body },
         };
         data["state"] = crate::hik::actions::task::Stage::completed().to_json();
-        Mutation::Patch("actions".into(), id.to_base64(), data, JsonValue::Null)
+        Mutation::Patch(ctx.clone(), "actions".into(), id.to_base64(), data, JsonValue::Null)
       },
       Err(e) => {
         // println!("response errors: {e}");
         Mutation::Patch(
+          ctx.clone(),
           "actions".into(),
           id.to_base64(),
           json::object! { "errors": e.to_string(), "state": crate::hik::actions::task::Stage::completed().to_json() },
@@ -331,7 +341,9 @@ impl HttpClient {
       },
     };
 
-    app.handle(mutation);
+    app.handle(mutation)?;
+
+    Ok(())
   }
 }
 

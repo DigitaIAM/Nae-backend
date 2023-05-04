@@ -1,6 +1,3 @@
-use crate::{commutator::Application, animo::memory::ID};
-use service::Services;
-
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
@@ -9,26 +6,22 @@ use json::JsonValue;
 use reqwest::{header, Client, Response, Url};
 use serde::{Deserialize, Serialize};
 
-
-
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration};
-
+use std::time::Duration;
 
 use tokio::task::JoinHandle;
 
-
-
+use crate::commutator::Application;
 use crate::hik::auth::WithDigestAuth;
-
 use crate::hik::data::triggers_parser::TriggerItem;
 use crate::hik::error::{Error, Result};
 use crate::services::Mutation;
 use crate::storage::SCamera;
-use service::utils::time::now_in_seconds;
 use reqwest::header::CONTENT_TYPE;
+use service::utils::time::now_in_seconds;
+use service::{Context, Services};
+use values::ID;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 // #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -207,8 +200,8 @@ impl State {
 // #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct ConfigCamera {
   // #[serde(skip_deserializing)]
-  pub id: crate::animo::memory::ID,
-  pub oid: crate::animo::memory::ID,
+  pub id: ID,
+  pub oid: ID,
 
   pub name: String,
 
@@ -283,6 +276,7 @@ fn send_update(app: &Application, oid: ID, cid: ID, status: StatusCamera) {
   // app.service("cameras")
   //   .patch(id, change, JsonValue::Null);
   let mutation = Mutation::Patch(
+    Context::local(),
     "cameras".into(),
     cid.to_base64(),
     change,
@@ -435,7 +429,7 @@ async fn processing(
               event: event
             };
 
-            app.service("events").create(data, JsonValue::Null);
+            app.service("events").create(Context::local(), data, JsonValue::Null).unwrap();
 
             // tokio::time::sleep(Duration::from_secs(5)).await;
           }

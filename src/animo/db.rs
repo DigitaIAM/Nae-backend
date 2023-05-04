@@ -1,3 +1,11 @@
+use rkyv::AlignedVec;
+use rocksdb::{
+  BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch,
+  DB,
+};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
 use crate::animo::error::DBError;
 use crate::animo::memory::*;
 use crate::animo::{OpsManager, Txn};
@@ -7,14 +15,7 @@ use crate::{
   warehouse::store_aggregation_topology::WHStoreAggregationTopology,
   warehouse::store_topology::WHStoreTopology,
 };
-use rkyv::AlignedVec;
-use rocksdb::{
-  BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options, SnapshotWithThreadMode, WriteBatch,
-  DB,
-};
-
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use values::ID;
 
 const CF_CORE: &str = "cf_core";
 const CF_OPERATIONS: &str = "cf_operations";
@@ -84,7 +85,7 @@ impl<'a> Snapshot<'a> {
   }
 
   pub(crate) fn load_by(&self, context: &Context, what: &ID) -> Result<Value, DBError> {
-    let k = ID::bytes(context, what);
+    let k = ID::bytes(&context.0, what);
     let v = self.pit.get_cf(&self.cf_core(), &k)?;
 
     let value = match v {
@@ -166,7 +167,7 @@ impl Memory for AnimoDB {
       let mut batch = WriteBatch::default();
       for change in &mutations {
         // profiling::scope!("Looped write");
-        let k = ID::bytes(&change.context, &change.what);
+        let k = ID::bytes(&change.context.0, &change.what);
         // TODO let b = change.into_before.to_bytes()?;
         let v = change.into_after.to_bytes()?;
 

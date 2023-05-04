@@ -1,12 +1,13 @@
-use crate::animo::memory::ID;
-use crate::storage::memories::{Document, Memories};
-use crate::storage::old_references::{SDepartment, SLocation, SPerson, SShift};
-use crate::storage::{json, load, save, SCamera};
 use json::JsonValue;
-use service::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+use crate::storage::memories::{Document, Memories};
+use crate::storage::old_references::{SDepartment, SLocation, SPerson, SShift};
+use crate::storage::{json, load, save, SCamera};
+use service::error::Error;
+use values::ID;
 
 #[derive(Debug, Clone)]
 pub struct Workspaces {
@@ -16,9 +17,11 @@ pub struct Workspaces {
 impl Workspaces {
   pub fn new<S: AsRef<Path>>(folder: S) -> Self
   where
-    PathBuf: std::convert::From<S>,
+    PathBuf: From<S>,
   {
-    std::fs::create_dir_all(&folder).map_err(|e| panic!("can't create folder: {}", e)); // folder
+    fs::create_dir_all(&folder)
+      .map_err(|e| panic!("can't create folder: {}", e))
+      .unwrap(); // folder
 
     Workspaces { folder: folder.into() }
   }

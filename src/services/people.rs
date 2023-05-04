@@ -1,9 +1,11 @@
-use crate::services::{string_to_id, Data, Params};
-use crate::{animo::memory::ID, commutator::Application, storage::Workspaces};
 use json::JsonValue;
-use service::error::Error;
-use service::Service;
 use std::sync::Arc;
+
+use crate::services::{string_to_id, Data, Params};
+use crate::{commutator::Application, storage::Workspaces};
+use service::error::Error;
+use service::{Context, Service};
+use values::ID;
 
 lazy_static::lazy_static! {
     pub(crate) static ref PEOPLE: ID = ID::for_constant("people");
@@ -29,7 +31,7 @@ impl Service for People {
     &self.path
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
 
     let limit = self.limit(&params);
@@ -56,14 +58,14 @@ impl Service for People {
     })
   }
 
-  fn get(&self, id: String, params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, id: String, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
 
     let id = crate::services::string_to_id(id)?;
     self.ws.get(&oid).person(&id).load()
   }
 
-  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, data: Data, _params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&data)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
@@ -79,7 +81,13 @@ impl Service for People {
     }
   }
 
-  fn update(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
+  fn update(
+    &self,
+    _ctx: Context,
+    id: String,
+    data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     let oid = crate::services::oid(&data)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
@@ -95,7 +103,7 @@ impl Service for People {
     }
   }
 
-  fn patch(&self, id: String, data: Data, params: Params) -> crate::services::Result {
+  fn patch(&self, _ctx: Context, id: String, data: Data, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
@@ -117,7 +125,7 @@ impl Service for People {
     }
   }
 
-  fn remove(&self, id: String, params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, id: String, params: Params) -> crate::services::Result {
     let oid = crate::services::oid(&params)?;
     let id = string_to_id(id)?;
 

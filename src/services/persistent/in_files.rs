@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::{Arc, RwLock};
 
+use crate::commutator::Application;
 use crate::services::{Data, Params};
 use crate::ws::error_general;
-use crate::{animo::memory::ID, commutator::Application};
 use service::error::Error;
-use service::Service;
+use service::{Context, Service};
+use values::ID;
 
 pub struct InFiles {
   app: Application,
@@ -75,7 +76,7 @@ impl Service for InFiles {
     &self.path
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
@@ -94,7 +95,7 @@ impl Service for InFiles {
     })
   }
 
-  fn get(&self, id: String, _params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
     let objs = self.objs.read().unwrap();
     Ok(match objs.get(&id) {
@@ -103,7 +104,7 @@ impl Service for InFiles {
     })
   }
 
-  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, data: Data, _params: Params) -> crate::services::Result {
     let array = vec![data.clone()]; // TODO rewrite
     let (single, total, it) = if data.is_array() {
       (true, data.len(), data.members())
@@ -137,15 +138,27 @@ impl Service for InFiles {
     })
   }
 
-  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
+  fn update(
+    &self,
+    _ctx: Context,
+    _id: String,
+    _data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn patch(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
+  fn patch(
+    &self,
+    _ctx: Context,
+    _id: String,
+    _data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(Error::NotImplemented)
   }
 }

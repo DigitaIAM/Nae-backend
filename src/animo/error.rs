@@ -1,5 +1,6 @@
 use std::error;
 use std::fmt;
+use values::IDError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DBError {
@@ -15,6 +16,12 @@ impl From<&str> for DBError {
 impl From<String> for DBError {
   fn from(message: String) -> DBError {
     DBError { message }
+  }
+}
+
+impl From<IDError> for DBError {
+  fn from(e: IDError) -> DBError {
+    DBError { message: e.to_string() }
   }
 }
 

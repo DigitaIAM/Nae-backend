@@ -4,12 +4,13 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
 use service::utils::{json::JsonParams, time::now_in_seconds};
-use service::{Service, Services};
+use service::{Context, Service, Services};
+use values::ID;
 
 use crate::hik::actions::list_devices::{DeviceMgmt, HttpClient};
 use crate::hik::actions::task::{CommandMeta, Stage};
 use crate::services::{string_to_id, Data, Params};
-use crate::{animo::memory::ID, commutator::Application, storage::Workspaces};
+use crate::{commutator::Application, storage::Workspaces};
 
 pub struct Actions {
   app: Application,
@@ -53,7 +54,7 @@ impl Service for Actions {
     &self.path
   }
 
-  fn find(&self, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     let _limit = self.limit(&params);
     let skip = self.skip(&params);
 
@@ -69,7 +70,7 @@ impl Service for Actions {
     })
   }
 
-  fn get(&self, id: String, _params: Params) -> crate::services::Result {
+  fn get(&self, _ctx: Context, id: String, _params: Params) -> crate::services::Result {
     let id = string_to_id(id)?;
 
     let tasks = self.tasks.read().unwrap();
@@ -79,7 +80,7 @@ impl Service for Actions {
     }
   }
 
-  fn create(&self, data: Data, _params: Params) -> crate::services::Result {
+  fn create(&self, _ctx: Context, data: Data, _params: Params) -> crate::services::Result {
     self.cleanup();
 
     let command = data["command"].as_str().unwrap_or("").trim().to_string();
@@ -122,10 +123,11 @@ impl Service for Actions {
 
         let camera = self.app.storage.as_ref().unwrap().get(&oid).camera(&cid).config()?;
 
-        let person = self
-          .app
-          .service("people")
-          .get(pid.to_base64(), json::object! { "oid": oid.to_base64() })?;
+        let person = self.app.service("people").get(
+          Context::local(),
+          pid.to_base64(),
+          json::object! { "oid": oid.to_base64() },
+        )?;
 
         let dev_index = &camera.dev_index;
         let name = person["name"].string();
@@ -157,10 +159,11 @@ impl Service for Actions {
         // let mut cameras = self.app.storage.as_ref().unwrap().get(&oid).camera_configs();
         let camera = self.app.storage.as_ref().unwrap().get(&oid).camera(&cid).config()?;
 
-        let person = self
-          .app
-          .service("people")
-          .get(pid.to_base64(), json::object! { "oid": oid.to_base64() })?;
+        let person = self.app.service("people").get(
+          Context::local(),
+          pid.to_base64(),
+          json::object! { "oid": oid.to_base64() },
+        )?;
 
         let dev_index = camera.dev_index.clone();
         let _name = person["name"].string();
@@ -187,11 +190,23 @@ impl Service for Actions {
     }
   }
 
-  fn update(&self, _id: String, _data: Data, _params: Params) -> crate::services::Result {
+  fn update(
+    &self,
+    _ctx: Context,
+    _id: String,
+    _data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     Err(service::error::Error::NotImplemented)
   }
 
-  fn patch(&self, id: String, data: Data, _params: Params) -> crate::services::Result {
+  fn patch(
+    &self,
+    _ctx: Context,
+    id: String,
+    data: Data,
+    _params: Params,
+  ) -> crate::services::Result {
     if !data.is_object() {
       Err(service::error::Error::GeneralError("only object allowed".into()))
     } else {
@@ -227,7 +242,7 @@ impl Service for Actions {
     }
   }
 
-  fn remove(&self, _id: String, _params: Params) -> crate::services::Result {
+  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
     Err(service::error::Error::NotImplemented)
   }
 }

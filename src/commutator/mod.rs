@@ -106,26 +106,30 @@ impl Application {
 
   pub(crate) fn handle(&self, mutation: Mutation) -> crate::services::Result {
     match mutation {
-      Mutation::Create(name, data, params) => self.service(&name).create(data, params).map(|data| {
-        self.emit(Event::Created(name, data.clone()));
-        data
-      }),
-      Mutation::Update(name, id, data, params) => {
-        self.service(&name).update(id, data, params).map(|data| {
+      Mutation::Create(ctx, name, data, params) => {
+        self.service(&name).create(ctx, data, params).map(|data| {
+          self.emit(Event::Created(name, data.clone()));
+          data
+        })
+      },
+      Mutation::Update(ctx, name, id, data, params) => {
+        self.service(&name).update(ctx, id, data, params).map(|data| {
           self.emit(Event::Updated(name, data.clone()));
           data
         })
       },
-      Mutation::Patch(name, id, data, params) => {
-        self.service(&name).patch(id, data, params).map(|data| {
+      Mutation::Patch(ctx, name, id, data, params) => {
+        self.service(&name).patch(ctx, id, data, params).map(|data| {
           self.emit(Event::Patched(name, data.clone()));
           data
         })
       },
-      Mutation::Remove(name, id, params) => self.service(&name).remove(id, params).map(|data| {
-        self.emit(Event::Removed(name, data.clone()));
-        data
-      }),
+      Mutation::Remove(ctx, name, id, params) => {
+        self.service(&name).remove(ctx, id, params).map(|data| {
+          self.emit(Event::Removed(name, data.clone()));
+          data
+        })
+      },
     }
   }
 
@@ -306,17 +310,19 @@ impl Handler<ws::Event> for Commutator {
   fn handle(&mut self, msg: ws::Event, _ctx: &mut Self::Context) -> Self::Result {
     let service = self.app.service(msg.path.as_str());
     let response = match msg.command.as_str() {
-      "find" => service.find(msg.data),
-      "get" => id_params(msg.data).and_then(|(id, params)| service.get(id, params)),
-      "create" => data_params(msg.data)
-        .and_then(|(data, params)| self.app.handle(Mutation::Create(msg.path, data, params))),
-      "update" => id_data_params(msg.data).and_then(|(id, data, params)| {
-        self.app.handle(Mutation::Update(msg.path, id, data, params))
+      "find" => service.find(msg.ctx, msg.data),
+      "get" => id_params(msg.data).and_then(|(id, params)| service.get(msg.ctx, id, params)),
+      "create" => data_params(msg.data).and_then(|(data, params)| {
+        self.app.handle(Mutation::Create(msg.ctx, msg.path, data, params))
       }),
-      "patch" => id_data_params(msg.data)
-        .and_then(|(id, data, params)| self.app.handle(Mutation::Patch(msg.path, id, data, params))),
+      "update" => id_data_params(msg.data).and_then(|(id, data, params)| {
+        self.app.handle(Mutation::Update(msg.ctx, msg.path, id, data, params))
+      }),
+      "patch" => id_data_params(msg.data).and_then(|(id, data, params)| {
+        self.app.handle(Mutation::Patch(msg.ctx, msg.path, id, data, params))
+      }),
       "remove" => id_params(msg.data)
-        .and_then(|(id, params)| self.app.handle(Mutation::Remove(msg.path, id, params))),
+        .and_then(|(id, params)| self.app.handle(Mutation::Remove(msg.ctx, msg.path, id, params))),
       _ => Err(Error::GeneralError(format!(
         "service '{}' do not have command '{}'",
         msg.path, msg.command

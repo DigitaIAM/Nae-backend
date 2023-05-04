@@ -1,8 +1,8 @@
 use crate::commutator::Application;
 use json::{object, JsonValue};
-use service::Services;
+use service::{Context, Services};
 use std::fs::File;
-use std::io::{BufRead, BufReader, self, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::time::Instant;
 
 const DRUGS: [&str; 1] = ["drugs"];
@@ -34,9 +34,9 @@ pub(crate) fn report(app: &Application) {
     }
     let result = app
       .service("memories")
-      .find(object! {oid: oid, ctx: ctx.clone(), search: search})
+      .find(Context::local(), object! {oid: oid, ctx: ctx.clone(), search: search})
       .unwrap();
-    
+
     print_only_name(result)
   }
 }
