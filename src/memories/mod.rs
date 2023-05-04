@@ -108,7 +108,7 @@ impl Resolve for &str {
 
     if let Some(doc) = ws.resolve_id(self) {
       match doc.json() {
-        Ok(o) => o,
+        Ok(o) => o.enrich(ws),
         Err(e) => json::object! {
           "_id": self.to_string(),
           "_err": e.to_string(),
