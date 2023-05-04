@@ -29,6 +29,28 @@ impl BalanceForGoods {
     BalanceDelta { qty: other.qty - self.qty, cost: other.cost - self.cost }
   }
 
+  pub fn op_delta(&self, op: &InternalOperation) -> BalanceDelta {
+    match op {
+      InternalOperation::Inventory(b, _, m) => {
+        let qty = b.qty - self.qty;
+
+        let cost = if m == &Mode::Auto {
+          if let Some(price) = self.cost.checked_div(self.qty) {
+            qty * price
+          } else {
+            b.cost
+          }
+        } else {
+          b.cost - self.cost
+        };
+
+        BalanceDelta { qty, cost }
+      },
+      InternalOperation::Receive(_, _) => unimplemented!(),
+      InternalOperation::Issue(_, _, _) => unimplemented!(),
+    }
+  }
+
   pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
     Ok(BalanceForGoods { qty: data["qty"].number(), cost: data["cost"].number() })
   }
