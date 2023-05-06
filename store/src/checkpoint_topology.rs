@@ -16,6 +16,14 @@ pub trait CheckpointTopology {
   fn key_latest_checkpoint_date(&self) -> Vec<u8>;
   fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError>;
   fn set_latest_checkpoint_date(&self, date: DateTime<Utc>) -> Result<(), WHError>;
+
+  fn balances_for_store_goods(
+    &self,
+    date: DateTime<Utc>,
+    store: Store,
+    goods: Goods,
+  ) -> Result<(DateTime<Utc>, HashMap<Batch, BalanceForGoods>), WHError>;
+
   fn get_checkpoints_for_one_goods(
     &self,
     store: Store,

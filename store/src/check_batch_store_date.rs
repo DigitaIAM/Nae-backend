@@ -102,6 +102,15 @@ impl CheckpointTopology for CheckBatchStoreDate {
     )?)
   }
 
+  fn balances_for_store_goods(
+    &self,
+    date: DateTime<Utc>,
+    store: Store,
+    goods: Goods,
+  ) -> Result<(DateTime<Utc>, HashMap<Batch, BalanceForGoods>), WHError> {
+    todo!()
+  }
+
   fn get_checkpoints_for_one_goods(
     &self,
     _store: Store,

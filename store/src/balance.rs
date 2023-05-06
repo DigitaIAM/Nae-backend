@@ -1,5 +1,5 @@
 use super::{
-  elements::{Cost, Qty, ToJson},
+  elements::{Qty, ToJson},
   error::WHError,
 };
 
@@ -7,12 +7,120 @@ use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, AddAssign, Sub};
+use std::ops::{Add, AddAssign, Deref, Neg, Sub, SubAssign};
 
 use crate::batch::Batch;
 use crate::elements::{Goods, Mode, Store};
 use crate::operations::{InternalOperation, OpMutation};
 use service::utils::json::JsonParams;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Price(Decimal);
+
+impl Price {
+  pub fn cost(&self, qty: Qty) -> Cost {
+    (qty * self.0).round_dp(2).into()
+  }
+}
+
+impl Into<Decimal> for Price {
+  fn into(self) -> Decimal {
+    self.0
+  }
+}
+
+impl From<Decimal> for Price {
+  fn from(number: Decimal) -> Self {
+    Price(number)
+  }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Cost(Decimal);
+
+impl Cost {
+  pub const ZERO: Cost = Cost(Decimal::ZERO);
+
+  pub fn price(&self, qty: Qty) -> Price {
+    (qty * self.0).round_dp(5).into()
+  }
+
+  pub const fn is_zero(&self) -> bool {
+    self.0.is_zero()
+  }
+}
+
+impl ToJson for Cost {
+  fn to_json(&self) -> JsonValue {
+    self.0.to_json()
+  }
+}
+
+impl Into<Decimal> for Cost {
+  fn into(self) -> Decimal {
+    self.0
+  }
+}
+
+impl From<i32> for Cost {
+  fn from(number: i32) -> Self {
+    Cost(number.into())
+  }
+}
+
+impl From<Decimal> for Cost {
+  fn from(number: Decimal) -> Self {
+    Cost(number)
+  }
+}
+
+impl AddAssign<Cost> for Cost {
+  fn add_assign(&mut self, rhs: Cost) {
+    self.0 += rhs.0
+  }
+}
+
+impl AddAssign<&Cost> for Cost {
+  fn add_assign(&mut self, rhs: &Cost) {
+    self.0 += rhs.0
+  }
+}
+
+impl SubAssign<Cost> for Cost {
+  fn sub_assign(&mut self, rhs: Cost) {
+    self.0 -= rhs.0
+  }
+}
+
+impl SubAssign<&Cost> for Cost {
+  fn sub_assign(&mut self, rhs: &Cost) {
+    self.0 -= rhs.0
+  }
+}
+
+impl Add<Cost> for Cost {
+  type Output = Cost;
+
+  fn add(self, rhs: Cost) -> Self::Output {
+    (self.0 + rhs.0).into()
+  }
+}
+
+impl Sub<Cost> for Cost {
+  type Output = Cost;
+
+  fn sub(self, rhs: Cost) -> Self::Output {
+    (self.0 - rhs.0).into()
+  }
+}
+
+impl Neg for Cost {
+  type Output = Cost;
+
+  fn neg(self) -> Self::Output {
+    (-self.0).into()
+  }
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BalanceForGoods {
@@ -21,6 +129,10 @@ pub struct BalanceForGoods {
 }
 
 impl BalanceForGoods {
+  pub fn price(&self) -> Price {
+    self.cost.price(self.qty)
+  }
+
   pub fn is_zero(&self) -> bool {
     self.qty.is_zero() && self.cost.is_zero()
   }
@@ -29,38 +141,16 @@ impl BalanceForGoods {
     BalanceDelta { qty: other.qty - self.qty, cost: other.cost - self.cost }
   }
 
-  pub fn op_delta(&self, op: &InternalOperation) -> BalanceDelta {
-    match op {
-      InternalOperation::Inventory(b, _, m) => {
-        let qty = b.qty - self.qty;
-
-        let cost = if m == &Mode::Auto {
-          if let Some(price) = self.cost.checked_div(self.qty) {
-            qty * price
-          } else {
-            b.cost
-          }
-        } else {
-          b.cost - self.cost
-        };
-
-        BalanceDelta { qty, cost }
-      },
-      InternalOperation::Receive(_, _) => unimplemented!(),
-      InternalOperation::Issue(_, _, _) => unimplemented!(),
-    }
-  }
-
   pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
-    Ok(BalanceForGoods { qty: data["qty"].number(), cost: data["cost"].number() })
+    Ok(BalanceForGoods { qty: data["qty"].number(), cost: data["cost"].number().into() })
   }
 }
 
 impl ToJson for BalanceForGoods {
   fn to_json(&self) -> JsonValue {
     object! {
-      qty: self.qty.to_string(),
-      cost: self.cost.to_string(),
+      qty: self.qty.to_json(),
+      cost: self.cost.to_json(),
     }
   }
 }
@@ -94,14 +184,8 @@ impl Add<InternalOperation> for BalanceForGoods {
     match rhs {
       InternalOperation::Inventory(_, d, mode) => {
         self.qty += d.qty;
-        self.cost += if mode == Mode::Manual {
-          d.cost
-        } else {
-          match self.cost.checked_div(self.qty) {
-            Some(price) => price * d.qty,
-            None => 0.into(), // TODO handle errors?
-          }
-        }
+        self.cost +=
+          if mode == Mode::Manual { d.cost } else { self.cost.price(self.qty).cost(d.qty) }
       },
       InternalOperation::Receive(qty, cost) => {
         self.qty += qty;
@@ -109,14 +193,7 @@ impl Add<InternalOperation> for BalanceForGoods {
       },
       InternalOperation::Issue(qty, cost, mode) => {
         self.qty -= qty;
-        self.cost -= if mode == Mode::Manual {
-          cost
-        } else {
-          match self.cost.checked_div(self.qty) {
-            Some(price) => price * qty,
-            None => 0.into(), // TODO handle errors?
-          }
-        }
+        self.cost -= if mode == Mode::Manual { cost } else { self.cost.price(self.qty).cost(qty) }
       },
     }
     self
@@ -128,14 +205,8 @@ impl AddAssign<&InternalOperation> for BalanceForGoods {
     match rhs {
       InternalOperation::Inventory(_, d, mode) => {
         self.qty += d.qty;
-        self.cost += if mode == &Mode::Manual {
-          d.cost
-        } else {
-          match self.cost.checked_div(self.qty) {
-            Some(price) => price * d.qty,
-            None => 0.into(), // TODO handle errors?
-          }
-        }
+        self.cost +=
+          if mode == &Mode::Manual { d.cost } else { self.cost.price(self.qty).cost(d.qty) }
       },
       InternalOperation::Receive(qty, cost) => {
         self.qty += qty;
@@ -143,14 +214,7 @@ impl AddAssign<&InternalOperation> for BalanceForGoods {
       },
       InternalOperation::Issue(qty, cost, mode) => {
         self.qty -= qty;
-        self.cost -= if mode == &Mode::Manual {
-          *cost
-        } else {
-          match self.cost.checked_div(self.qty) {
-            Some(price) => price * *qty,
-            None => 0.into(), // TODO handle errors?
-          }
-        }
+        self.cost -= if mode == &Mode::Manual { *cost } else { self.cost.price(self.qty).cost(*qty) }
       },
     }
   }
@@ -168,15 +232,15 @@ impl BalanceDelta {
   }
 
   pub(crate) fn new() -> Self {
-    BalanceDelta { qty: Decimal::ZERO, cost: Decimal::ZERO }
+    BalanceDelta { qty: Decimal::ZERO, cost: Cost::ZERO }
   }
 }
 
 impl ToJson for BalanceDelta {
   fn to_json(&self) -> JsonValue {
     object! {
-      qty: self.qty.to_string(),
-      cost: self.cost.to_string(),
+      qty: self.qty.to_json(),
+      cost: self.cost.to_json(),
     }
   }
 }

@@ -12,9 +12,10 @@ use crate::balance::Balance;
 use crate::batch::Batch;
 use crate::checkpoint_topology::CheckpointTopology;
 use crate::elements::Goods;
-use crate::operations::OpMutation;
+use crate::operations::{Op, OpMutation};
 use crate::ordered_topology::OrderedTopology;
 use json::JsonValue;
+use log::debug;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -43,19 +44,11 @@ impl Db {
 
   pub fn record_ops(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
     for op in ops {
-      // TODO redesign
-      let checkpoints: Vec<Balance> = if (op.is_issue() && op.batch.is_empty()) || op.is_inventory()
-      {
-        self.get_checkpoints_for_goods(op.store, op.goods, op.date)?
-      } else {
-        Vec::new()
-      };
-
       let mut new_ops = vec![];
 
       for ordered_topology in self.ordered_topologies.iter() {
         log::debug!("processing topology:");
-        new_ops = ordered_topology.data_update(op, checkpoints.clone())?;
+        new_ops = ordered_topology.data_update(self, op)?;
       }
 
       println!("NEW_OPS IN FN_RECORD_OPS: {:?}", new_ops);
@@ -71,6 +64,52 @@ impl Db {
     }
 
     Ok(())
+  }
+
+  pub fn balances_for_store_goods_before_operation(
+    &self,
+    operation: &Op,
+  ) -> Result<HashMap<Batch, BalanceForGoods>, WHError> {
+    // balances at closest checkpoint
+    let (from, mut balances) = self.closest_checkpoint_balances_for_store_goods(operation)?;
+
+    log::debug!("closest_checkpoint_balances_for_store_goods: {balances:?}");
+
+    // apply operation between from and till
+    for op in self.operations_for_store_goods(from, operation)? {
+      let bal = balances.entry(op.batch.clone()).or_default();
+      *bal += &op.op;
+    }
+
+    // remove zero balances
+    let balances = balances.into_iter().filter(|(k, v)| !v.is_zero()).collect();
+
+    log::debug!("balances_for_store_goods_before_operation: {balances:?}");
+
+    Ok(balances)
+  }
+
+  fn closest_checkpoint_balances_for_store_goods(
+    &self,
+    op: &Op,
+  ) -> Result<(DateTime<Utc>, HashMap<Batch, BalanceForGoods>), WHError> {
+    for checkpoint_topology in self.checkpoint_topologies.iter() {
+      match checkpoint_topology.balances_for_store_goods(op.date, op.store, op.goods) {
+        Ok(result) => return Ok(result),
+        Err(_) => {},
+      }
+    }
+    Err(WHError::new("unimplemented"))
+  }
+
+  fn operations_for_store_goods(&self, from: DateTime<Utc>, till: &Op) -> Result<Vec<Op>, WHError> {
+    for ordered_topology in self.ordered_topologies.iter() {
+      match ordered_topology.operations_for_store_goods(from, till) {
+        Ok(ops) => return Ok(ops),
+        Err(_) => {}, // ignore
+      }
+    }
+    Err(WHError::new("fn operations_for_store_goods not implemented"))
   }
 
   pub fn get_checkpoints_for_goods(

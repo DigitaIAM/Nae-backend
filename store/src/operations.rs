@@ -1,12 +1,54 @@
-use crate::balance::{BalanceDelta, BalanceForGoods};
+use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
-use crate::elements::{Cost, Goods, Mode, Qty, Store, ToJson, WHError};
+use crate::elements::{Goods, Mode, Qty, Store, ToJson, WHError};
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use service::utils::json::JsonParams;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Dependant {
+  Receive(Store, Batch),
+  Issue(Store, Batch),
+}
+
+impl Dependant {
+  pub fn tuple(self) -> (Store, Batch, u8) {
+    match self {
+      Dependant::Receive(s, b) => (s, b, ORDER_RECEIVE),
+      Dependant::Issue(s, b) => (s, b, ORDER_ISSUE),
+    }
+  }
+}
+
+impl ToJson for Dependant {
+  fn to_json(&self) -> JsonValue {
+    match self {
+      Dependant::Receive(store, batch) => object! {
+        type: "receive",
+          store: store.to_json(),
+          batch: batch.to_json(),
+      },
+      Dependant::Issue(store, batch) => object! {
+        type: "issue",
+          store: store.to_json(),
+          batch: batch.to_json(),
+      },
+    }
+  }
+}
+
+impl From<&Op> for Dependant {
+  fn from(op: &Op) -> Self {
+    match op.op {
+      InternalOperation::Inventory(..) => unreachable!(),
+      InternalOperation::Receive(..) => Dependant::Receive(op.store.clone(), op.batch.clone()),
+      InternalOperation::Issue(..) => Dependant::Issue(op.store.clone(), op.batch.clone()),
+    }
+  }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Op {
@@ -31,7 +73,7 @@ pub struct Op {
   pub op: InternalOperation, // TODO qty, cost, mode
 
   pub is_dependent: bool,
-  pub batches: Vec<Batch>,
+  pub dependant: Vec<Dependant>,
 }
 
 impl Op {
@@ -57,21 +99,33 @@ impl Op {
 
     let operation = match op["type"].as_str() {
       Some("inventory") => InternalOperation::Inventory(
-        BalanceForGoods { qty: op["balance"]["qty"].number(), cost: op["balance"]["cost"].number() },
-        BalanceDelta { qty: op["delta"]["qty"].number(), cost: op["delta"]["cost"].number() },
+        BalanceForGoods {
+          qty: op["balance"]["qty"].number(),
+          cost: op["balance"]["cost"].number().into(),
+        },
+        BalanceDelta { qty: op["delta"]["qty"].number(), cost: op["delta"]["cost"].number().into() },
         mode,
       ),
-      Some("receive") => InternalOperation::Receive(op["qty"].number(), op["cost"].number()),
-      Some("issue") => InternalOperation::Issue(op["qty"].number(), op["cost"].number(), mode),
+      Some("receive") => InternalOperation::Receive(op["qty"].number(), op["cost"].number().into()),
+      Some("issue") => {
+        InternalOperation::Issue(op["qty"].number(), op["cost"].number().into(), mode)
+      },
       _ => return Err(WHError::new(&format!("unknown operation type {}", op["type"]))),
     };
 
-    let mut batches = vec![];
+    let mut dependant = vec![];
 
-    match &data["batches"] {
+    match &data["dependant"] {
       JsonValue::Array(array) => {
-        for batch in array {
-          batches.push(Batch { id: batch["id"].uuid()?, date: batch["date"].date_with_check()? });
+        for item in array {
+          let store = item["store"].uuid()?;
+          let batch = &item["batch"];
+          let batch = Batch { id: batch["id"].uuid()?, date: batch["date"].date_with_check()? };
+          match item["type"].as_str() {
+            Some("receive") => dependant.push(Dependant::Receive(store, batch)),
+            Some("issue") => dependant.push(Dependant::Issue(store, batch)),
+            _ => return Err(WHError::new(&format!("unknown dependant type {}", item["type"]))),
+          }
         }
       },
       _ => (),
@@ -90,7 +144,7 @@ impl Op {
       store_into: data["into"].uuid_or_none(),
       op: operation,
       is_dependent: data["is_dependent"].boolean(),
-      batches,
+      dependant,
     };
     Ok(op)
   }
@@ -130,7 +184,7 @@ impl Op {
           store_into: Some(self.store),
           op: InternalOperation::Receive(q.clone(), c.clone()),
           is_dependent: true,
-          batches: vec![],
+          dependant: vec![],
         }),
         _ => None,
       }
@@ -139,9 +193,9 @@ impl Op {
     }
   }
 
-  pub(crate) fn is_zero(&self) -> bool {
+  pub(crate) fn can_delete(&self) -> bool {
     match &self.op {
-      InternalOperation::Inventory(q, c, _) => q.is_zero() && c.is_zero(),
+      InternalOperation::Inventory(..) => false,
       InternalOperation::Receive(q, c) => q.is_zero() && c.is_zero(),
       InternalOperation::Issue(q, c, _) => q.is_zero() && c.is_zero(),
     }
@@ -166,16 +220,9 @@ impl Op {
 
 impl ToJson for Op {
   fn to_json(&self) -> JsonValue {
-    let op_type = match self.op {
-      InternalOperation::Inventory(..) => "inventory",
-      InternalOperation::Receive(..) => "receive",
-      InternalOperation::Issue(..) => "issue",
-    };
-
     let mut obj = object! {
       id: self.id.to_json(),
       date: self.date.to_json(),
-      type: op_type,
       from: self.store.to_json(),
       goods: self.goods.to_json(),
 
@@ -188,6 +235,9 @@ impl ToJson for Op {
     }
 
     obj["batch"] = self.batch.to_json();
+
+    let dependant: Vec<JsonValue> = self.dependant.iter().map(|d| d.to_json()).collect();
+    obj["dependant"] = dependant.into();
 
     obj
   }
@@ -207,7 +257,7 @@ pub struct OpMutation {
   pub(crate) after: Option<InternalOperation>,
 
   pub is_dependent: bool,
-  pub batches: Vec<Batch>,
+  pub dependant: Vec<Dependant>,
 }
 
 impl Default for OpMutation {
@@ -222,7 +272,7 @@ impl Default for OpMutation {
       before: None,
       after: None,
       is_dependent: false,
-      batches: vec![],
+      dependant: vec![],
     }
   }
 }
@@ -248,7 +298,7 @@ impl OpMutation {
       before,
       after,
       is_dependent: false,
-      batches: vec![],
+      dependant: vec![],
     }
   }
 
@@ -271,7 +321,7 @@ impl OpMutation {
       before: None,
       after: Some(InternalOperation::Receive(qty, cost)),
       is_dependent: false,
-      batches: vec![],
+      dependant: vec![],
     }
   }
 
@@ -290,7 +340,7 @@ impl OpMutation {
         store_into: self.transfer.clone(),
         op: op.clone(),
         is_dependent: self.is_dependent,
-        batches: self.batches.clone(),
+        dependant: self.dependant.clone(),
       }
     } else {
       Op {
@@ -306,7 +356,7 @@ impl OpMutation {
           InternalOperation::Receive(0.into(), 0.into())
         },
         is_dependent: self.is_dependent,
-        batches: self.batches.clone(),
+        dependant: self.dependant.clone(),
       }
     }
   }
@@ -330,7 +380,7 @@ impl OpMutation {
         before: Some(b.op.clone()),
         after: Some(a.op.clone()),
         is_dependent: a.is_dependent,
-        batches: a.batches.clone(),
+        dependant: a.dependant.clone(),
       }
     } else if let Some(b) = &before {
       OpMutation {
@@ -343,7 +393,7 @@ impl OpMutation {
         before: Some(b.op.clone()),
         after: None,
         is_dependent: b.is_dependent,
-        batches: b.batches.clone(),
+        dependant: b.dependant.clone(),
       }
     } else if let Some(a) = &after {
       OpMutation {
@@ -356,7 +406,7 @@ impl OpMutation {
         before: None,
         after: Some(a.op.clone()),
         is_dependent: a.is_dependent,
-        batches: a.batches.clone(),
+        dependant: a.dependant.clone(),
       }
     } else {
       OpMutation::default()
@@ -381,7 +431,7 @@ impl OpMutation {
           before,
           after: Some(InternalOperation::Receive(q.clone(), c.clone())),
           is_dependent: self.is_dependent,
-          batches: self.batches.clone(),
+          dependant: self.dependant.clone(),
         }),
         _ => None,
       }
@@ -413,6 +463,10 @@ impl OpMutation {
   }
 }
 
+const ORDER_INVENTORY: u8 = 1_u8;
+const ORDER_RECEIVE: u8 = 2_u8;
+const ORDER_ISSUE: u8 = 3_u8;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum InternalOperation {
   Inventory(BalanceForGoods, BalanceDelta, Mode),
@@ -421,11 +475,27 @@ pub enum InternalOperation {
 }
 
 impl InternalOperation {
+  pub fn apply(&self, balance: &BalanceForGoods) -> BalanceDelta {
+    match self {
+      InternalOperation::Inventory(b, _, m) => {
+        let qty = b.qty - balance.qty;
+
+        let cost = if m == &Mode::Auto { balance.price().cost(qty) } else { b.cost - balance.cost };
+
+        BalanceDelta { qty, cost }
+      },
+      InternalOperation::Receive(_, _) => unimplemented!(),
+      InternalOperation::Issue(_, _, _) => unimplemented!(),
+    }
+  }
+}
+
+impl InternalOperation {
   pub(crate) fn order(&self) -> u8 {
     match self {
-      InternalOperation::Inventory(..) => 1_u8,
-      InternalOperation::Receive(..) => 2_u8,
-      InternalOperation::Issue(..) => 3_u8,
+      InternalOperation::Inventory(..) => ORDER_INVENTORY,
+      InternalOperation::Receive(..) => ORDER_RECEIVE,
+      InternalOperation::Issue(..) => ORDER_ISSUE,
     }
   }
 
@@ -445,7 +515,7 @@ impl ToJson for InternalOperation {
     match self {
       InternalOperation::Inventory(b, d, m) => {
         object! {
-          type: JsonValue::String("inventory".to_string()),
+          type: "inventory",
           balance: b.to_json(),
           delta: d.to_json(),
           mode: m.to_json()
@@ -453,14 +523,14 @@ impl ToJson for InternalOperation {
       },
       InternalOperation::Receive(q, c) => {
         object! {
-          type: JsonValue::String("receive".to_string()),
+          type: "receive",
           qty: q.to_json(),
           cost: c.to_json(),
         }
       },
       InternalOperation::Issue(q, c, m) => {
         object! {
-          type: JsonValue::String("issue".to_string()),
+          type: "issue",
           qty: q.to_json(),
           cost: c.to_json(),
           mode: m.to_json(),

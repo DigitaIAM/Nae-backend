@@ -1,8 +1,8 @@
-use crate::balance::{Balance, BalanceDelta, BalanceForGoods};
+use crate::balance::{Balance, BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::db::Db;
 use crate::elements::{Goods, Mode, Report, Store, ToJson, WHError};
-use crate::operations::{InternalOperation, Op, OpMutation};
+use crate::operations::{Dependant, InternalOperation, Op, OpMutation};
 use chrono::{DateTime, Utc};
 use json::{array, JsonValue};
 use rocksdb::{ColumnFamilyDescriptor, Options};
@@ -11,7 +11,11 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 pub trait OrderedTopology {
-  fn put(&self, op: &Op, balance: &BalanceForGoods) -> Result<(), WHError>;
+  fn put(
+    &self,
+    op: &Op,
+    balance: &BalanceForGoods,
+  ) -> Result<Option<(Op, BalanceForGoods)>, WHError>;
   fn get(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError>;
   fn del(&self, op: &Op) -> Result<(), WHError>;
 
@@ -51,6 +55,8 @@ pub trait OrderedTopology {
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError>;
 
+  fn get_ops_before_op(&self, op: &Op) -> Result<Vec<Op>, WHError>;
+
   fn get_ops_for_one_goods_and_batch(
     &self,
     store: Store,
@@ -66,6 +72,8 @@ pub trait OrderedTopology {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError>;
+
+  fn operations_for_store_goods(&self, from: DateTime<Utc>, till: &Op) -> Result<Vec<Op>, WHError>;
 
   fn get_report_for_goods(
     &self,
@@ -87,12 +95,8 @@ pub trait OrderedTopology {
 
   fn key(&self, op: &Op) -> Vec<u8>;
 
-  fn data_update(
-    &self,
-    op: &OpMutation,
-    balances: Vec<Balance>,
-  ) -> Result<Vec<OpMutation>, WHError> {
-    self.mutate_op(op, balances)
+  fn data_update(&self, db: &Db, op: &OpMutation) -> Result<Vec<OpMutation>, WHError> {
+    self.mutate_op(db, op)
 
     // TODO review logic after enable transaction
     // if op.before.is_none() {
@@ -121,11 +125,7 @@ pub trait OrderedTopology {
     // }
   }
 
-  fn mutate_op(
-    &self,
-    op_mut: &OpMutation,
-    balances: Vec<Balance>,
-  ) -> Result<Vec<OpMutation>, WHError> {
+  fn mutate_op(&self, db: &Db, op_mut: &OpMutation) -> Result<Vec<OpMutation>, WHError> {
     let mut ops: Vec<Op> = vec![];
     let mut result: Vec<OpMutation> = vec![];
 
@@ -140,21 +140,9 @@ pub trait OrderedTopology {
 
       if op.is_inventory() && op.batch.is_empty() && !op.is_dependent {
         // batch is always empty in inventory for now
-        self.mutate_inventory_with_empty_batch(
-          &mut result,
-          &mut ops,
-          &mut op,
-          &mut batches,
-          &balances,
-        )?;
+        self.mutate_inventory_with_empty_batch(db, &mut result, &mut ops, &mut op, &mut batches)?;
       } else if op.is_issue() && op.batch.is_empty() && !op.is_dependent {
-        self.mutate_issue_with_empty_batch(
-          &mut result,
-          &mut ops,
-          &mut op,
-          &mut batches,
-          &balances,
-        )?;
+        self.mutate_issue_with_empty_batch(db, &mut result, &mut ops, &mut op, &mut batches)?;
       } else {
         self.calculate_op(&mut result, &mut ops, &mut op, true)?;
       }
@@ -163,30 +151,63 @@ pub trait OrderedTopology {
     Ok(result)
   }
 
+  fn cleanup_dependent(&self, op: &Op, new: Vec<Dependant>, ops: &mut Vec<Op>) -> Vec<Dependant> {
+    // TODO calculate diffs between dependant
+    'old: for o in op.dependant.iter() {
+      for n in new.iter() {
+        if n == o {
+          continue 'old;
+        }
+      }
+      match o {
+        Dependant::Receive(store, batch) => {
+          let mut zero = op.clone();
+          zero.store = store.clone();
+          zero.batch = batch.clone();
+          zero.op = InternalOperation::Receive(Decimal::ZERO, Cost::ZERO);
+          ops.push(zero);
+        },
+        Dependant::Issue(store, batch) => {
+          let mut zero = op.clone();
+          zero.store = store.clone();
+          zero.batch = batch.clone();
+          zero.op = InternalOperation::Issue(Decimal::ZERO, Cost::ZERO, Mode::Auto);
+          ops.push(zero);
+        },
+      }
+    }
+
+    new
+  }
+
   fn mutate_inventory_with_empty_batch(
     &self,
+    db: &Db,
     result: &mut Vec<OpMutation>,
     ops: &mut Vec<Op>,
     op: &mut Op,
     batches: &mut Vec<Batch>,
-    balances: &Vec<Balance>,
   ) -> Result<(), WHError> {
-    let before_balance: Vec<(Batch, BalanceForGoods)> =
-      self.goods_balance_before(&op, balances.clone())?;
+    let balance_before_operation = db.balances_for_store_goods_before_operation(&op)?;
 
-    log::debug!("INVENTORY_BEFORE_BALANCE: {:?}", before_balance);
+    log::debug!("INVENTORY_BEFORE_BALANCE: {:?}", balance_before_operation);
 
     let mut stock_balance = BalanceForGoods::default();
-    for (batch, balance) in before_balance.iter() {
-      stock_balance.qty += balance.qty;
-      stock_balance.cost += balance.cost;
+    for (batch, balance) in balance_before_operation.iter() {
+      if balance.qty > Decimal::ZERO {
+        stock_balance.qty += balance.qty;
+        stock_balance.cost += balance.cost;
+      }
     }
 
-    let diff_balance = stock_balance.op_delta(&op.op);
+    let diff_balance = op.op.apply(&stock_balance);
+    log::debug!("diff_balance: {diff_balance:?}");
 
     // TODO cover cost difference
 
-    if diff_balance.qty == Decimal::ZERO && diff_balance.cost == Decimal::ZERO {
+    let mut new_dependant: Vec<Dependant> = vec![];
+
+    if diff_balance.qty == Decimal::ZERO && diff_balance.cost == Cost::ZERO {
     } else if diff_balance.qty > Decimal::ZERO {
       let batch = Batch { id: op.id, date: op.date };
       let mut new = op.clone();
@@ -194,15 +215,15 @@ pub trait OrderedTopology {
       new.batch = batch.clone();
       new.op = InternalOperation::Receive(diff_balance.qty, diff_balance.cost);
       log::debug!("NEW_OP inventory receive: op {new:?}");
+
+      new_dependant.push(Dependant::from(&new));
       ops.push(new);
 
-      batches.push(batch);
-
-      op.batches = batches.clone();
+      op.dependant = self.cleanup_dependent(&op, new_dependant, ops);
     } else {
       let (mut qty, cost, mode) = (diff_balance.qty, Decimal::ZERO, Mode::Auto);
 
-      for (batch, balance) in before_balance {
+      for (batch, balance) in balance_before_operation {
         if balance.qty <= Decimal::ZERO {
           continue;
         } else if qty.abs() >= balance.qty {
@@ -213,6 +234,8 @@ pub trait OrderedTopology {
           new.batch = batch;
           new.op = InternalOperation::Issue(balance.qty, balance.cost, Mode::Auto);
           log::debug!("NEW_OP inventory partly: qty {qty} balance {balance:?} op {new:?}");
+
+          new_dependant.push(Dependant::from(&new));
           ops.push(new);
 
           qty += balance.qty; // qty is always negative here
@@ -222,14 +245,13 @@ pub trait OrderedTopology {
           let mut new = op.clone();
           new.is_dependent = true;
           new.batch = batch;
-          new.op = InternalOperation::Issue(
-            qty.abs(),
-            qty.abs() * (balance.cost / balance.qty),
-            Mode::Auto,
-          );
+          new.op = InternalOperation::Issue(qty.abs(), balance.price().cost(qty.abs()), Mode::Auto);
           log::debug!("NEW_OP inventory full: qty {qty} balance {balance:?} op {new:?}");
+
+          new_dependant.push(Dependant::from(&new));
           ops.push(new);
 
+          // zero the qty
           qty -= qty;
         }
 
@@ -240,7 +262,7 @@ pub trait OrderedTopology {
 
       log::debug!("inventory qty left {qty}");
 
-      op.batches = batches.clone();
+      op.dependant = self.cleanup_dependent(&op, new_dependant, ops);
       self.calculate_op(result, ops, op, false)?;
     }
 
@@ -249,24 +271,25 @@ pub trait OrderedTopology {
 
   fn mutate_issue_with_empty_batch(
     &self,
+    db: &Db,
     result: &mut Vec<OpMutation>,
     ops: &mut Vec<Op>,
     op: &mut Op,
     batches: &mut Vec<Batch>,
-    balances: &Vec<Balance>,
   ) -> Result<(), WHError> {
     // calculate balance
-    let before_balance: Vec<(Batch, BalanceForGoods)> =
-      self.goods_balance_before(&op, balances.clone())?;
+    let balance_before_operation = db.balances_for_store_goods_before_operation(&op)?;
 
-    log::debug!("ISSUE_BEFORE_BALANCE: {:?}", before_balance);
+    log::debug!("ISSUE_BEFORE_BALANCE: {:?}", balance_before_operation);
 
     let mut qty = match op.op {
       InternalOperation::Receive(_, _) | InternalOperation::Inventory(_, _, _) => unreachable!(),
       InternalOperation::Issue(qty, _, _) => qty,
     };
 
-    for (batch, balance) in before_balance {
+    let mut new_dependant: Vec<Dependant> = vec![];
+
+    for (batch, balance) in balance_before_operation {
       if balance.qty <= Decimal::ZERO {
         continue;
       } else if qty >= balance.qty {
@@ -277,6 +300,8 @@ pub trait OrderedTopology {
         new.batch = batch;
         new.op = InternalOperation::Issue(balance.qty, balance.cost, Mode::Auto);
         log::debug!("NEW_OP partly: qty {qty} balance {balance:?} op {new:?}");
+
+        new_dependant.push(Dependant::from(&new));
         ops.push(new);
 
         qty -= balance.qty;
@@ -288,8 +313,10 @@ pub trait OrderedTopology {
         let mut new = op.clone();
         new.is_dependent = true;
         new.batch = batch;
-        new.op = InternalOperation::Issue(qty, qty * (balance.cost / balance.qty), Mode::Auto);
+        new.op = InternalOperation::Issue(qty, balance.price().cost(qty), Mode::Auto);
         log::debug!("NEW_OP full: qty {qty} balance {balance:?} op {new:?}");
+
+        new_dependant.push(Dependant::from(&new));
         ops.push(new);
 
         qty -= qty;
@@ -302,18 +329,20 @@ pub trait OrderedTopology {
 
     log::debug!("issue qty left {qty}");
 
-    op.op = match &op.op {
-      InternalOperation::Receive(_, _) | InternalOperation::Inventory(_, _, _) => unreachable!(),
-      InternalOperation::Issue(q, c, m) => {
-        if let Some(price) = c.checked_div(*q) {
-          InternalOperation::Issue(qty, qty * price, m.clone())
-        } else {
-          op.op.clone() // TODO is this correct when qty = 0 ?
-        }
-      },
-    };
+    // TODO operation loosing information?
 
-    op.batches = batches.clone();
+    if qty > Decimal::ZERO {
+      let mut new = op.clone();
+      new.is_dependent = true;
+      new.batch = Batch::no(); // TODO here the problem
+      new.op = InternalOperation::Issue(qty, Cost::ZERO, Mode::Auto);
+      log::debug!("NEW_OP full: qty {qty} qty {qty:?} op {new:?}");
+
+      new_dependant.push(Dependant::from(&new));
+      ops.push(new);
+    }
+
+    op.dependant = self.cleanup_dependent(&op, new_dependant, ops);
     self.calculate_op(result, ops, op, false)?;
 
     Ok(())
@@ -339,7 +368,7 @@ pub trait OrderedTopology {
     log::debug!("_new_balance: {new_balance:?}");
 
     // store update op with balance or delete
-    if calculated_op.is_zero() && op.batches.is_empty() {
+    if calculated_op.can_delete() && op.dependant.is_empty() {
       self.del(&calculated_op)?;
     } else {
       //   self.put(&calculated_op, &new_balance, batches)?;
@@ -354,7 +383,7 @@ pub trait OrderedTopology {
         before: None,
         after: Some(calculated_op.op.clone()),
         is_dependent: calculated_op.is_dependent,
-        batches: calculated_op.batches.clone(),
+        dependant: calculated_op.dependant.clone(),
       });
     }
 
@@ -370,7 +399,7 @@ pub trait OrderedTopology {
         let mut before_balance = new_balance;
         for (next_operation, next_current_balance) in self.operations_after(&calculated_op, true)? {
           let (calc_op, new_balance) = self.evaluate(&before_balance, &next_operation);
-          if calc_op.is_zero() {
+          if calc_op.can_delete() {
             self.del(&calc_op)?;
           } else {
             //   self.put(&calc_op, &new_balance, batches)?;
@@ -400,10 +429,7 @@ pub trait OrderedTopology {
       InternalOperation::Inventory(b, d, m) => {
         let mut cost = d.cost;
         let op = if m == &Mode::Auto {
-          cost = match balance.cost.checked_div(balance.qty) {
-            Some(price) => price * d.qty,
-            None => 0.into(), // TODO raise exception?
-          };
+          cost = balance.price().cost(d.qty);
           Op {
             id: op.id,
             date: op.date,
@@ -417,7 +443,7 @@ pub trait OrderedTopology {
               m.clone(),
             ),
             is_dependent: op.is_dependent,
-            batches: op.batches.clone(),
+            dependant: op.dependant.clone(),
           }
         } else {
           op.clone()
@@ -426,15 +452,12 @@ pub trait OrderedTopology {
         (op, BalanceForGoods { qty: balance.qty + d.qty, cost: balance.cost - cost })
       },
       InternalOperation::Receive(q, c) => {
-        (op.clone(), BalanceForGoods { qty: balance.qty + q, cost: balance.cost + c })
+        (op.clone(), BalanceForGoods { qty: balance.qty + q, cost: balance.cost + *c })
       },
       InternalOperation::Issue(q, c, m) => {
         let mut cost = c.clone();
         let op = if m == &Mode::Auto {
-          cost = match balance.cost.checked_div(balance.qty) {
-            Some(price) => price * q,
-            None => 0.into(), // TODO raise exception?
-          };
+          cost = balance.price().cost(*q);
           Op {
             id: op.id,
             date: op.date,
@@ -444,7 +467,7 @@ pub trait OrderedTopology {
             store_into: op.store_into,
             op: InternalOperation::Issue(q.clone(), cost.clone(), m.clone()),
             is_dependent: op.is_dependent,
-            batches: op.batches.clone(),
+            dependant: op.dependant.clone(),
           }
         } else {
           op.clone()

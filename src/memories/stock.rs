@@ -5,9 +5,9 @@ use service::utils::json::JsonParams;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::RwLock;
-use store::balance::BalanceForGoods;
+use store::balance::{BalanceForGoods, Cost};
 use store::batch::Batch;
-use store::elements::{Cost, Goods, Store, ToJson};
+use store::elements::{Goods, Store, ToJson};
 use uuid::Uuid;
 
 pub(crate) fn find_items(
@@ -91,10 +91,10 @@ fn process(
 
         // aggregate
         let mut cost = storages_aggregation.entry(store_uuid).or_insert(Cost::ZERO);
-        cost += bb.cost;
+        *cost += bb.cost;
 
         let mut cost = categories_aggregation.entry(category_id).or_insert(Cost::ZERO);
-        cost += bb.cost;
+        *cost += bb.cost;
 
         let mut balance = goods_aggregation.entry(*goods).or_insert(BalanceForGoods::default());
         balance.qty += bb.qty;

@@ -62,6 +62,8 @@ impl Service for Inventory {
         return Err(Error::GeneralError("dates not defined".into()));
       };
 
+      println!("get_report_for_goods {batch:?}");
+
       let report = match self
         .app
         .warehouse
