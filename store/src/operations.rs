@@ -157,19 +157,10 @@ impl Op {
   }
 
   pub(crate) fn batch(&self) -> Vec<u8> {
-    let dt = self.batch.date.timestamp() as u64;
-
-    self
-      .goods
-      .as_bytes()
-      .iter()
-      .chain(dt.to_be_bytes().iter())
-      .chain(self.batch.id.as_bytes().iter())
-      .map(|b| *b)
-      .collect()
+    self.batch.to_bytes(&self.goods)
   }
 
-  pub(crate) fn dependent(&self) -> Option<Op> {
+  pub(crate) fn dependent_on_transfer(&self) -> Option<Op> {
     // if self.is_dependent {
     //   None
     // } else
@@ -209,6 +200,14 @@ impl Op {
     }
   }
 
+  pub fn is_receive(&self) -> bool {
+    match self.op {
+      InternalOperation::Inventory(..) => false,
+      InternalOperation::Receive(..) => true,
+      InternalOperation::Issue(..) => false,
+    }
+  }
+
   pub fn is_issue(&self) -> bool {
     match self.op {
       InternalOperation::Inventory(..) => false,
@@ -227,6 +226,8 @@ impl ToJson for Op {
       goods: self.goods.to_json(),
 
       op: self.op.to_json(),
+
+      is_dependent: self.is_dependent
     };
 
     match self.store_into.as_ref() {
@@ -465,7 +466,9 @@ impl OpMutation {
 
 const ORDER_INVENTORY: u8 = 1_u8;
 const ORDER_RECEIVE: u8 = 2_u8;
-const ORDER_ISSUE: u8 = 3_u8;
+const ORDER_RECEIVE_DEPENDANT: u8 = 3_u8;
+const ORDER_ISSUE: u8 = 4_u8;
+const ORDER_ISSUE_DEPENDANT: u8 = 5_u8;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum InternalOperation {

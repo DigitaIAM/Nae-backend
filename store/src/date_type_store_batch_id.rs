@@ -10,7 +10,7 @@ use crate::ordered_topology::OrderedTopology;
 use crate::agregations::{get_aggregations_for_one_goods, new_get_aggregations};
 use crate::balance::Balance;
 use crate::batch::Batch;
-use crate::elements::Goods;
+use crate::elements::{Goods, Qty};
 use crate::operations::{InternalOperation, Op};
 use chrono::{DateTime, Utc};
 use json::JsonValue;
@@ -38,7 +38,7 @@ impl DateTypeStoreBatchId {
     }
   }
 
-  // ts | type | store | goods | batch | id
+  // | ts | type | store | goods | batch | id | dependant |
   fn key_build(
     &self,
     id: &Uuid,
@@ -47,7 +47,9 @@ impl DateTypeStoreBatchId {
     goods: &Goods,
     batch: &Batch,
     op_order: u8,
+    op_dependant: bool,
   ) -> Vec<u8> {
+    let op_dependant = if op_dependant { 1_u8 } else { 0_u8 };
     let ts = date.timestamp() as u64;
     ts.to_be_bytes()
       .iter()
@@ -55,6 +57,7 @@ impl DateTypeStoreBatchId {
       .chain(store.as_bytes().iter())
       .chain(batch.to_bytes(goods).iter())
       .chain(id.as_bytes().iter())
+      .chain(vec![op_dependant].iter())
       .map(|b| *b)
       .collect()
   }
@@ -66,6 +69,13 @@ impl OrderedTopology for DateTypeStoreBatchId {
     op: &Op,
     balance: &BalanceForGoods,
   ) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+    if op.is_receive() {
+      if !op.is_dependent {
+        debug_assert!(!op.batch.is_empty(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
+      }
+    }
+    debug_assert!(!op.op.is_zero(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
+
     let cf = self.cf()?;
     let key = self.key(op);
     // log::debug!("put {key:?}");
@@ -76,7 +86,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
       Some(bs) => Some(self.from_bytes(&bs)?),
     };
 
-    self.db.put_cf(&self.cf()?, key, self.to_bytes(op, balance))?;
+    self.db.put_cf(&self.cf()?, key, self.to_bytes(op, balance)?)?;
 
     Ok(before)
   }
@@ -115,14 +125,24 @@ impl OrderedTopology for DateTypeStoreBatchId {
     while let Some(bytes) = iter.next() {
       let (k, v) = bytes?;
 
-      // log::debug!("k__ {k:?}");
-
-      //date + optype + store + batch
-      if k[9..65] != expected || k[0..] == key {
+      if k[0..] == key {
         continue;
       }
 
-      let (_, balance) = self.from_bytes(&v)?;
+      // log::debug!("k__ {k:?}");
+
+      let (loaded_op, balance) = self.from_bytes(&v)?;
+
+      println!("loaded_op {:?}", loaded_op);
+
+      //date + optype + store + batch
+      if loaded_op.store != op.store || loaded_op.goods != op.goods || loaded_op.batch != op.batch {
+        continue;
+      }
+
+      println!("{op:#?}");
+      println!("{balance:#?}");
+
       return Ok(balance);
     }
 
@@ -381,7 +401,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
         if let Some(bs) = self.db.get_cf(
           &self.cf()?,
-          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order),
+          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order, op.is_dependent),
         )? {
           let (dop, _) = self.from_bytes(&bs)?;
           // println!("dependant operation {:?}", dop);
@@ -456,7 +476,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
         if let Some(bs) = self.db.get_cf(
           &self.cf()?,
-          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order),
+          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order, true),
         )? {
           let (dop, _) = self.from_bytes(&bs)?;
           // println!("dependant operation {:?}", dop);
@@ -530,7 +550,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
         if let Some(bs) = self.db.get_cf(
           &self.cf()?,
-          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order),
+          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order, true),
         )? {
           let (dop, _) = self.from_bytes(&bs)?;
           // println!("dependant operation {:?}", dop);
@@ -621,7 +641,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
         if let Some(bs) = self.db.get_cf(
           &self.cf()?,
-          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order),
+          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order, true),
         )? {
           let (dop, _) = self.from_bytes(&bs)?;
           println!("dependant operation {:?}", dop);
@@ -737,6 +757,6 @@ impl OrderedTopology for DateTypeStoreBatchId {
   }
 
   fn key(&self, op: &Op) -> Vec<u8> {
-    self.key_build(&op.id, &op.date, &op.store, &op.goods, &op.batch, op.op.order())
+    self.key_build(&op.id, &op.date, &op.store, &op.goods, &op.batch, op.op.order(), op.is_dependent)
   }
 }

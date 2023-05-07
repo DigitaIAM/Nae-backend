@@ -18,6 +18,8 @@ use service::utils::json::JsonParams;
 pub struct Price(Decimal);
 
 impl Price {
+  pub const ZERO: Price = Price(Decimal::ZERO);
+
   pub fn cost(&self, qty: Qty) -> Cost {
     (qty * self.0).round_dp(2).into()
   }
@@ -42,7 +44,11 @@ impl Cost {
   pub const ZERO: Cost = Cost(Decimal::ZERO);
 
   pub fn price(&self, qty: Qty) -> Price {
-    (qty * self.0).round_dp(5).into()
+    if qty.is_zero() {
+      Price::ZERO
+    } else {
+      (self.0 / qty).round_dp(5).into()
+    }
   }
 
   pub const fn is_zero(&self) -> bool {

@@ -8,7 +8,7 @@ use super::{
 use crate::agregations::{get_aggregations_for_one_goods, new_get_aggregations};
 use crate::balance::Balance;
 use crate::batch::Batch;
-use crate::elements::Goods;
+use crate::elements::{Goods, Qty};
 use crate::elements::{UUID_MAX, UUID_NIL};
 use crate::operations::Op;
 use crate::ordered_topology::OrderedTopology;
@@ -43,6 +43,13 @@ impl OrderedTopology for StoreDateTypeBatchId {
     op: &Op,
     balance: &BalanceForGoods,
   ) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+    if op.is_receive() {
+      if !op.is_dependent {
+        debug_assert!(!op.batch.is_empty(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
+      }
+    }
+    debug_assert!(!op.op.is_zero(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
+
     let cf = self.cf()?;
     let key = self.key(op);
     // log::debug!("put {key:?}");
@@ -53,7 +60,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
       Some(bs) => Some(self.from_bytes(&bs)?),
     };
 
-    self.db.put_cf(&cf, key, self.to_bytes(op, balance))?;
+    self.db.put_cf(&cf, key, self.to_bytes(op, balance)?)?;
 
     Ok(result)
   }
@@ -74,8 +81,9 @@ impl OrderedTopology for StoreDateTypeBatchId {
   }
 
   fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
-    let expected_store: Vec<u8> = op.store.as_bytes().iter().map(|b| *b).collect();
-    let expected_batch: Vec<u8> = op.batch().iter().map(|b| *b).collect();
+    println!("op {:#?}", op);
+    // let expected_store: Vec<u8> = op.store.as_bytes().iter().map(|b| *b).collect();
+    // let expected_goods_batch: Vec<u8> = op.batch().iter().map(|b| *b).collect();
 
     let key = self.key(op);
 
@@ -86,11 +94,23 @@ impl OrderedTopology for StoreDateTypeBatchId {
     while let Some(bytes) = iter.next() {
       let (k, v) = bytes?;
 
-      if k[0..16] != expected_store || k[25..65] != expected_batch || k[0..] == key {
+      if k[0..] == key {
         continue;
       }
 
-      let (_, balance) = self.from_bytes(&v)?;
+      let (loaded_op, balance) = self.from_bytes(&v)?;
+
+      println!("loaded_op {:#?}", loaded_op);
+
+      if loaded_op.store != op.store {
+        break;
+      }
+
+      if loaded_op.goods != op.goods || loaded_op.batch != op.batch {
+        continue;
+      }
+
+      println!("{balance:#?}");
 
       return Ok(balance);
     }
@@ -134,8 +154,10 @@ impl OrderedTopology for StoreDateTypeBatchId {
     let mut res = Vec::new();
 
     let expected_store: Vec<u8> = op.store.as_bytes().iter().map(|b| *b).collect();
-    let expected_batch1: Vec<u8> = op.batch.to_bytes(&op.goods);
-    let expected_batch2: Vec<u8> = Batch::no().to_bytes(&op.goods);
+    // let expected_batch1: Vec<u8> = op.batch.to_bytes(&op.goods);
+    // let expected_batch2: Vec<u8> = Batch::no().to_bytes(&op.goods);
+
+    let no_batch = Batch::no();
 
     let key = self.key(op);
 
@@ -150,7 +172,12 @@ impl OrderedTopology for StoreDateTypeBatchId {
           continue;
         }
 
-        if k[25..65] == expected_batch1 || (no_batches && k[25..65] == expected_batch2) {
+        let (loaded_op, balance) = self.from_bytes(&v)?;
+
+        if loaded_op.store == op.store
+          && loaded_op.goods == op.goods
+          && (loaded_op.batch == op.batch || loaded_op.batch == no_batch)
+        {
           let (op, balance) = self.from_bytes(&v)?;
 
           res.push((op, balance));
@@ -318,35 +345,33 @@ impl OrderedTopology for StoreDateTypeBatchId {
     let mut options = ReadOptions::default();
     options.set_iterate_range(bytes_from..bytes_till);
 
-    let expected_goods: Vec<u8> = till.goods.as_bytes().iter().map(|b| *b).collect();
-    let expected_uuid: Vec<u8> = till.goods.as_bytes().iter().map(|b| *b).collect();
-    let expected_order: u8 = till.op.order();
+    // let expected_goods: Vec<u8> = till.goods.as_bytes().iter().map(|b| *b).collect();
+    // let expected_uuid: Vec<u8> = till.id.as_bytes().iter().map(|b| *b).collect();
+    // let expected_order: u8 = till.op.order();
 
     let mut res = Vec::new();
 
     for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
       let (k, value) = item?;
 
+      let (op, _) = self.from_bytes(&value)?;
+
       // store filtered by prefix in range
-      if k[25..41] != expected_goods {
+      if op.goods != till.goods {
         continue;
       }
 
-      if k[24] > expected_order {
+      if op.op.order() > till.op.order() {
         println!("exit by over order");
         break;
       }
 
-      if k[65..81].to_vec() >= expected_uuid {
+      if op.id.as_bytes() >= till.id.as_bytes() {
         println!("exit by over uuid");
         break;
       }
 
-      let (op, _) = self.from_bytes(&value)?;
-
-      if !op.op.is_zero() {
-        res.push(op.clone());
-      }
+      res.push(op.clone());
     }
 
     Ok(res)
@@ -575,6 +600,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
     let ts = op.date.timestamp() as u64;
 
     let op_order = op.op.order();
+    let op_dependant = if op.is_dependent { 1_u8 } else { 0_u8 };
 
     op.store
       .as_bytes()
@@ -583,6 +609,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
       .chain(op_order.to_be_bytes().iter())
       .chain(op.batch().iter())
       .chain(op.id.as_bytes().iter())
+      .chain(vec![op_dependant].iter())
       .map(|b| *b)
       .collect()
   }

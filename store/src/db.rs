@@ -52,10 +52,10 @@ impl Db {
       }
 
       println!("NEW_OPS IN FN_RECORD_OPS: {:?}", new_ops);
-      if new_ops.is_empty() {
-        // println!("OPERATION IN FN_RECORD_OPS: {:?}", op);
-        new_ops.push(op.clone());
-      }
+      // if new_ops.is_empty() {
+      //   // println!("OPERATION IN FN_RECORD_OPS: {:?}", op);
+      //   new_ops.push(op.clone());
+      // }
 
       for checkpoint_topology in self.checkpoint_topologies.iter() {
         // TODO pass balances.clone() as an argument
@@ -84,7 +84,7 @@ impl Db {
     // remove zero balances
     let balances = balances.into_iter().filter(|(k, v)| !v.is_zero()).collect();
 
-    log::debug!("balances_for_store_goods_before_operation: {balances:?}");
+    // log::debug!("balances_for_store_goods_before_operation: {balances:?}");
 
     Ok(balances)
   }

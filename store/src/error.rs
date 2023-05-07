@@ -17,7 +17,7 @@ impl WHError {
   }
 }
 
-impl std::convert::From<service::error::Error> for WHError {
+impl From<service::error::Error> for WHError {
   fn from(e: service::error::Error) -> Self {
     WHError { message: e.to_string() }
   }
@@ -31,6 +31,18 @@ impl From<rocksdb::Error> for WHError {
 
 impl From<serde_json::Error> for WHError {
   fn from(e: serde_json::Error) -> Self {
+    WHError { message: e.to_string() }
+  }
+}
+
+impl From<ciborium::ser::Error<std::io::Error>> for WHError {
+  fn from(e: ciborium::ser::Error<std::io::Error>) -> Self {
+    WHError { message: e.to_string() }
+  }
+}
+
+impl From<ciborium::de::Error<std::io::Error>> for WHError {
+  fn from(e: ciborium::de::Error<std::io::Error>) -> Self {
     WHError { message: e.to_string() }
   }
 }

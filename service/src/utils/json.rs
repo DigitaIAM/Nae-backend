@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::thread::sleep;
 
 use chrono::{DateTime, Utc};
 use json::JsonValue;
@@ -107,10 +108,14 @@ impl JsonParams for JsonValue {
   }
 
   fn boolean(&self) -> bool {
-    let s = self.string();
-    match s.as_str() {
-      "true" => true,
-      _ => false,
+    if let Some(b) = self.as_bool() {
+      return b;
+    } else {
+      let s = self.string();
+      match s.as_str() {
+        "true" => true,
+        _ => false,
+      }
     }
   }
 }
