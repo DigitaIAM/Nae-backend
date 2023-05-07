@@ -349,12 +349,15 @@ pub(crate) fn get_aggregations_for_one_goods(
   let mut op_iter = operations.iter();
 
   while let Some(op) = op_iter.next() {
-    if op.date < start_date {
-      open_balance += op.to_delta();
-    } else {
-      close_balance += op.to_delta();
+    // only "none-virtual" operations
+    if op.dependant.is_empty() {
+      if op.date < start_date {
+        open_balance += op.to_delta();
+      } else {
+        close_balance += op.to_delta();
+      }
+      result.push(op.to_json());
     }
-    result.push(op.to_json());
   }
 
   result[0]["qty"] = open_balance.qty.to_json();
