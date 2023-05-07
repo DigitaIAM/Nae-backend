@@ -1,3 +1,6 @@
+pub mod check_batch_store_date;
+pub mod check_date_store_batch;
+
 use crate::balance::{Balance, BalanceForGoods};
 use crate::batch::Batch;
 use crate::elements::{first_day_next_month, Goods, Store, WHError};

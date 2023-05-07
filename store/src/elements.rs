@@ -13,7 +13,7 @@ use service::utils::time::{date_to_string, time_to_string};
 use crate::GetWarehouse;
 use service::{Context, Services};
 
-use crate::agregations::{AggregationStore, AgregationStoreGoods};
+use crate::aggregations::{AggregationStore, AgregationStoreGoods};
 use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};

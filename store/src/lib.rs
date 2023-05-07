@@ -6,20 +6,17 @@ extern crate uuid;
 
 use wh_storage::WHStorage;
 
-pub mod agregations;
+pub mod aggregations;
 pub mod balance;
 pub mod batch;
-pub mod check_batch_store_date;
-pub mod check_date_store_batch;
-pub mod checkpoint_topology;
-pub mod date_type_store_batch_id;
+pub mod checkpoints;
 mod db;
 pub mod elements;
 pub mod error;
 pub mod operations;
 pub mod ordered_topology;
 pub mod process_records;
-pub mod store_date_type_batch_id;
+pub mod topologies;
 pub mod wh_storage;
 
 pub trait GetWarehouse {

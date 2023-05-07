@@ -487,8 +487,8 @@ impl InternalOperation {
 
         BalanceDelta { qty, cost }
       },
-      InternalOperation::Receive(_, _) => unimplemented!(),
-      InternalOperation::Issue(_, _, _) => unimplemented!(),
+      InternalOperation::Receive(..) => unimplemented!(),
+      InternalOperation::Issue(..) => unimplemented!(),
     }
   }
 }

@@ -1,10 +1,11 @@
-use super::{
-  check_date_store_batch::CheckDateStoreBatch, date_type_store_batch_id::DateTypeStoreBatchId,
-  db::Db, error::WHError, store_date_type_batch_id::StoreDateTypeBatchId,
-};
-use crate::checkpoint_topology::CheckpointTopology;
+use crate::checkpoints::CheckpointTopology;
 use crate::operations::OpMutation;
 use crate::ordered_topology::OrderedTopology;
+use crate::{
+  checkpoints::check_date_store_batch::CheckDateStoreBatch, db::Db, error::WHError,
+  topologies::date_type_store_batch_id::DateTypeStoreBatchId,
+  topologies::store_date_type_batch_id::StoreDateTypeBatchId,
+};
 use rocksdb::{ColumnFamilyDescriptor, Options, DB};
 use std::{path::Path, sync::Arc};
 

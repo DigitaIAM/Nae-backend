@@ -10,7 +10,7 @@ use super::{
 };
 use crate::balance::Balance;
 use crate::batch::Batch;
-use crate::checkpoint_topology::CheckpointTopology;
+use crate::checkpoints::CheckpointTopology;
 use crate::elements::Goods;
 use crate::operations::{Op, OpMutation};
 use crate::ordered_topology::OrderedTopology;
