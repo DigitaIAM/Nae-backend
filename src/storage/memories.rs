@@ -130,15 +130,16 @@ pub(crate) fn build_folder_path(id: &String, folder: &PathBuf) -> Option<PathBuf
     return None;
   }
   // println!("before: {id}");
-  let id = remove_prefix(id);
+  let id = remove_prefix(id).chars().collect::<Vec<_>>();
   // println!("after: {id}");
 
   if id.len() < 8 {
     return None;
   }
 
-  let year = &id[0..4];
-  let month = &id[5..7];
+  let year: String = id[0..4].iter().collect();
+  let month: String = id[5..7].iter().collect();
+  let id: String = id.iter().collect();
 
   // println!("create id {id} year {year} month {month}");
 
