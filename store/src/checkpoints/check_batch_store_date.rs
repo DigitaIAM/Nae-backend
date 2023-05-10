@@ -34,12 +34,10 @@ impl CheckBatchStoreDate {
 }
 
 impl CheckpointTopology for CheckBatchStoreDate {
-  fn key(&self, op: &Op, date: DateTime<Utc>) -> Vec<u8> {
+  fn key(&self, store: Store, goods: Goods, batch: Batch, date: DateTime<Utc>) -> Vec<u8> {
     [].iter()
-      .chain(op.goods.as_bytes().iter())
-      .chain((op.batch.date.timestamp() as u64).to_be_bytes().iter())
-      .chain(op.batch.id.as_bytes().iter())
-      .chain(op.store.as_bytes().iter())
+      .chain(batch.to_bytes(&goods).iter())
+      .chain(store.as_bytes().iter())
       .chain((date.timestamp() as u64).to_be_bytes().iter())
       .map(|b| *b)
       .collect()

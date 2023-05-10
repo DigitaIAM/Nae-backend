@@ -10,7 +10,7 @@ use crate::ordered_topology::OrderedTopology;
 use crate::aggregations::{get_aggregations_for_one_goods, new_get_aggregations};
 use crate::balance::Balance;
 use crate::batch::Batch;
-use crate::elements::{Goods, Qty};
+use crate::elements::{dt, Goods, Qty};
 use crate::operations::{InternalOperation, Op};
 use chrono::{DateTime, Utc};
 use json::JsonValue;
@@ -36,30 +36,6 @@ impl DateTypeStoreBatchId {
     } else {
       Err(WHError::new("can't get CF"))
     }
-  }
-
-  // | ts | type | store | goods | batch | id | dependant |
-  fn key_build(
-    &self,
-    id: &Uuid,
-    date: &DateTime<Utc>,
-    store: &Store,
-    goods: &Goods,
-    batch: &Batch,
-    op_order: u8,
-    op_dependant: bool,
-  ) -> Vec<u8> {
-    let op_dependant = if op_dependant { 1_u8 } else { 0_u8 };
-    let ts = date.timestamp() as u64;
-    ts.to_be_bytes()
-      .iter()
-      .chain(op_order.to_be_bytes().iter())
-      .chain(store.as_bytes().iter())
-      .chain(batch.to_bytes(goods).iter())
-      .chain(id.as_bytes().iter())
-      .chain(vec![op_dependant].iter())
-      .map(|b| *b)
-      .collect()
   }
 }
 
@@ -107,122 +83,15 @@ impl OrderedTopology for DateTypeStoreBatchId {
   }
 
   fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
-    // log::debug!("DATE_TYPE_STORE_BATCH.balance_before");
-
-    // store + batch
-    let expected: Vec<u8> =
-      op.store.as_bytes().iter().chain(op.batch().iter()).map(|b| *b).collect();
-
-    let key = self.key(op);
-
-    // log::debug!("key {key:?}");
-    // log::debug!("exp {expected:?}");
-
-    let mut iter = self
-      .db
-      .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Reverse));
-
-    while let Some(bytes) = iter.next() {
-      let (k, v) = bytes?;
-
-      if k[0..] == key {
-        continue;
-      }
-
-      // log::debug!("k__ {k:?}");
-
-      let (loaded_op, balance) = self.from_bytes(&v)?;
-
-      println!("loaded_op {:?}", loaded_op);
-
-      //date + optype + store + batch
-      if loaded_op.store != op.store || loaded_op.goods != op.goods || loaded_op.batch != op.batch {
-        continue;
-      }
-
-      println!("{op:#?}");
-      println!("{balance:#?}");
-
-      return Ok(balance);
-    }
-
-    return Ok(BalanceForGoods::default());
+    Err(WHError::new("Not supported"))
   }
 
-  fn goods_balance_before(
-    &self,
-    op: &Op,
-    balances: Vec<Balance>,
-  ) -> Result<Vec<(Batch, BalanceForGoods)>, WHError> {
-    let mut result = vec![];
-
-    let ops =
-      // self.get_ops_for_one_goods(op.store, op.goods, first_day_current_month(op.date), op.date)?;
-    self.get_ops_before_op(op)?;
-
-    let mut operations = vec![];
-
-    for o in ops {
-      if o.store == op.store && o.goods == op.goods {
-        operations.push(o);
-      }
-    }
-
-    let items = new_get_aggregations(balances, operations, op.date);
-
-    for item in items.1 {
-      result.push((item.batch.unwrap(), item.close_balance));
-    }
-
-    Ok(result)
+  fn balance_on_op_or_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
+    Err(WHError::new("Not supported"))
   }
 
-  fn operations_after(
-    &self,
-    op: &Op,
-    no_batches: bool,
-  ) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
-    let mut res = Vec::new();
-
-    // store + batch
-    let expected1: Vec<u8> = op
-      .store
-      .as_bytes()
-      .iter()
-      .chain(op.batch.to_bytes(&op.goods).iter())
-      .map(|b| *b)
-      .collect();
-
-    let expected2: Vec<u8> = op
-      .store
-      .as_bytes()
-      .iter()
-      .chain(Batch::no().to_bytes(&op.goods).iter())
-      .map(|b| *b)
-      .collect();
-
-    let key = self.key(op);
-
-    // TODO change iterator with range from..till?
-    let mut iter = self
-      .db
-      .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Forward));
-    while let Some(bytes) = iter.next() {
-      if let Ok((k, v)) = bytes {
-        //date + optype + store + batch
-        if k[0..] == key {
-          continue;
-        }
-
-        if k[9..=65] == expected1 || (no_batches && k[9..=65] == expected2) {
-          let (op, balance) = self.from_bytes(&v)?;
-
-          res.push((op, balance));
-        }
-      }
-    }
-
-    Ok(res)
+  fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
+    Err(WHError::new("Not supported"))
   }
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
@@ -401,7 +270,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
         if let Some(bs) = self.db.get_cf(
           &self.cf()?,
-          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order, op.is_dependent),
+          self.key_build(store, op.goods, batch, op.date, op_order, op.id, op.is_dependent),
         )? {
           let (dop, _) = self.from_bytes(&bs)?;
           // println!("dependant operation {:?}", dop);
@@ -476,7 +345,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
         if let Some(bs) = self.db.get_cf(
           &self.cf()?,
-          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order, true),
+          self.key_build(store, op.goods, batch, op.date, op_order, op.id, true),
         )? {
           let (dop, _) = self.from_bytes(&bs)?;
           // println!("dependant operation {:?}", dop);
@@ -490,81 +359,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(res)
   }
 
-  fn get_ops_before_op(&self, op: &Op) -> Result<Vec<Op>, WHError> {
-    let ts_from = u64::try_from(first_day_current_month(op.date).timestamp()).unwrap_or_default();
-    let from: Vec<u8> = ts_from
-      .to_be_bytes()
-      .iter()
-      .chain(0_u8.to_be_bytes().iter())
-      .chain(op.store.as_bytes().iter())
-      .chain(op.goods.as_bytes().iter()) // part of batch
-      .chain(UUID_NIL.as_bytes().iter()) // part of batch
-      .chain(u64::MIN.to_be_bytes().iter()) // part of batch
-      .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let ts_till = u64::try_from(op.date.timestamp()).unwrap_or_default();
-    let till: Vec<u8> = ts_till
-      .to_be_bytes()
-      .iter()
-      .chain(u8::MAX.to_be_bytes().iter())
-      .chain(op.store.as_bytes().iter())
-      .chain(op.goods.as_bytes().iter()) // part of batch
-      .chain(UUID_MAX.as_bytes().iter()) // part of batch
-      .chain(u64::MAX.to_be_bytes().iter()) // part of batch
-      .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(from..till);
-
-    let expected_store: Vec<u8> = op.store.as_bytes().iter().map(|b| *b).collect();
-    let expected_goods: Vec<u8> = op.goods.as_bytes().iter().map(|b| *b).collect();
-    let expected_op_id: Vec<u8> = op.id.as_bytes().iter().map(|b| *b).collect();
-
-    let mut res = Vec::new();
-
-    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
-      let (k, value) = item?;
-
-      if k[9..25] != expected_store || k[25..41] != expected_goods {
-        continue;
-      }
-
-      if k[65..81] == expected_op_id {
-        break;
-      }
-
-      let (op, _) = self.from_bytes(&value)?;
-
-      if !op.op.is_zero() {
-        res.push(op.clone());
-      }
-
-      for dependant in op.dependant {
-        // println!("loading batch {:?}", batch);
-
-        let (store, batch, op_order) = dependant.tuple();
-
-        if let Some(bs) = self.db.get_cf(
-          &self.cf()?,
-          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order, true),
-        )? {
-          let (dop, _) = self.from_bytes(&bs)?;
-          // println!("dependant operation {:?}", dop);
-          res.push(dop);
-        } else {
-          // TODO raise exception?
-        }
-      }
-    }
-
-    Ok(res)
-  }
-
-  fn get_ops_for_one_goods_and_batch(
+  fn ops_for_store_goods_and_batch(
     &self,
     store: Store,
     goods: Goods,
@@ -572,87 +367,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
-    println!("get_ops_for_one_goods_and_batch");
-    let ts_from = u64::try_from(from_date.timestamp()).unwrap_or_default();
-    let ts_batch = u64::try_from(batch.date.timestamp()).unwrap_or_default();
-    let from: Vec<u8> = ts_from
-      .to_be_bytes()
-      .iter()
-      .chain(0_u8.to_be_bytes().iter())
-      .chain(store.as_bytes().iter())
-      .chain(goods.as_bytes().iter())
-      // .chain(UUID_NIL.as_bytes().iter())
-      // .chain(ts_batch.to_be_bytes().iter())
-      // .chain(batch.id.as_bytes().iter())
-      .chain(u64::MIN.to_be_bytes().iter())
-      .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let ts_till = u64::try_from(till_date.timestamp()).unwrap_or_default();
-    let till: Vec<u8> = ts_till
-      .to_be_bytes()
-      .iter()
-      .chain(u8::MAX.to_be_bytes().iter())
-      .chain(store.as_bytes().iter())
-      .chain(goods.as_bytes().iter())
-      // .chain(UUID_MAX.as_bytes().iter())
-      // .chain(ts_batch.to_be_bytes().iter())
-      // .chain(batch.id.as_bytes().iter())
-      .chain(u64::MAX.to_be_bytes().iter())
-      .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(from..till);
-
-    let expected_store: Vec<u8> = store.as_bytes().iter().map(|b| *b).collect();
-    let expected_goods: Vec<u8> = goods.as_bytes().iter().map(|b| *b).collect();
-    let expected_batch_date: Vec<u8> = ts_batch.to_be_bytes().iter().map(|b| *b).collect();
-    let expected_batch_id: Vec<u8> = batch.id.as_bytes().iter().map(|b| *b).collect();
-
-    let mut res = Vec::new();
-
-    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
-      let (k, value) = item?;
-
-      if k[9..25] != expected_store
-        || k[25..41] != expected_goods
-        || k[41..49] != expected_batch_date
-        || k[49..65] != expected_batch_id
-      {
-        continue;
-      }
-
-      let (op, _) = self.from_bytes(&value)?;
-
-      if op.op.is_zero() {
-        println!("zero operation {:?}", op);
-      }
-      if !op.op.is_zero() {
-        res.push(op.clone());
-      }
-
-      for dependant in op.dependant {
-        println!("loading dependant {:?}", dependant);
-
-        let (store, batch, op_order) = dependant.tuple();
-
-        if let Some(bs) = self.db.get_cf(
-          &self.cf()?,
-          self.key_build(&op.id, &op.date, &store, &op.goods, &batch, op_order, true),
-        )? {
-          let (dop, _) = self.from_bytes(&bs)?;
-          println!("dependant operation {:?}", dop);
-          res.push(dop);
-        } else {
-          // TODO raise exception?
-        }
-      }
-    }
-
-    Ok(res)
+    Err(WHError::new("Not supported"))
   }
 
   fn get_ops_for_many_goods(
@@ -711,35 +426,6 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(res)
   }
 
-  fn get_report_for_goods(
-    &self,
-    db: &Db,
-    storage: Store,
-    goods: Goods,
-    batch: &Batch,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
-  ) -> Result<JsonValue, WHError> {
-    println!("DATE_TYPE_STORE_BATCH.get_report_for_goods");
-    let mut balances = Vec::new();
-
-    if let Some(balance) = db.get_checkpoint_for_goods_and_batch(storage, goods, batch, from_date)? {
-      balances.push(balance);
-    }
-
-    let ops = self.get_ops_for_one_goods_and_batch(
-      storage,
-      goods,
-      batch,
-      first_day_current_month(from_date),
-      till_date,
-    )?;
-
-    let items = get_aggregations_for_one_goods(balances, ops, from_date, till_date)?;
-
-    Ok(items)
-  }
-
   fn get_report_for_storage(
     &self,
     db: &Db,
@@ -756,7 +442,27 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(Report { from_date, till_date, items })
   }
 
-  fn key(&self, op: &Op) -> Vec<u8> {
-    self.key_build(&op.id, &op.date, &op.store, &op.goods, &op.batch, op.op.order(), op.is_dependent)
+  // | ts | type | store | goods | batch | id | dependant |
+  fn key_build(
+    &self,
+    store: Store,
+    goods: Goods,
+    batch: Batch,
+    date: DateTime<Utc>,
+    op_order: u8,
+    op_id: Uuid,
+    is_dependant: bool,
+  ) -> Vec<u8> {
+    let op_dependant = if is_dependant { 1_u8 } else { 0_u8 };
+    let ts = date.timestamp() as u64;
+    ts.to_be_bytes()
+      .iter()
+      .chain(op_order.to_be_bytes().iter())
+      .chain(store.as_bytes().iter())
+      .chain(batch.to_bytes(&goods).iter())
+      .chain(op_id.as_bytes().iter())
+      .chain(vec![op_dependant].iter())
+      .map(|b| *b)
+      .collect()
   }
 }

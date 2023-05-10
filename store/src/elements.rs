@@ -179,8 +179,8 @@ pub fn receive_data(
     },
   };
 
-  log::debug!("OPS BEFOR: {before:?}");
-  log::debug!("OPS AFTER: {after:?}");
+  log::debug!("OPS BEFOR: {before:#?}");
+  log::debug!("OPS AFTER: {after:#?}");
 
   let mut before = before.into_iter();
 
@@ -210,7 +210,7 @@ pub fn receive_data(
     ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
   }
 
-  log::debug!("OPS: {:?}", ops);
+  log::debug!("OPS: {:#?}", ops);
 
   if ops.is_empty() {
     Ok(old_data)

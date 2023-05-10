@@ -6,6 +6,7 @@ use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use service::utils::json::JsonParams;
+use std::cmp::Ordering;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -90,6 +91,27 @@ impl Op {
   //     InternalOperation::Inventory(b, _, _) => b.cost,
   //     InternalOperation::Receive(_, c) => c.clone(),
   //     InternalOperation::Issue(_, c, _) => c.clone(),
+  //   }
+  // }
+
+  // pub fn compare(&self, other: &Op) -> Ordering {
+  //   let cmp_store = self.store.as_bytes().iter().cmp(other.store.as_bytes().iter());
+  //   if cmp_store != Ordering::Equal {
+  //     return cmp_store;
+  //   }
+  //
+  //   let cmp_goods = self.goods.as_bytes().iter().cmp(other.goods.as_bytes().iter());
+  //   if cmp_goods != Ordering::Equal {
+  //     return cmp_goods;
+  //   }
+  //
+  //   let cmp_date = (self.date.timestamp() as u64)
+  //     .to_be_bytes()
+  //     .iter()
+  //     .cmp((other.batch.timestamp() as u64).to_be_bytes().iter());
+  //
+  //   if cmp_date != Ordering::Equal {
+  //     return cmp_date;
   //   }
   // }
 
@@ -330,9 +352,9 @@ impl OpMutation {
     Ok(serde_json::to_string(&self)?)
   }
 
-  pub fn to_op(&self) -> Op {
-    if let Some(op) = self.after.as_ref() {
-      Op {
+  pub fn to_op_before(&self) -> Option<Op> {
+    if let Some(op) = self.before.as_ref() {
+      Some(Op {
         id: self.id.clone(),
         date: self.date.clone(),
         store: self.store.clone(),
@@ -342,23 +364,27 @@ impl OpMutation {
         op: op.clone(),
         is_dependent: self.is_dependent,
         dependant: self.dependant.clone(),
-      }
+      })
     } else {
-      Op {
+      None
+    }
+  }
+
+  pub fn to_op_after(&self) -> Option<Op> {
+    if let Some(op) = self.after.as_ref() {
+      Some(Op {
         id: self.id.clone(),
         date: self.date.clone(),
         store: self.store.clone(),
         goods: self.goods.clone(),
         batch: self.batch.clone(),
         store_into: self.transfer.clone(),
-        op: if let Some(b) = self.before.clone() {
-          b
-        } else {
-          InternalOperation::Receive(0.into(), 0.into())
-        },
+        op: op.clone(),
         is_dependent: self.is_dependent,
         dependant: self.dependant.clone(),
-      }
+      })
+    } else {
+      None
     }
   }
 
@@ -411,33 +437,6 @@ impl OpMutation {
       }
     } else {
       OpMutation::default()
-    }
-  }
-
-  fn dependent(&self) -> Option<OpMutation> {
-    if let Some(transfer) = self.transfer {
-      let before = match self.before.clone() {
-        Some(b) => Some(b),
-        None => None,
-      };
-      // TODO check if cost in operation already calculated - No!
-      match self.after.as_ref() {
-        Some(InternalOperation::Issue(q, c, _)) => Some(OpMutation {
-          id: self.id,
-          date: self.date,
-          store: transfer,
-          transfer: None,
-          goods: self.goods,
-          batch: self.batch.clone(),
-          before,
-          after: Some(InternalOperation::Receive(q.clone(), c.clone())),
-          is_dependent: self.is_dependent,
-          dependant: self.dependant.clone(),
-        }),
-        _ => None,
-      }
-    } else {
-      None
     }
   }
 

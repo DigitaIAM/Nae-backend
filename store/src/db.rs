@@ -44,14 +44,19 @@ impl Db {
 
   pub fn record_ops(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
     for op in ops {
-      let mut new_ops = vec![];
+      let mut changes = self.ordered_topologies[0].data_update(self, op)?;
 
-      for ordered_topology in self.ordered_topologies.iter() {
-        log::debug!("processing topology:");
-        new_ops = ordered_topology.data_update(self, op)?;
+      for ordered_topology in self.ordered_topologies.iter().skip(1) {
+        for (op, balance) in changes.iter() {
+          if let Some(after) = op.to_op_after() {
+            ordered_topology.put(&after, balance)?;
+          } else if let Some(before) = op.to_op_before() {
+            ordered_topology.del(&before)?;
+          }
+        }
       }
 
-      println!("NEW_OPS IN FN_RECORD_OPS: {:?}", new_ops);
+      println!("NEW_OPS IN FN_RECORD_OPS: {:#?}", changes);
       // if new_ops.is_empty() {
       //   // println!("OPERATION IN FN_RECORD_OPS: {:?}", op);
       //   new_ops.push(op.clone());
@@ -59,7 +64,9 @@ impl Db {
 
       for checkpoint_topology in self.checkpoint_topologies.iter() {
         // TODO pass balances.clone() as an argument
-        checkpoint_topology.checkpoint_update(new_ops.clone())?;
+        for (op, balance) in changes.iter() {
+          checkpoint_topology.checkpoint_update(op)?;
+        }
       }
     }
 
@@ -120,6 +127,30 @@ impl Db {
   ) -> Result<Vec<Balance>, WHError> {
     for checkpoint_topology in self.checkpoint_topologies.iter() {
       match checkpoint_topology.get_checkpoints_for_one_goods(store, goods, date) {
+        Ok(result) => return Ok(result),
+        Err(e) => {
+          if e.message() == "Not supported".to_string() {
+            continue;
+          } else {
+            return Err(e);
+          }
+        },
+      }
+    }
+    Err(WHError::new("can't get checkpoint before date"))
+  }
+
+  pub fn ops_for_store_goods_and_batch(
+    &self,
+    store: Store,
+    goods: Goods,
+    batch: &Batch,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    for ordered_topology in self.ordered_topologies.iter() {
+      match ordered_topology.ops_for_store_goods_and_batch(store, goods, batch, from_date, till_date)
+      {
         Ok(result) => return Ok(result),
         Err(e) => {
           if e.message() == "Not supported".to_string() {

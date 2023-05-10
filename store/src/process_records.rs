@@ -111,6 +111,11 @@ pub fn process_record(
     _ => return Ok(()),
   };
 
+  // let goods_name = match &record[2] {
+  //   "Поддон деревянный (130х110)" => &record[2],
+  //   _ => return Ok(()),
+  // };
+
   println!("start process_record {record:?}");
 
   let date = &record[7];
