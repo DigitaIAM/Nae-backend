@@ -9,7 +9,7 @@ use service::utils::json::JsonParams;
 use std::cmp::Ordering;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Dependant {
   Receive(Store, Batch),
   Issue(Store, Batch),
@@ -51,7 +51,7 @@ impl From<&Op> for Dependant {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Op {
   // key
   pub id: Uuid,
@@ -180,6 +180,26 @@ impl Op {
 
   pub(crate) fn batch(&self) -> Vec<u8> {
     self.batch.to_bytes(&self.goods)
+  }
+
+  pub(crate) fn is_independent(&self, other: &Op) -> bool {
+    if self.is_dependent {
+      if self.id == other.id && self.goods == other.goods {
+        match other.op {
+          InternalOperation::Inventory(..) => false,
+          InternalOperation::Receive(..) => true,
+          InternalOperation::Issue(..) => match self.op {
+            InternalOperation::Inventory(..) => true,
+            InternalOperation::Receive(..) => self.batch != other.batch,
+            InternalOperation::Issue(..) => !(other.batch.is_empty() || other.batch == self.batch),
+          },
+        }
+      } else {
+        true
+      }
+    } else {
+      true
+    }
   }
 
   pub(crate) fn dependent_on_transfer(&self) -> Option<Op> {
@@ -469,7 +489,7 @@ const ORDER_RECEIVE_DEPENDANT: u8 = 3_u8;
 const ORDER_ISSUE: u8 = 4_u8;
 const ORDER_ISSUE_DEPENDANT: u8 = 5_u8;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InternalOperation {
   Inventory(BalanceForGoods, BalanceDelta, Mode),
   Receive(Qty, Cost),     // FROM // TODO Option<Store>

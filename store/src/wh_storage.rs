@@ -2,6 +2,7 @@ use crate::checkpoints::CheckpointTopology;
 use crate::operations::OpMutation;
 use crate::ordered_topology::OrderedTopology;
 use crate::topologies::store_batch_date_type_id::StoreBatchDateTypeId;
+use crate::topologies::store_goods_date_type_id_batch::StoreGoodsDateTypeIdBatch;
 use crate::{
   checkpoints::check_date_store_batch::CheckDateStoreBatch, db::Db, error::WHError,
   topologies::date_type_store_batch_id::DateTypeStoreBatchId,
@@ -30,6 +31,7 @@ impl WHStorage {
       StoreBatchDateTypeId::cf_name(),
       StoreDateTypeBatchId::cf_name(),
       DateTypeStoreBatchId::cf_name(),
+      StoreGoodsDateTypeIdBatch::cf_name(),
       CheckDateStoreBatch::cf_name(),
       // CheckBatchStoreDate::cf_name(),
     ];
@@ -53,6 +55,7 @@ impl WHStorage {
 
     let ordered_topologies: Vec<Box<dyn OrderedTopology + Sync + Send>> = vec![
       Box::new(StoreBatchDateTypeId { db: inner_db.clone() }),
+      Box::new(StoreGoodsDateTypeIdBatch { db: inner_db.clone() }),
       Box::new(StoreDateTypeBatchId { db: inner_db.clone() }),
       Box::new(DateTypeStoreBatchId { db: inner_db.clone() }),
     ];

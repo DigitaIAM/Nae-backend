@@ -37,7 +37,7 @@ impl From<Decimal> for Price {
   }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Cost(Decimal);
 
 impl Cost {
@@ -128,7 +128,7 @@ impl Neg for Cost {
   }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BalanceForGoods {
   pub qty: Qty,
   pub cost: Cost,
@@ -226,7 +226,7 @@ impl AddAssign<&InternalOperation> for BalanceForGoods {
   }
 }
 
-#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BalanceDelta {
   pub qty: Qty,
   pub cost: Cost,

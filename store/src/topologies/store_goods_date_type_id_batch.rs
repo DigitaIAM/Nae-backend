@@ -20,19 +20,19 @@ use rocksdb::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-const CF_NAME: &str = "cf_store_batch_date_type_id";
+const CF_NAME: &str = "cf_store_goods_date_type_id_batch";
 
-pub struct StoreBatchDateTypeId {
+pub struct StoreGoodsDateTypeIdBatch {
   pub db: Arc<DB>,
 }
 
-impl StoreBatchDateTypeId {
+impl StoreGoodsDateTypeIdBatch {
   pub fn cf_name() -> &'static str {
     CF_NAME
   }
 
   fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
-    if let Some(cf) = self.db.cf_handle(StoreBatchDateTypeId::cf_name()) {
+    if let Some(cf) = self.db.cf_handle(StoreGoodsDateTypeIdBatch::cf_name()) {
       Ok(cf)
     } else {
       Err(WHError::new("can't get CF"))
@@ -40,7 +40,7 @@ impl StoreBatchDateTypeId {
   }
 }
 
-impl OrderedTopology for StoreBatchDateTypeId {
+impl OrderedTopology for StoreGoodsDateTypeIdBatch {
   fn put(
     &self,
     op: &Op,
@@ -84,117 +84,19 @@ impl OrderedTopology for StoreBatchDateTypeId {
   }
 
   fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
-    // log::debug!("balance_before {:#?}", op);
-
-    let key = self.key(op);
-
-    let mut iter = self
-      .db
-      .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Reverse));
-
-    while let Some(bytes) = iter.next() {
-      let (k, v) = bytes?;
-
-      if k[0..] == key {
-        continue;
-      }
-
-      let (loaded_op, balance) = self.from_bytes(&v)?;
-
-      // log::debug!("loaded_op {loaded_op:#?}\nbalance {balance:#?}");
-
-      if loaded_op.store != op.store || loaded_op.goods != op.goods || loaded_op.batch != op.batch {
-        // log::debug!("break");
-        break;
-      }
-
-      return Ok(balance);
-    }
-
-    Ok(BalanceForGoods::default())
+    Err(WHError::new("not implemented"))
   }
 
   fn balance_on_op_or_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
-    // println!("op {:#?}", op);
-
-    let key = self.key(op);
-
-    let mut iter = self
-      .db
-      .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Reverse));
-
-    while let Some(bytes) = iter.next() {
-      let (k, v) = bytes?;
-
-      let (loaded_op, balance) = self.from_bytes(&v)?;
-
-      // println!("loaded_op {:#?}", loaded_op);
-
-      if loaded_op.store != op.store || loaded_op.goods != op.goods || loaded_op.batch != op.batch {
-        break;
-      }
-
-      // println!("{balance:#?}");
-
-      return Ok(balance);
-    }
-
-    Ok(BalanceForGoods::default())
+    Err(WHError::new("not implemented"))
   }
 
   fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
-    // log::debug!("operations_after {op:#?}");
-
-    let mut res = Vec::new();
-
-    let key = self.key(op);
-    let till =
-      self.key_build(op.store, op.goods, op.batch.clone(), i64::MAX, u8::MAX, UUID_MAX, true);
-
-    // println!("key:");
-    // for b in key.iter() {
-    //   println!("{b:#010b}");
-    // }
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(key.clone()..till);
-
-    // TODO change iterator with range from..till?
-    let mut iter =
-      self
-        .db
-        .iterator_cf_opt(&self.cf()?, options, IteratorMode::From(&key, Direction::Forward));
-
-    while let Some(bytes) = iter.next() {
-      if let Ok((k, v)) = bytes {
-        if k[0..] == key {
-          continue;
-        }
-
-        // println!("load:");
-        // for b in k.iter() {
-        //   println!("{b:#010b}");
-        // }
-
-        let (loaded_op, balance) = self.from_bytes(&v)?;
-
-        // log::debug!("operations_after loaded {loaded_op:#?}\nbalance {balance:#?}");
-
-        if loaded_op.store != op.store || loaded_op.goods != op.goods || loaded_op.batch != op.batch
-        {
-          // log::debug!("break");
-          break;
-        }
-
-        res.push((loaded_op, balance));
-      }
-    }
-
-    Ok(res)
+    Err(WHError::new("not implemented"))
   }
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
-    ColumnFamilyDescriptor::new(StoreBatchDateTypeId::cf_name(), opts)
+    ColumnFamilyDescriptor::new(StoreGoodsDateTypeIdBatch::cf_name(), opts)
   }
 
   fn get_ops_for_storage(
@@ -226,7 +128,71 @@ impl OrderedTopology for StoreBatchDateTypeId {
 
   // operations for store+goods (return all batches)
   fn operations_for_store_goods(&self, from: DateTime<Utc>, till: &Op) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
+    log::debug!("TOPOLOGY: store_goods_date_type_id_batch.operations_for_store_goods");
+
+    let bytes_from: Vec<u8> = self.key_build(
+      till.store,
+      till.goods,
+      Batch::MIN(),
+      from.timestamp(),
+      u8::MIN,
+      UUID_NIL,
+      false,
+    );
+    let bytes_till: Vec<u8> = self.key_build(
+      till.store,
+      till.goods,
+      Batch::MAX(),
+      till.date.timestamp(),
+      till.op.order(),
+      till.id,
+      till.is_dependent,
+    );
+
+    let mut options = ReadOptions::default();
+    options.set_iterate_range(bytes_from.clone()..bytes_till.clone());
+
+    let mut res = Vec::new();
+
+    for item in self.db.iterator_cf_opt(
+      &self.cf()?,
+      options,
+      IteratorMode::From(&bytes_from, Direction::Forward),
+    ) {
+      let (k, value) = item?;
+
+      if k[0..] == bytes_till {
+        continue;
+      }
+
+      let (op, _) = self.from_bytes(&value)?;
+
+      // println!("loaded_op {op:#?}");
+
+      // exclude virtual nodes
+      if op.dependant.is_empty() {
+        res.push(op.clone());
+      }
+
+      // for dependant in op.dependant {
+      //   // println!("loading batch {:?}", batch);
+      //
+      //   let (store, batch, op_order) = dependant.tuple();
+      //
+      //   if let Some(bs) = self.db.get_cf(
+      //     &self.cf()?,
+      //     self.key_build(store, op.goods, batch, op.date.timestamp(), op_order, op.id, true),
+      //   )? {
+      //     let (dop, _) = self.from_bytes(&bs)?;
+      //     // println!("dependant operation {:?}", dop);
+      //     res.push(dop);
+      //   } else {
+      //     // TODO raise exception?
+      //   }
+      // }
+    }
+
+    Ok(res)
   }
 
   fn ops_for_store_goods_and_batch(
@@ -237,48 +203,7 @@ impl OrderedTopology for StoreBatchDateTypeId {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
-    println!("STORE_BATCH_DATE_TYPE_ID.get_ops_for_one_goods_and_batch");
-
-    let from: Vec<u8> =
-      self.key_build(store, goods, batch.clone(), from_date.timestamp(), u8::MIN, UUID_NIL, false);
-    let till: Vec<u8> =
-      self.key_build(store, goods, batch.clone(), till_date.timestamp(), u8::MAX, UUID_MAX, true);
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(from..till);
-
-    let mut res = Vec::new();
-
-    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
-      let (k, value) = item?;
-
-      let (op, _) = self.from_bytes(&value)?;
-
-      assert!(!op.op.is_zero(), "{:#?}", op);
-
-      if op.dependant.is_empty() {
-        res.push(op);
-      }
-
-      // for dependant in op.dependant {
-      //   println!("loading dependant {:?}", dependant);
-      //
-      //   let (store, batch, op_order) = dependant.tuple();
-      //
-      //   if let Some(bs) = self.db.get_cf(
-      //     &self.cf()?,
-      //     self.key_build(store, op.goods, batch, op.date, op_order, op.id, true),
-      //   )? {
-      //     let (dop, _) = self.from_bytes(&bs)?;
-      //     println!("dependant operation {:?}", dop);
-      //     res.push(dop);
-      //   } else {
-      //     // TODO raise exception?
-      //   }
-      // }
-    }
-
-    Ok(res)
+    Err(WHError::new("not implemented"))
   }
 
   fn get_ops_for_many_goods(
@@ -317,11 +242,12 @@ impl OrderedTopology for StoreBatchDateTypeId {
     store
       .as_bytes()
       .iter() // store
-      .chain(batch.to_bytes(&goods).iter()) // batch
+      .chain(goods.as_bytes().iter()) // batch
       .chain(date.to_be_bytes().iter()) // date
       .chain(op_order.to_be_bytes().iter()) // op order
       .chain(op_id.as_bytes().iter()) // op id
       .chain(op_dependant.to_be_bytes().iter()) // op dependant
+      .chain(batch.to_bytes(&goods).iter()) // TODO bytes without goods part
       .map(|b| *b)
       .collect()
   }

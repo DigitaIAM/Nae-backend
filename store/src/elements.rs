@@ -86,7 +86,7 @@ pub struct NumberForGoods {
   cost: Option<Cost>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Mode {
   Auto,
   Manual,

@@ -8,7 +8,7 @@ use crate::{
 use crate::aggregations::{get_aggregations_for_one_goods, new_get_aggregations};
 use crate::balance::Balance;
 use crate::batch::Batch;
-use crate::elements::{Goods, Qty};
+use crate::elements::{dt, Goods, Qty};
 use crate::elements::{UUID_MAX, UUID_NIL};
 use crate::operations::Op;
 use crate::ordered_topology::OrderedTopology;
@@ -218,68 +218,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
   }
 
   fn operations_for_store_goods(&self, from: DateTime<Utc>, till: &Op) -> Result<Vec<Op>, WHError> {
-    log::debug!("TOPOLOGY: store_date_type_batch_id");
-    let ts_from = u64::try_from(from.timestamp()).unwrap_or_default();
-    let bytes_from: Vec<u8> = till
-      .store
-      .as_bytes()
-      .iter()
-      .chain(ts_from.to_be_bytes().iter())
-      .chain(0_u8.to_be_bytes().iter())
-      .chain(till.goods.as_bytes().iter()) // part of batch
-      .chain(UUID_NIL.as_bytes().iter()) // part of batch
-      .chain(u64::MIN.to_be_bytes().iter()) // part of batch
-      .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let ts_till = u64::try_from(till.date.timestamp()).unwrap_or_default();
-    let bytes_till: Vec<u8> = till
-      .store
-      .as_bytes()
-      .iter()
-      .chain(ts_till.to_be_bytes().iter())
-      .chain(u8::MAX.to_be_bytes().iter())
-      .chain(till.goods.as_bytes().iter()) // part of batch
-      .chain(UUID_MAX.as_bytes().iter()) // part of batch
-      .chain(u64::MAX.to_be_bytes().iter()) // part of batch
-      .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(bytes_from..bytes_till);
-
-    // let expected_goods: Vec<u8> = till.goods.as_bytes().iter().map(|b| *b).collect();
-    // let expected_uuid: Vec<u8> = till.id.as_bytes().iter().map(|b| *b).collect();
-    // let expected_order: u8 = till.op.order();
-
-    let mut res = Vec::new();
-
-    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
-      let (k, value) = item?;
-
-      let (op, _) = self.from_bytes(&value)?;
-
-      // store filtered by prefix in range
-      if op.goods != till.goods {
-        continue;
-      }
-
-      if op.op.order() > till.op.order() {
-        println!("exit by over order");
-        break;
-      }
-
-      if op.id.as_bytes() >= till.id.as_bytes() {
-        println!("exit by over uuid");
-        break;
-      }
-
-      res.push(op.clone());
-    }
-
-    Ok(res)
+    Err(WHError::new("not implemented"))
   }
 
   fn ops_for_store_goods_and_batch(
@@ -372,22 +311,23 @@ impl OrderedTopology for StoreDateTypeBatchId {
     store: Store,
     goods: Goods,
     batch: Batch,
-    date: DateTime<Utc>,
+    date: i64,
     op_order: u8,
     op_id: Uuid,
     is_dependent: bool,
   ) -> Vec<u8> {
-    let ts = date.timestamp() as u64;
+    assert!(date >= 0);
+    let date = date as u64;
     let op_dependant = if is_dependent { 1_u8 } else { 0_u8 };
 
     store
       .as_bytes()
       .iter()
-      .chain(ts.to_be_bytes().iter())
+      .chain(date.to_be_bytes().iter())
       .chain(op_order.to_be_bytes().iter())
       .chain(batch.to_bytes(&goods).iter())
       .chain(op_id.as_bytes().iter())
-      .chain(vec![op_dependant].iter())
+      .chain(op_dependant.to_be_bytes().iter())
       .map(|b| *b)
       .collect()
   }

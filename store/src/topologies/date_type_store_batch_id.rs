@@ -270,7 +270,15 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
         if let Some(bs) = self.db.get_cf(
           &self.cf()?,
-          self.key_build(store, op.goods, batch, op.date, op_order, op.id, op.is_dependent),
+          self.key_build(
+            store,
+            op.goods,
+            batch,
+            op.date.timestamp(),
+            op_order,
+            op.id,
+            op.is_dependent,
+          ),
         )? {
           let (dop, _) = self.from_bytes(&bs)?;
           // println!("dependant operation {:?}", dop);
@@ -285,78 +293,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
   }
 
   fn operations_for_store_goods(&self, from: DateTime<Utc>, till: &Op) -> Result<Vec<Op>, WHError> {
-    log::debug!("TOPOLOGY: date_type_store_batch_id");
-    let ts_from = u64::try_from(from.timestamp()).unwrap_or_default();
-    let bytes_from: Vec<u8> = ts_from
-      .to_be_bytes()
-      .iter()
-      .chain(0_u8.to_be_bytes().iter())
-      .chain(till.store.as_bytes().iter())
-      .chain(till.goods.as_bytes().iter()) // part of batch
-      .chain(UUID_NIL.as_bytes().iter()) // part of batch
-      .chain(u64::MIN.to_be_bytes().iter()) // part of batch
-      .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let ts_till = u64::try_from(till.date.timestamp()).unwrap_or_default();
-    let bytes_till: Vec<u8> = ts_till
-      .to_be_bytes()
-      .iter()
-      .chain(u8::MAX.to_be_bytes().iter())
-      .chain(till.store.as_bytes().iter())
-      .chain(till.goods.as_bytes().iter()) // part of batch
-      .chain(UUID_MAX.as_bytes().iter()) // part of batch
-      .chain(u64::MAX.to_be_bytes().iter()) // part of batch
-      .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
-      .collect();
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(bytes_from..bytes_till);
-
-    let expected_store: Vec<u8> = till.store.as_bytes().iter().map(|b| *b).collect();
-    let expected_goods: Vec<u8> = till.goods.as_bytes().iter().map(|b| *b).collect();
-    let expected_key = self.key(till);
-
-    let mut res = Vec::new();
-
-    for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
-      let (k, value) = item?;
-
-      if k[9..25] != expected_store || k[25..41] != expected_goods {
-        continue;
-      }
-
-      if k.to_vec() == expected_key {
-        break;
-      }
-
-      let (op, _) = self.from_bytes(&value)?;
-
-      if !op.op.is_zero() {
-        res.push(op.clone());
-      }
-
-      for dependant in op.dependant {
-        // println!("loading batch {:?}", batch);
-
-        let (store, batch, op_order) = dependant.tuple();
-
-        if let Some(bs) = self.db.get_cf(
-          &self.cf()?,
-          self.key_build(store, op.goods, batch, op.date, op_order, op.id, true),
-        )? {
-          let (dop, _) = self.from_bytes(&bs)?;
-          // println!("dependant operation {:?}", dop);
-          res.push(dop);
-        } else {
-          // TODO raise exception?
-        }
-      }
-    }
-
-    Ok(res)
+    Err(WHError::new("not implemented"))
   }
 
   fn ops_for_store_goods_and_batch(
@@ -448,20 +385,22 @@ impl OrderedTopology for DateTypeStoreBatchId {
     store: Store,
     goods: Goods,
     batch: Batch,
-    date: DateTime<Utc>,
+    date: i64,
     op_order: u8,
     op_id: Uuid,
     is_dependant: bool,
   ) -> Vec<u8> {
+    assert!(date >= 0);
+    let date = date as u64;
     let op_dependant = if is_dependant { 1_u8 } else { 0_u8 };
-    let ts = date.timestamp() as u64;
-    ts.to_be_bytes()
+    date
+      .to_be_bytes()
       .iter()
       .chain(op_order.to_be_bytes().iter())
       .chain(store.as_bytes().iter())
       .chain(batch.to_bytes(&goods).iter())
       .chain(op_id.as_bytes().iter())
-      .chain(vec![op_dependant].iter())
+      .chain(op_dependant.to_be_bytes().iter())
       .map(|b| *b)
       .collect()
   }

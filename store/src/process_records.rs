@@ -170,14 +170,14 @@ pub fn process_record(
     json(app, object! { name: into_name }, into_ctx, &|| object! { name: into_name })?
   };
 
-  let doc_ctx = if ctx.get(1) == Some(&"receive") {
-    RECEIVE_DOCUMENT.to_vec()
+  let (doc_ctx, ignore_cost) = if ctx.get(1) == Some(&"receive") {
+    (RECEIVE_DOCUMENT.to_vec(), false)
   } else if ctx.get(1) == Some(&"inventory") {
-    INVENTORY_DOCUMENT.to_vec()
+    (INVENTORY_DOCUMENT.to_vec(), true)
   } else if ctx.get(1) == Some(&"transfer") {
-    TRANSFER_DOCUMENT.to_vec()
+    (TRANSFER_DOCUMENT.to_vec(), true)
   } else {
-    DISPATCH_DOCUMENT.to_vec()
+    (DISPATCH_DOCUMENT.to_vec(), true)
   };
 
   let document = if &doc_ctx == &TRANSFER_DOCUMENT.to_vec() {
@@ -287,49 +287,27 @@ pub fn process_record(
     object! {name: "uzd"}
   })?;
 
-  // let price: Decimal = 0.into();
-
-  let data = if cell_from.is_some() && cell_into.is_some() {
-    object! {
-      document: document["_id"].clone(),
-      goods: item["_id"].clone(),
-      storage_from: cell_from.unwrap()["_id"].clone(),
-      storage_into: cell_into.unwrap()["_id"].clone(),
-      qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
-      // price: price.to_json(),
-      cost: object! { number: cost.to_json(), currency: currency["_id"].clone() },
-    }
-  } else if cell_from.is_some() && cell_into.is_none() {
-    object! {
-      document: document["_id"].clone(),
-      goods: item["_id"].clone(),
-      storage_from: cell_from.unwrap()["_id"].clone(),
-      qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
-      // price: price.to_json(),
-      cost: object! { number: cost.to_json(), currency: currency["_id"].clone() },
-    }
-  } else if cell_from.is_none() && cell_into.is_some() {
-    object! {
-      document: document["_id"].clone(),
-      goods: item["_id"].clone(),
-      storage_into: cell_into.unwrap()["_id"].clone(),
-      qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
-      // price: price.to_json(),
-      cost: object! { number: cost.to_json(), currency: currency["_id"].clone() },
-    }
-  } else {
-    object! {
-      document: document["_id"].clone(),
-      goods: item["_id"].clone(),
-      qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
-      // price: price.to_json(),
-      cost: object! { number: cost.to_json(), currency: currency["_id"].clone() },
-    }
+  let mut data = object! {
+    document: document["_id"].clone(),
+    goods: item["_id"].clone(),
+    qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
   };
+
+  if let Some(cell_from) = cell_from {
+    data["storage_from"] = cell_from["_id"].clone();
+  }
+
+  if let Some(cell_into) = cell_into {
+    data["storage_into"] = cell_into["_id"].clone();
+  }
+
+  if !ignore_cost {
+    data["cost"] = object! { number: cost.to_json(), currency: currency["_id"].clone() };
+  }
 
   let _res = memories_create(app, data, ctx.clone())?;
 
-  println!("_res: {_res:?}");
+  // println!("_res: {_res:#?}");
 
   Ok(())
 }
