@@ -1,10 +1,11 @@
+use super::*;
+
 use json::JsonValue;
 use simsearch::SimSearch;
 use uuid::Uuid;
 
 use crate::{
-  commutator::Application, storage::Workspaces, 
-  text_search::engine_tantivy::TantivyEngine,
+  commutator::Application, storage::Workspaces, text_search::engine_tantivy::TantivyEngine,
 };
 
 #[derive(Debug)]
@@ -25,7 +26,7 @@ impl From<service::error::Error> for Error {
     Error::Service(err)
   }
 }
-    
+
 impl From<std::io::Error> for Error {
   fn from(err: std::io::Error) -> Self {
     Error::IO(err)
@@ -61,12 +62,19 @@ impl SearchEngine {
   }
 
   pub fn create(&mut self, id: Uuid, text: &str) -> Result<(), tantivy::TantivyError> {
-    self.sim.insert(id, text);
-    self.tan.insert(id, text)?;
+    let text = text.to_lowercase().replace("ё", "е");
+
+    self.sim.insert(id, text.as_str());
+    self.tan.insert(id, text.as_str())?;
     Ok(())
   }
 
-  pub fn change(&mut self, id: Uuid, _before: &str, after: &str) -> Result<(), tantivy::TantivyError> {
+  pub fn change(
+    &mut self,
+    id: Uuid,
+    _before: &str,
+    after: &str,
+  ) -> Result<(), tantivy::TantivyError> {
     self.delete(&id)?;
     self.create(id, after)?;
     Ok(())
@@ -86,17 +94,9 @@ impl SearchEngine {
     let result_tan = self.tan.search(&text);
     let result_sim = self.sim.search(&text);
 
-    // println!("result_full.len() = {}\tresult_tan.len() = {}\tresult_sim.len() = {}", 
-    //   result_full.len(), result_tan.len(), result_sim.len()
-    // );
-
     let result_tan = remove_duplicates(result_tan, &result_full);
     let result_sim = remove_duplicates(result_sim, &result_tan);
     let result_sim = remove_duplicates(result_sim, &result_full);
-
-    // println!("result_full.len() = {}\tresult_tan.len() = {}\tresult_sim.len() = {}", 
-    //   result_full.len(), result_tan.len(), result_sim.len()
-    // );
 
     // PAGINATION
     let page_number = offset;
@@ -104,7 +104,7 @@ impl SearchEngine {
     let cat_0_and_1: Vec<_> = [result_tan, result_full].concat();
 
     if page_number > (cat_0_and_1.len() + result_sim.len()) / page_size + 1 {
-        return vec![]
+      return vec![];
     }
 
     let half_page = page_size / 2;
@@ -117,63 +117,63 @@ impl SearchEngine {
     // println!("full_page_tan = {full_page_tan} full_page_sim = {full_page_sim}");
 
     if page_number < full_page {
-        let offset = page_number * half_page;
-        let mut result: Vec<Uuid> = cat_0_and_1.iter().skip(offset).take(half_page).map(|s| *s).collect();
-        result.extend(
-          result_sim.into_iter().skip(offset).take(half_page)
-        );
+      let offset = page_number * half_page;
+      let mut result: Vec<Uuid> =
+        cat_0_and_1.iter().skip(offset).take(half_page).map(|s| *s).collect();
+      result.extend(result_sim.into_iter().skip(offset).take(half_page));
 
-        return result
+      return result;
     } else if page_number == full_page {
       if full_page == full_page_tan {
-          // println!("min - tan");
-          let offset = page_number * half_page;
-          let take_tan = cat_0_and_1.len() - offset;
-          let mut result: Vec<Uuid> = cat_0_and_1.iter().skip(offset).take(take_tan).map(|s| *s).collect();
+        // println!("min - tan");
+        let offset = page_number * half_page;
+        let take_tan = cat_0_and_1.len() - offset;
+        let mut result: Vec<Uuid> =
+          cat_0_and_1.iter().skip(offset).take(take_tan).map(|s| *s).collect();
 
-          let take_sim = page_size - take_tan;
-          result.extend(
-            result_sim.into_iter().skip(offset).take(take_sim)
-          );
-          
-          return result
+        let take_sim = page_size - take_tan;
+        result.extend(result_sim.into_iter().skip(offset).take(take_sim));
+
+        return result;
       } else {
-          // println!("min - sim");
-          // println!("page_number = {page_number} half_page = {half_page} full_page_tan = {full_page_tan} full_page_sim = {full_page_sim} {} {}", cat_0_and_1.len(), result_sim.len());
-          //sim < tan
-          let offset = page_number * half_page;
-          let take = result_sim.len() - offset;
-          let result_sim: Vec<Uuid> = result_sim.iter().skip(offset).take(take).map(|s| *s).collect();
+        // println!("min - sim");
+        // println!("page_number = {page_number} half_page = {half_page} full_page_tan = {full_page_tan} full_page_sim = {full_page_sim} {} {}", cat_0_and_1.len(), result_sim.len());
+        //sim < tan
+        let offset = page_number * half_page;
+        let take = result_sim.len() - offset;
+        let result_sim: Vec<Uuid> = result_sim.iter().skip(offset).take(take).map(|s| *s).collect();
 
-          let take = page_size - take;
-          let result_tan: Vec<Uuid> = cat_0_and_1.iter().skip(offset).take(take).map(|s| *s).collect();
-          let result = [result_tan, result_sim].concat();
+        let take = page_size - take;
+        let result_tan: Vec<Uuid> = cat_0_and_1.iter().skip(offset).take(take).map(|s| *s).collect();
+        let result = [result_tan, result_sim].concat();
 
-          return result
+        return result;
       }
     } else {
       if full_page == full_page_tan {
-          let offset_a = full_page * half_page;
-          let offset_b = page_size - (cat_0_and_1.len() - full_page * half_page);
-          let offset_c = page_size * (page_number - full_page - 1);
-          let offset_full = offset_a + offset_b + offset_c;
+        let offset_a = full_page * half_page;
+        let offset_b = page_size - (cat_0_and_1.len() - full_page * half_page);
+        let offset_c = page_size * (page_number - full_page - 1);
+        let offset_full = offset_a + offset_b + offset_c;
 
-          // println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
+        // println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
 
-          let result: Vec<Uuid> = result_sim.iter().skip(offset_full).take(page_size).map(|s| *s).collect();
+        let result: Vec<Uuid> =
+          result_sim.iter().skip(offset_full).take(page_size).map(|s| *s).collect();
 
-          return result
+        return result;
       } else {
-          let offset_a = full_page * half_page;
-          let offset_b = page_size - (result_sim.len() - full_page * half_page);
-          let offset_c = page_size * (page_number - full_page - 1);
-          let offset_full = offset_a + offset_b + offset_c;
+        let offset_a = full_page * half_page;
+        let offset_b = page_size - (result_sim.len() - full_page * half_page);
+        let offset_c = page_size * (page_number - full_page - 1);
+        let offset_full = offset_a + offset_b + offset_c;
 
-          // println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
+        // println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
 
-          let result: Vec<Uuid> = cat_0_and_1.iter().skip(offset_full).take(page_size).map(|s| *s).collect();
+        let result: Vec<Uuid> =
+          cat_0_and_1.iter().skip(offset_full).take(page_size).map(|s| *s).collect();
 
-          return result
+        return result;
       }
     }
   }
@@ -196,7 +196,10 @@ pub fn handle_mutation(
   data: &JsonValue,
 ) -> Result<(), Error> {
   if ctx == &vec!["drugs"] {
-    let id = data["_uuid"].as_str().map(|data| Uuid::parse_str(data).unwrap()).unwrap();
+    let id = data["_uuid"]
+      .as_str()
+      .map(|data| Uuid::parse_str(data).unwrap_or(UUID_NIL))
+      .unwrap_or(UUID_NIL);
     let before_name = before["name"].as_str();
     let after_name = data["name"].as_str();
 
@@ -206,8 +209,7 @@ pub fn handle_mutation(
           // IGNORE
         } else {
           let mut search = app.search.write().unwrap();
-          let after_name = after_name.to_lowercase().replace("ё", "е");
-          search.change(id, before_name, after_name.as_str())?;
+          search.change(id, before_name, after_name)?;
         }
       } else {
         let mut search = app.search.write().unwrap();
@@ -216,8 +218,7 @@ pub fn handle_mutation(
     } else {
       if let Some(after_name) = after_name {
         let mut search = app.search.write().unwrap();
-        let after_name = after_name.to_lowercase().replace("ё", "е");
-        search.create(id, after_name.as_str())?;
+        search.create(id, after_name)?;
       } else {
         // IGNORE
       }

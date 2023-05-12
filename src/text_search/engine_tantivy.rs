@@ -1,13 +1,15 @@
+use super::*;
+
 use std::fs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
-use tantivy::query::QueryParser;
-use tantivy::schema::{Schema, STORED, TEXT, Field};
+use tantivy::query::{Query, QueryParser, QueryParserError};
+use tantivy::schema::{Field, Schema, Value, STORED, TEXT};
 use tantivy::{doc, Directory, Index, IndexReader, IndexWriter, ReloadPolicy, Term};
-use uuid::Uuid;
+use uuid::{Error, Uuid};
 
 const COMMIT_RATE: usize = 500;
 const COMMIT_TIME: Duration = Duration::from_secs(1);
@@ -37,11 +39,7 @@ impl TantivyEngine {
     let index = Index::open_or_create(directory, schema).unwrap();
 
     let writer = index.writer(3_000_000).unwrap();
-    let reader = index
-      .reader_builder()
-      .reload_policy(ReloadPolicy::OnCommit)
-      .try_into()
-      .unwrap();
+    let reader = index.reader_builder().reload_policy(ReloadPolicy::OnCommit).try_into().unwrap();
 
     Self {
       index,
@@ -61,8 +59,9 @@ impl TantivyEngine {
   }
 
   fn commit_helper(&mut self, force: bool) -> Result<bool, tantivy::TantivyError> {
-    if force || (self.added_events > 0 &&
-      (self.added_events >= COMMIT_RATE || self.commit_timestamp.elapsed() >= COMMIT_TIME))
+    if force
+      || (self.added_events > 0
+        && (self.added_events >= COMMIT_RATE || self.commit_timestamp.elapsed() >= COMMIT_TIME))
     {
       // println!("TantivyEngine: commit, {} {:?}", self.added_events, self.commit_timestamp.elapsed());
       self.writer.lock().unwrap().commit()?;
@@ -80,12 +79,13 @@ impl TantivyEngine {
 
     {
       let writer = self.writer.lock()?;
-      writer
-        .add_document(doc! {
-          uuid => id.to_string(),
-          name => text,
-        })
-        .unwrap();
+      match writer.add_document(doc! {
+        uuid => id.to_string(),
+        name => text,
+      }) {
+        Ok(_) => {},
+        Err(e) => return Err(e),
+      }
     }
 
     self.commit()
@@ -104,28 +104,50 @@ impl TantivyEngine {
 
   pub fn search(&self, input: &str) -> Vec<Uuid> {
     let (uuid, name) = self.schematic();
-    
+
     let reader = self.reader.lock().unwrap();
     let searcher = reader.searcher();
 
     let parser = QueryParser::for_index(&self.index, vec![name]);
-    let query = parser.parse_query(input).unwrap();
+    let query = match parser.parse_query(input) {
+      Ok(q) => q,
+      Err(e) => {
+        eprintln!("error at parsing query: {input} {e}");
+        return vec![];
+      },
+    };
 
-    let top_docs = searcher.search(
+    let top_docs = match searcher.search(
       // &query, &TopDocs::with_limit(page_size)
-      &query, &TopDocs::with_limit(100)
-    ).unwrap();
+      &query,
+      &TopDocs::with_limit(100),
+    ) {
+      Ok(r) => r,
+      Err(e) => {
+        eprintln!("error at query: {e}");
+        return vec![];
+      },
+    };
 
     top_docs
       .iter()
-      .map(|(_score, doc_address)| {
-        let retrieved_doc = searcher.doc(*doc_address).unwrap();
-
-        let id = retrieved_doc.get_first(uuid).unwrap();
-        let id = id.as_text().unwrap();
-
-        Uuid::parse_str(id).unwrap()
+      .map(|(_score, doc_address)| match searcher.doc(*doc_address) {
+        Ok(doc) => match doc.get_first(uuid) {
+          None => UUID_NIL,
+          Some(id) => match id.as_text() {
+            None => UUID_NIL,
+            Some(id) => match Uuid::parse_str(id) {
+              Ok(r) => r,
+              Err(e) => {
+                eprintln!("error at uuid parse: {id} {e}");
+                UUID_NIL
+              },
+            },
+          },
+        },
+        Err(_) => UUID_NIL,
       })
+      .filter(|id| *id != UUID_NIL)
       .collect()
   }
 
