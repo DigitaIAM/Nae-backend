@@ -187,7 +187,11 @@ pub trait OrderedTopology {
 
       log::debug!("processing {:#?}\n{:#?}", op, ops);
 
-      assert!(uniq.insert(op.clone()));
+      // assert!(uniq.insert(op.clone()));
+      // workaround to avoid recursive processing
+      if !uniq.insert(op.clone()) {
+        continue;
+      }
 
       if op.is_inventory() && op.batch.is_empty() && !op.is_dependent {
         // batch is always empty in inventory for now
