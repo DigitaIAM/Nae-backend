@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use super::{
+use crate::balance::Balance;
+use crate::batch::Batch;
+use crate::checkpoints::CheckpointTopology;
+use crate::operations::Op;
+use crate::{
   balance::BalanceForGoods,
   elements::{dt, Goods, Store, UUID_NIL},
   error::WHError,
 };
-use crate::balance::Balance;
-use crate::batch::Batch;
-use crate::checkpoint_topology::CheckpointTopology;
-use crate::operations::Op;
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, DB};
 use std::collections::HashMap;
@@ -34,12 +34,10 @@ impl CheckBatchStoreDate {
 }
 
 impl CheckpointTopology for CheckBatchStoreDate {
-  fn key(&self, op: &Op, date: DateTime<Utc>) -> Vec<u8> {
+  fn key(&self, store: Store, goods: Goods, batch: Batch, date: DateTime<Utc>) -> Vec<u8> {
     [].iter()
-      .chain(op.goods.as_bytes().iter())
-      .chain((op.batch.date.timestamp() as u64).to_be_bytes().iter())
-      .chain(op.batch.id.as_bytes().iter())
-      .chain(op.store.as_bytes().iter())
+      .chain(batch.to_bytes(&goods).iter())
+      .chain(store.as_bytes().iter())
       .chain((date.timestamp() as u64).to_be_bytes().iter())
       .map(|b| *b)
       .collect()
@@ -100,6 +98,15 @@ impl CheckpointTopology for CheckBatchStoreDate {
       self.key_latest_checkpoint_date(),
       serde_json::to_string(&date).map_err(|_| WHError::new("set serde_json::from_slice"))?,
     )?)
+  }
+
+  fn balances_for_store_goods(
+    &self,
+    date: DateTime<Utc>,
+    store: Store,
+    goods: Goods,
+  ) -> Result<(DateTime<Utc>, HashMap<Batch, BalanceForGoods>), WHError> {
+    todo!()
   }
 
   fn get_checkpoints_for_one_goods(

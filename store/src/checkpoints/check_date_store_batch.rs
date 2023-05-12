@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use super::{
+use crate::balance::Balance;
+use crate::batch::{max_batch, min_batch, Batch};
+use crate::checkpoints::CheckpointTopology;
+use crate::operations::Op;
+use crate::{
   balance::BalanceForGoods,
   elements::{dt, first_day_current_month, Goods, Store, UUID_MAX, UUID_NIL},
   error::WHError,
 };
-use crate::balance::Balance;
-use crate::batch::{max_batch, min_batch, Batch};
-use crate::checkpoint_topology::CheckpointTopology;
-use crate::operations::Op;
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, IteratorMode, ReadOptions, DB};
 use service::utils::time::timestamp_to_time;
@@ -54,13 +54,11 @@ impl CheckDateStoreBatch {
 }
 
 impl CheckpointTopology for CheckDateStoreBatch {
-  fn key(&self, op: &Op, date: DateTime<Utc>) -> Vec<u8> {
+  fn key(&self, store: Store, goods: Goods, batch: Batch, date: DateTime<Utc>) -> Vec<u8> {
     [].iter()
       .chain((date.timestamp() as u64).to_be_bytes().iter())
-      .chain(op.store.as_bytes().iter())
-      .chain(op.goods.as_bytes().iter())
-      .chain((op.batch.date.timestamp() as u64).to_be_bytes().iter())
-      .chain(op.batch.id.as_bytes().iter())
+      .chain(store.as_bytes().iter())
+      .chain(batch.to_bytes(&goods).iter())
       .map(|b| *b)
       .collect()
   }
@@ -264,6 +262,60 @@ impl CheckpointTopology for CheckDateStoreBatch {
       let (_, _, g, _) = CheckDateStoreBatch::key_to_data(k.to_vec())?;
 
       balances.entry(g).and_modify(|bal| *bal += b);
+    }
+
+    Ok((actual_date, balances))
+  }
+
+  fn balances_for_store_goods(
+    &self,
+    date: DateTime<Utc>,
+    store: Store,
+    goods: Goods,
+  ) -> Result<(DateTime<Utc>, HashMap<Batch, BalanceForGoods>), WHError> {
+    let current_date = first_day_current_month(date);
+
+    let latest_checkpoint_date = self.get_latest_checkpoint_date()?;
+
+    let actual_date =
+      if current_date > latest_checkpoint_date { latest_checkpoint_date } else { current_date };
+
+    let ts = u64::try_from(actual_date.timestamp()).unwrap_or_default();
+
+    let from: Vec<u8> = ts
+      .to_be_bytes()
+      .iter()
+      .chain(store.as_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .chain(u64::MIN.to_be_bytes().iter())
+      .chain(UUID_NIL.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
+    let till: Vec<u8> = ts
+      .to_be_bytes()
+      .iter()
+      .chain(store.as_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .chain(u64::MAX.to_be_bytes().iter())
+      .chain(UUID_MAX.as_bytes().iter())
+      .map(|b| *b)
+      .collect();
+
+    let mut opts = ReadOptions::default();
+    opts.set_iterate_range(from..till);
+
+    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+
+    let mut balances: HashMap<Batch, BalanceForGoods> = HashMap::new();
+    while let Some(res) = iter.next() {
+      let (k, v) = res?;
+      let balance: BalanceForGoods = serde_json::from_slice(&v)?;
+
+      let (_, s, g, b) = CheckDateStoreBatch::key_to_data(k.to_vec())?;
+
+      if s == store && g == goods {
+        balances.insert(b, balance);
+      }
     }
 
     Ok((actual_date, balances))

@@ -5,9 +5,9 @@ use service::utils::json::JsonParams;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::RwLock;
-use store::balance::BalanceForGoods;
+use store::balance::{BalanceForGoods, Cost};
 use store::batch::Batch;
-use store::elements::{Cost, Goods, Store, ToJson};
+use store::elements::{Goods, Store, ToJson};
 use uuid::Uuid;
 
 pub(crate) fn find_items(
@@ -91,10 +91,10 @@ fn process(
 
         // aggregate
         let mut cost = storages_aggregation.entry(store_uuid).or_insert(Cost::ZERO);
-        cost += bb.cost;
+        *cost += bb.cost;
 
         let mut cost = categories_aggregation.entry(category_id).or_insert(Cost::ZERO);
-        cost += bb.cost;
+        *cost += bb.cost;
 
         let mut balance = goods_aggregation.entry(*goods).or_insert(BalanceForGoods::default());
         balance.qty += bb.qty;
@@ -116,10 +116,10 @@ fn process(
     storages_aggregation.remove(store);
   }
 
-  let mut storages_items = process_and_sort(ws, storages_aggregation, "storage");
-  let mut categories_items = process_and_sort(ws, categories_aggregation, "category");
-  let mut goods_items = process_and_sort(ws, goods_aggregation, "goods");
-  let mut batch_items = process_and_sort(ws, batches_aggregation, "batch");
+  let mut storages_items = process_and_sort(ws, storages_aggregation, "storage", "_cost");
+  let mut categories_items = process_and_sort(ws, categories_aggregation, "category", "_cost");
+  let mut goods_items = process_and_sort(ws, goods_aggregation, "goods", "_balance");
+  let mut batch_items = process_and_sort(ws, batches_aggregation, "batch", "_balance");
 
   if goods_filter.is_some() {
     println!("return - batches");
@@ -189,7 +189,12 @@ fn top_and_before(cache: &Cache, store: Store, filter: Option<Uuid>) -> (Uuid, O
   }
 }
 
-fn process_and_sort<K, V>(ws: &Workspace, mut map: HashMap<K, V>, cat: &str) -> Vec<JsonValue>
+fn process_and_sort<K, V>(
+  ws: &Workspace,
+  mut map: HashMap<K, V>,
+  cat: &str,
+  name: &str,
+) -> Vec<JsonValue>
 where
   K: Resolve + Hash + Eq + PartialEq + Clone,
   V: ToJson + Default,
@@ -202,7 +207,7 @@ where
     .map(|id| (id.resolve_to_json_object(&ws), id))
     .map(|(mut o, id)| {
       let cost = map.remove(&id).unwrap_or_default();
-      o["_cost"] = cost.to_json();
+      o[name] = cost.to_json();
       o["_category"] = cat.into();
       o
     })

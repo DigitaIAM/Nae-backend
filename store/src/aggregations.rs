@@ -1,7 +1,7 @@
-use crate::balance::{Balance, BalanceDelta, BalanceForGoods};
+use crate::balance::{Balance, BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::elements::{
-  time_to_naive_string, Cost, Goods, KeyValueStore, Mode, ReturnType, Store, ToJson, WHError,
+  time_to_naive_string, Goods, KeyValueStore, Mode, ReturnType, Store, ToJson, WHError,
 };
 use crate::operations::{InternalOperation, Op, OpMutation};
 use chrono::{DateTime, Utc};
@@ -234,10 +234,7 @@ impl Agregation for AgregationStoreGoods {
         self.issue.qty += d.qty;
         if mode == &Mode::Auto {
           let balance = self.open_balance.clone() + self.receive.clone();
-          let cost = match balance.cost.checked_div(balance.qty) {
-            Some(price) => price * d.qty,
-            None => 0.into(), // TODO handle errors?
-          };
+          let cost = balance.price().cost(d.qty);
           self.issue.cost += cost;
         } else {
           self.issue.cost += d.cost;
@@ -251,10 +248,7 @@ impl Agregation for AgregationStoreGoods {
         self.issue.qty -= qty;
         if mode == &Mode::Auto {
           let balance = self.open_balance.clone() + self.receive.clone();
-          let cost = match balance.cost.checked_div(balance.qty) {
-            Some(price) => price * qty,
-            None => 0.into(), // TODO handle errors?
-          };
+          let cost = balance.price().cost(*qty);
           self.issue.cost -= cost;
         } else {
           self.issue.cost -= cost;
@@ -344,31 +338,30 @@ pub(crate) fn get_aggregations_for_one_goods(
   result.push(object! {
     date: time_to_naive_string(start_date),
     type: JsonValue::String("open_balance".to_string()),
-    _id: Uuid::new_v4().to_json(),
+    _id: Uuid::new_v4().to_json(), // TODO generate from date & store & goods & batch
     qty: balance.number.qty.to_json(),
     cost: balance.number.cost.to_json(),
   });
 
   let mut open_balance = balance.number.clone();
-
-  let mut close_balance = BalanceForGoods::default();
+  let mut close_balance = open_balance.clone();
 
   let mut op_iter = operations.iter();
 
   while let Some(op) = op_iter.next() {
-    if op.date < start_date {
-      open_balance += op.to_delta();
-    } else {
-      close_balance += op.to_delta();
+    // only "none-virtual" operations
+    if op.dependant.is_empty() {
+      if op.date < start_date {
+        open_balance += op.to_delta();
+      } else {
+        close_balance += op.to_delta();
+      }
+      result.push(op.to_json());
     }
-    result.push(op.to_json());
   }
 
   result[0]["qty"] = open_balance.qty.to_json();
   result[0]["cost"] = open_balance.cost.to_json();
-
-  close_balance.qty += open_balance.qty;
-  close_balance.cost += open_balance.cost;
 
   result.push(object! {
     date: time_to_naive_string(end_date),

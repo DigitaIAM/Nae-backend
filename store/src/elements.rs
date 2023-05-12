@@ -13,16 +13,15 @@ use service::utils::time::{date_to_string, time_to_string};
 use crate::GetWarehouse;
 use service::{Context, Services};
 
-use crate::agregations::{AggregationStore, AgregationStoreGoods};
-use crate::balance::{BalanceDelta, BalanceForGoods};
+use crate::aggregations::{AggregationStore, AgregationStoreGoods};
+use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
 use service::utils::json::JsonParams;
 
 pub type Goods = Uuid;
 pub type Store = Uuid;
-pub(crate) type Qty = Decimal;
-pub type Cost = Decimal;
+pub type Qty = Decimal;
 
 pub(crate) const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
 pub(crate) const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
@@ -87,7 +86,7 @@ pub struct NumberForGoods {
   cost: Option<Cost>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Mode {
   Auto,
   Manual,
@@ -180,8 +179,8 @@ pub fn receive_data(
     },
   };
 
-  log::debug!("OPS BEFOR: {before:?}");
-  log::debug!("OPS AFTER: {after:?}");
+  log::debug!("OPS BEFOR: {before:#?}");
+  log::debug!("OPS AFTER: {after:#?}");
 
   let mut before = before.into_iter();
 
@@ -211,7 +210,7 @@ pub fn receive_data(
     ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
   }
 
-  log::debug!("OPS: {:?}", ops);
+  log::debug!("OPS: {:#?}", ops);
 
   if ops.is_empty() {
     Ok(old_data)
@@ -336,7 +335,7 @@ fn json_to_ops(
         return Ok(ops);
       } else {
         let (cost, mode) =
-          if let Some(cost) = cost { (cost, Mode::Manual) } else { (0.into(), Mode::Auto) };
+          if let Some(cost) = cost { (cost.into(), Mode::Manual) } else { (0.into(), Mode::Auto) };
 
         let qty = qty.unwrap_or_default();
 
@@ -350,7 +349,7 @@ fn json_to_ops(
       if qty.is_none() && cost.is_none() {
         return Ok(ops);
       } else {
-        InternalOperation::Receive(qty.unwrap_or_default(), cost.unwrap_or_default())
+        InternalOperation::Receive(qty.unwrap_or_default(), cost.unwrap_or_default().into())
       }
     },
     OpType::Transfer | OpType::Dispatch => {
@@ -361,7 +360,7 @@ fn json_to_ops(
         return Ok(ops);
       } else {
         let (cost, mode) =
-          if let Some(cost) = cost { (cost, Mode::Manual) } else { (0.into(), Mode::Auto) };
+          if let Some(cost) = cost { (cost.into(), Mode::Manual) } else { (0.into(), Mode::Auto) };
         InternalOperation::Issue(qty.unwrap_or_default(), cost, mode)
       }
     },
@@ -401,16 +400,15 @@ fn json_to_ops(
     "barcode": batch.to_barcode(),
   };
 
-  let mut batches = vec![];
-
-  match &data["batches"] {
-    JsonValue::Array(array) => {
-      for batch in array {
-        batches.push(Batch { id: batch["id"].uuid()?, date: batch["date"].date_with_check()? });
-      }
-    },
-    _ => (),
-  }
+  // let mut dependant = vec![];
+  // match &data["batches"] {
+  //   JsonValue::Array(array) => {
+  //     for batch in array {
+  //       dependant.push(Batch { id: batch["id"].uuid()?, date: batch["date"].date_with_check()? });
+  //     }
+  //   },
+  //   _ => (),
+  // }
 
   let op = Op {
     id: tid,
@@ -420,8 +418,8 @@ fn json_to_ops(
     goods,
     batch,
     op,
-    is_dependent: data["is_dependent"].boolean(),
-    batches: batches.clone(),
+    is_dependent: false, // data["is_dependent"].boolean(),
+    dependant: vec![],
   };
 
   ops.insert(tid.to_string(), op);

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use service::utils::json::JsonParams;
 use uuid::Uuid;
 
-#[derive(Hash, Eq, Ord, PartialOrd, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Batch {
   pub id: Uuid,
   pub date: DateTime<Utc>,
@@ -19,6 +19,14 @@ impl Batch {
   // TODO make constant
   pub(crate) fn no() -> Self {
     Batch { id: UUID_NIL, date: dt("1970-01-01").unwrap() }
+  }
+
+  pub(crate) fn MIN() -> Self {
+    Batch { id: UUID_NIL, date: dt("1970-01-01").unwrap() }
+  }
+
+  pub(crate) fn MAX() -> Self {
+    Batch { id: UUID_MAX, date: DateTime::<Utc>::MAX_UTC }
   }
 
   pub fn is_empty(&self) -> bool {
