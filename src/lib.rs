@@ -1,4 +1,5 @@
-#[macro_use] extern crate quick_error;
+#[macro_use]
+extern crate quick_error;
 
 mod auth;
 pub mod commutator;
@@ -7,6 +8,7 @@ pub mod inventory;
 pub mod services;
 pub mod settings;
 pub mod storage;
+mod utils;
 mod websocket;
 mod ws;
 

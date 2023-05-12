@@ -180,9 +180,9 @@ impl TextSearch {
 
 #[cfg(test)]
 mod tests {
+  use crate::animo::memory::Memory;
   use crate::animo::{memory::create, shared::*};
   use crate::warehouse::test_util::init;
-  use crate::{Memory, Value};
   use std::thread::Thread;
 
   use super::*;

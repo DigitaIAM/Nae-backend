@@ -46,6 +46,7 @@ mod inventory;
 mod services;
 mod settings;
 mod storage;
+mod utils;
 mod websocket;
 mod ws;
 

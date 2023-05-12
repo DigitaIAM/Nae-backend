@@ -11,6 +11,7 @@ use service::utils::time::time_to_string;
 use std::path::PathBuf;
 
 use crate::memories::Enrich;
+use crate::utils::substring::StringUtils;
 use std::sync::Mutex;
 use store::elements::receive_data;
 use uuid::Uuid;
@@ -95,7 +96,7 @@ fn save_data(
     // let str = uuid.to_string();
     let mut path_folder = top_folder.clone();
     path_folder.push("uuid");
-    path_folder.push(&uuid[0..4]);
+    path_folder.push(uuid.slice(0..4));
 
     std::fs::create_dir_all(&path_folder).map_err(|e| {
       Error::IOError(format!("can't create folder {}: {}", path_folder.to_string_lossy(), e))
@@ -117,11 +118,11 @@ fn save_data(
 }
 
 // remove context details
-fn remove_prefix(id: &String) -> String {
+fn remove_prefix(id: &str) -> &str {
   if let Some(pos) = &id.rfind('/') {
-    id[(*pos + 1)..].to_string()
+    id.slice((*pos + 1)..)
   } else {
-    id.to_string()
+    id
   }
 }
 
@@ -129,19 +130,14 @@ pub(crate) fn build_folder_path(id: &String, folder: &PathBuf) -> Option<PathBuf
   if id.is_empty() {
     return None;
   }
-  // println!("before: {id}");
-  let id = remove_prefix(id).chars().collect::<Vec<_>>();
-  // println!("after: {id}");
+  let id = remove_prefix(id);
 
   if id.len() < 8 {
     return None;
   }
 
-  let year: String = id[0..4].iter().collect();
-  let month: String = id[5..7].iter().collect();
-  let id: String = id.iter().collect();
-
-  // println!("create id {id} year {year} month {month}");
+  let year = id.slice(0..4);
+  let month = id.slice(5..7);
 
   // 2023/01/2023-01-06T12:43:15Z/
   let mut folder = folder.clone();
@@ -306,4 +302,41 @@ impl Document {
   pub(crate) fn json(&self) -> Result<JsonValue, Error> {
     load(&self.path)
   }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::storage::Workspaces;
+  use tempfile::tempdir;
+  use values::ID;
+
+  #[test]
+  fn test_simple() {
+    let tmp_dir = tempdir().unwrap();
+    let folder = tmp_dir.path().clone().into();
+
+    let path = build_folder_path(&"context/2023-01-06T12:43:15Z".to_string(), &folder);
+
+    assert!(path.is_some());
+    assert!(path.unwrap().to_string_lossy().ends_with("/2023/01/2023-01-06T12:43:15Z"));
+  }
+
+  #[test]
+  fn test_utf16() {
+    let tmp_dir = tempdir().unwrap();
+    let folder = tmp_dir.path().clone().into();
+
+    let path = build_folder_path(&"ГЛЮКОМЕТР GLUCODR AUTO A`".to_string(), &folder);
+    println!("{path:?}")
+  }
+
+  // #[test]
+  // fn test_() {
+  //   let tmp_dir = tempdir().unwrap();
+  //
+  //   let wss = Workspaces::new(tmp_dir.into());
+  //   let ws = wss.get(&ID::random());
+  //   let memories = ws.memories(vec!["ctx".into()]);
+  // }
 }

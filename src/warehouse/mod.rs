@@ -38,7 +38,7 @@ pub(crate) mod turnover;
 
 #[cfg(test)]
 pub mod test_util {
-  use crate::animo::memory::{ChangeTransformation, Context, Transformation, Value, ID};
+  use crate::animo::memory::{ChangeTransformation, Context, Transformation, Value};
   use crate::animo::shared::*;
   use crate::animo::{Animo, Time, Topology};
   use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
@@ -48,6 +48,7 @@ pub mod test_util {
   use chrono::DateTime;
   use std::sync::Arc;
   use tempfile::{tempdir, TempDir};
+  use values::ID;
 
   pub fn init() -> (TempDir, Settings, AnimoDB) {
     std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
