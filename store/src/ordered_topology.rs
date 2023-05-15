@@ -76,7 +76,7 @@ pub trait OrderedTopology {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<JsonValue, WHError> {
-    println!("DATE_TYPE_STORE_BATCH.get_report_for_goods");
+    log::debug!("DATE_TYPE_STORE_BATCH.get_report_for_goods");
     let mut balances = Vec::new();
 
     let op_from_date = if let Some(balance) =
@@ -127,12 +127,9 @@ pub trait OrderedTopology {
     is_dependent: bool,
   ) -> Vec<u8>;
 
-  fn data_update(
-    &self,
-    db: &Db,
-    op: &OpMutation,
-  ) -> Result<Vec<(OpMutation, BalanceForGoods)>, WHError> {
-    self.mutate_op(db, op)
+  fn data_update(&self, db: &Db, op: &OpMutation) -> Result<(), WHError> {
+    self.mutate_op(db, op)?;
+    Ok(())
 
     // TODO review logic after enable transaction
     // if op.before.is_none() {
@@ -161,13 +158,8 @@ pub trait OrderedTopology {
     // }
   }
 
-  fn mutate_op(
-    &self,
-    db: &Db,
-    op_mut: &OpMutation,
-  ) -> Result<Vec<(OpMutation, BalanceForGoods)>, WHError> {
+  fn mutate_op(&self, db: &Db, op_mut: &OpMutation) -> Result<(), WHError> {
     let mut ops: Vec<Op> = vec![];
-    let mut result: Vec<(OpMutation, BalanceForGoods)> = vec![];
 
     if let Some(mut after) = op_mut.to_op_after() {
       // do not trust external data
@@ -175,9 +167,9 @@ pub trait OrderedTopology {
       after.dependant = existing;
 
       ops.push(after);
-      println!("ops.push {ops:#?}");
+      log::debug!("mutate ops.push {ops:#?}");
     } else if let Some(before) = op_mut.to_op_before() {
-      self.delete_op(db, &mut result, &mut ops, &before)?;
+      self.delete_op(db, &mut ops, &before)?;
     }
 
     let mut uniq = HashSet::new();
@@ -195,15 +187,15 @@ pub trait OrderedTopology {
 
       if op.is_inventory() && op.batch.is_empty() && !op.is_dependent {
         // batch is always empty in inventory for now
-        self.mutate_inventory_with_empty_batch(db, &mut result, &mut ops, &mut op)?;
+        self.mutate_inventory_with_empty_batch(db, &mut ops, &mut op)?;
       } else if op.is_issue() && op.batch.is_empty() && !op.is_dependent {
-        self.mutate_issue_with_empty_batch(db, &mut result, &mut ops, &mut op)?;
+        self.mutate_issue_with_empty_batch(db, &mut ops, &mut op)?;
       } else {
-        self.calculate_op(db, &mut result, &mut ops, &mut op)?;
+        self.calculate_op(db, &mut ops, &mut op)?;
       }
     }
 
-    Ok(result)
+    Ok(())
   }
 
   fn cleanup_dependent(&self, op: &Op, new: Vec<Dependant>, ops: &mut Vec<Op>) -> Vec<Dependant> {
@@ -223,7 +215,7 @@ pub trait OrderedTopology {
           zero.op = InternalOperation::Receive(Decimal::ZERO, Cost::ZERO);
           // println!("zero = {zero:?}");
           ops.push(zero);
-          println!("ops.push {ops:#?}");
+          log::debug!("cleanup ops.push {ops:#?}");
         },
         Dependant::Issue(store, batch) => {
           let mut zero = op.clone();
@@ -234,7 +226,7 @@ pub trait OrderedTopology {
           zero.op = InternalOperation::Issue(Decimal::ZERO, Cost::ZERO, Mode::Manual);
           // println!("zero = {zero:?}");
           ops.push(zero);
-          println!("ops.push {ops:#?}");
+          log::debug!("cleanup ops.push {ops:#?}");
         },
       }
     }
@@ -245,7 +237,6 @@ pub trait OrderedTopology {
   fn mutate_inventory_with_empty_batch(
     &self,
     db: &Db,
-    result: &mut Vec<(OpMutation, BalanceForGoods)>,
     ops: &mut Vec<Op>,
     op: &mut Op,
   ) -> Result<(), WHError> {
@@ -331,7 +322,7 @@ pub trait OrderedTopology {
       // log::debug!("inventory qty left {qty}");
 
       op.dependant = self.cleanup_dependent(&op, new_dependant, ops);
-      self.save_op(op, Some(balance), None, result)?;
+      self.save_op(db, op, Some(balance), None)?;
     }
 
     Ok(())
@@ -340,7 +331,6 @@ pub trait OrderedTopology {
   fn mutate_issue_with_empty_batch(
     &self,
     db: &Db,
-    result: &mut Vec<(OpMutation, BalanceForGoods)>,
     ops: &mut Vec<Op>,
     op: &mut Op,
   ) -> Result<(), WHError> {
@@ -418,17 +408,17 @@ pub trait OrderedTopology {
     }
 
     op.dependant = self.cleanup_dependent(&op, new_dependant, ops);
-    self.save_op(op, Some(balance), None, result)?;
+    self.save_op(db, op, Some(balance), None)?;
 
     Ok(())
   }
 
   fn save_op(
     &self,
+    db: &Db,
     op: &Op,
     balance: Option<BalanceForGoods>,
     before_op: Option<Option<InternalOperation>>,
-    result: &mut Vec<(OpMutation, BalanceForGoods)>,
   ) -> Result<(), WHError> {
     // get balance
     let balance_after: BalanceForGoods =
@@ -454,7 +444,7 @@ pub trait OrderedTopology {
       self.del(&op)?;
 
       if op.dependant.is_empty() {
-        result.push((
+        db.update(
           OpMutation {
             id: op.id,
             date: op.date,
@@ -468,14 +458,14 @@ pub trait OrderedTopology {
             dependant: op.dependant.clone(),
           },
           balance_after,
-        ));
+        )?;
       }
     } else {
       log::debug!("PUT: {op:#?} {balance_after:#?}");
       self.put(&op, &balance_after)?;
 
       if op.dependant.is_empty() {
-        result.push((
+        db.update(
           OpMutation {
             id: op.id,
             date: op.date,
@@ -489,18 +479,14 @@ pub trait OrderedTopology {
             dependant: op.dependant.clone(),
           },
           balance_after,
-        ));
+        )?;
       }
     }
 
     Ok(())
   }
 
-  fn remove_op(
-    &self,
-    op: &Op,
-    result: &mut Vec<(OpMutation, BalanceForGoods)>,
-  ) -> Result<(BalanceForGoods, BalanceForGoods), WHError> {
+  fn remove_op(&self, db: &Db, op: &Op) -> Result<(BalanceForGoods, BalanceForGoods), WHError> {
     let balance_before: BalanceForGoods = self.balance_before(&op)?;
 
     let (before_op, balance_after) = if op.dependant.is_empty() {
@@ -516,7 +502,7 @@ pub trait OrderedTopology {
     self.del(&op)?;
 
     if op.dependant.is_empty() {
-      result.push((
+      db.update(
         OpMutation {
           id: op.id,
           date: op.date,
@@ -530,19 +516,13 @@ pub trait OrderedTopology {
           dependant: op.dependant.clone(),
         },
         balance_before.clone(),
-      ));
+      )?;
     }
 
     Ok((balance_before, balance_after))
   }
 
-  fn calculate_op(
-    &self,
-    db: &Db,
-    result: &mut Vec<(OpMutation, BalanceForGoods)>,
-    ops: &mut Vec<Op>,
-    op: &Op,
-  ) -> Result<(), WHError> {
+  fn calculate_op(&self, db: &Db, ops: &mut Vec<Op>, op: &Op) -> Result<(), WHError> {
     // calculate balance
     let before_balance: BalanceForGoods = self.balance_before(&op)?; // Vec<(Batch, BalanceForGoods)>
     let (calculated_op, new_balance) = self.evaluate(&before_balance, &op);
@@ -550,7 +530,7 @@ pub trait OrderedTopology {
     let (before_op, current_balance) = if let Some((o, b)) = self.get(&op)? {
       // if no changes exit
       if o == calculated_op && b == new_balance {
-        println!(
+        log::debug!(
           "EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT"
         );
         return Ok(());
@@ -558,19 +538,19 @@ pub trait OrderedTopology {
 
       (Some(o.op), b)
     } else {
-      (None, before_balance)
+      (None, before_balance.clone())
     };
 
-    // log::debug!("_calculated_op: {calculated_op:#?}\n = {before_balance:?}\n > {new_balance:?} vs old {current_balance:?}");
+    log::debug!("_calculated_op: {calculated_op:#?}\n = {before_balance:?}\n > {new_balance:?} vs old {current_balance:?}");
 
     // store update op with balance or delete
-    self.save_op(&calculated_op, Some(new_balance.clone()), Some(before_op), result)?;
+    self.save_op(db, &calculated_op, Some(new_balance.clone()), Some(before_op))?;
 
     // if transfer op create dependant op
     if let Some(dep) = calculated_op.dependent_on_transfer() {
       log::debug!("_new transfer dependent: {dep:#?}");
       ops.push(dep);
-      println!("ops.push {ops:#?}");
+      log::debug!("calculate ops.push {ops:#?}");
     }
 
     // TODO: process dependant?
@@ -579,7 +559,7 @@ pub trait OrderedTopology {
     // propagate change ... note: virtual nodes do not change balance
     if !current_balance.delta(&new_balance).is_zero() {
       log::debug!("start propagation {current_balance:#?} vs {new_balance:#?}");
-      self.propagate(db, &calculated_op, new_balance, ops, result)?;
+      self.propagate(db, &calculated_op, new_balance, ops)?;
 
       // check empty batched topology for changes
       if calculated_op.batch != Batch::no() {
@@ -589,27 +569,21 @@ pub trait OrderedTopology {
         empty_batch_op.dependant = vec![];
 
         let mut op_balance = self.balance_before(&empty_batch_op)?;
-        self.propagate(db, &empty_batch_op, op_balance, ops, result)?;
+        self.propagate(db, &empty_batch_op, op_balance, ops)?;
       }
     }
 
     Ok(())
   }
 
-  fn delete_op(
-    &self,
-    db: &Db,
-    result: &mut Vec<(OpMutation, BalanceForGoods)>,
-    ops: &mut Vec<Op>,
-    op: &Op,
-  ) -> Result<(), WHError> {
+  fn delete_op(&self, db: &Db, ops: &mut Vec<Op>, op: &Op) -> Result<(), WHError> {
     // store update op with balance or delete
-    let (balance_before, balance_after) = self.remove_op(&op, result)?;
+    let (balance_before, balance_after) = self.remove_op(db, &op)?;
 
     // propagate change
     if !balance_before.delta(&balance_after).is_zero() {
       // log::debug!("start propagation");
-      self.propagate(db, &op, balance_after, ops, result)?;
+      self.propagate(db, &op, balance_after, ops)?;
 
       // check empty batched topology for changes
       if op.batch != Batch::no() {
@@ -618,8 +592,8 @@ pub trait OrderedTopology {
         // empty_batch_op.is_dependent = false; // help to avoid recursion
         empty_batch_op.dependant = vec![];
 
-        let mut op_balance = self.balance_before(&empty_batch_op)?;
-        self.propagate(db, &empty_batch_op, op_balance, ops, result)?;
+        let mut op_balance = self.balance_on_op_or_before(&empty_batch_op)?;
+        self.propagate(db, &empty_batch_op, op_balance, ops)?;
       }
     }
 
@@ -630,13 +604,13 @@ pub trait OrderedTopology {
       dep.store = store;
       dep.batch = batch;
 
-      self.delete_op(db, result, ops, &dep)?;
+      self.delete_op(db, ops, &dep)?;
     }
 
     // if transfer op create dependant op
     if let Some(dep) = op.dependent_on_transfer() {
       // log::debug!("_new transfer dependent: {dep:?}");
-      self.delete_op(db, result, ops, &dep)?;
+      self.delete_op(db, ops, &dep)?;
     }
 
     Ok(())
@@ -648,7 +622,6 @@ pub trait OrderedTopology {
     op: &Op,
     balance: BalanceForGoods,
     ops: &mut Vec<Op>,
-    result: &mut Vec<(OpMutation, BalanceForGoods)>,
   ) -> Result<(), WHError> {
     log::debug!("propagating from {op:#?}\n{balance:#?}");
 
@@ -661,25 +634,25 @@ pub trait OrderedTopology {
         break;
       }
 
-      // log::debug!("next_op {next_op:?}\n = {next_after_balance:?}");
+      log::debug!("next_op {next_op:?}\n = {next_after_balance:?}");
       if next_op.is_inventory() && next_op.batch.is_empty() && !next_op.is_dependent {
-        self.mutate_inventory_with_empty_batch(db, result, ops, &mut next_op)?;
+        self.mutate_inventory_with_empty_batch(db, ops, &mut next_op)?;
 
         before_balance = next_after_balance;
       } else if next_op.is_issue() && next_op.batch.is_empty() && !next_op.is_dependent {
-        self.mutate_issue_with_empty_batch(db, result, ops, &mut next_op)?;
+        self.mutate_issue_with_empty_batch(db, ops, &mut next_op)?;
 
         before_balance = next_after_balance;
       } else {
         let (calc_op, new_balance) = self.evaluate(&before_balance, &next_op);
         // log::debug!("calc_op {calc_op:?}\n = {new_balance:?}");
-        self.save_op(&calc_op, Some(new_balance.clone()), Some(Some(next_op.op)), result)?;
+        self.save_op(db, &calc_op, Some(new_balance.clone()), Some(Some(next_op.op)))?;
 
         // if transfer op create dependant op
         if let Some(dep) = calc_op.dependent_on_transfer() {
           // log::debug!("update transfer dependent: {dep:?}");
           ops.push(dep);
-          println!("ops.push {ops:#?}");
+          log::debug!("propagate ops.push {ops:#?}");
         }
 
         if !next_after_balance.delta(&new_balance).is_zero() {
@@ -866,12 +839,12 @@ pub trait OrderedTopology {
 
   fn cleanup(&self, ops: &mut Vec<Op>, op: &Op) {
     ops.retain(|o| o.is_independent(&op));
-    println!("ops.retain {ops:#?}");
+    log::debug!("ops.retain {ops:#?}");
   }
 
   fn cleanup_and_push(&self, ops: &mut Vec<Op>, new: Op) {
     ops.retain(|o| o.is_independent(&new));
     ops.push(new);
-    println!("ops.push {ops:#?}");
+    log::debug!("cleanup_and_push ops.push {ops:#?}");
   }
 }

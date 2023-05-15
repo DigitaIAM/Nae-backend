@@ -42,32 +42,25 @@ impl Db {
     }
   }
 
+  pub fn update(&self, op: OpMutation, balance: BalanceForGoods) -> Result<(), WHError> {
+    for ordered_topology in self.ordered_topologies.iter().skip(1) {
+      if let Some(after) = op.to_op_after() {
+        ordered_topology.put(&after, &balance)?;
+      } else if let Some(before) = op.to_op_before() {
+        ordered_topology.del(&before)?;
+      }
+    }
+
+    for checkpoint_topology in self.checkpoint_topologies.iter() {
+      checkpoint_topology.checkpoint_update(&op)?;
+    }
+
+    Ok(())
+  }
+
   pub fn record_ops(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
     for op in ops {
-      let mut changes = self.ordered_topologies[0].data_update(self, op)?;
-
-      for ordered_topology in self.ordered_topologies.iter().skip(1) {
-        for (op, balance) in changes.iter() {
-          if let Some(after) = op.to_op_after() {
-            ordered_topology.put(&after, balance)?;
-          } else if let Some(before) = op.to_op_before() {
-            ordered_topology.del(&before)?;
-          }
-        }
-      }
-
-      println!("NEW_OPS IN FN_RECORD_OPS: {:#?}", changes);
-      // if new_ops.is_empty() {
-      //   // println!("OPERATION IN FN_RECORD_OPS: {:?}", op);
-      //   new_ops.push(op.clone());
-      // }
-
-      for checkpoint_topology in self.checkpoint_topologies.iter() {
-        // TODO pass balances.clone() as an argument
-        for (op, balance) in changes.iter() {
-          checkpoint_topology.checkpoint_update(op)?;
-        }
-      }
+      self.ordered_topologies[0].data_update(self, op)?;
     }
 
     Ok(())
