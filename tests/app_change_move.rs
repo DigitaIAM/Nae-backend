@@ -5,14 +5,11 @@ use test_init::init;
 #[macro_use]
 use serde_json::json;
 
-use nae_backend::animo::{
-  db::AnimoDB,
-  memory::{Memory, ID},
-};
+use nae_backend::animo::{db::AnimoDB, memory::Memory};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
-use service::Services;
+use service::{Context, Services};
 
 use service::utils::json::JsonParams;
 
@@ -47,15 +44,15 @@ async fn app_store_test_change_move() {
   application.register(MemoriesInFiles::new(application.clone(), "memories", storage.clone()));
   application.register(nae_backend::inventory::service::Inventory::new(application.clone()));
 
-  let app = init_service(
-    App::new()
-      .app_data(web::Data::new(application.clone()))
-      .service(api::docs_create)
-      .service(api::docs_update)
-      .service(api::inventory_find)
-      .default_service(web::route().to(api::not_implemented)),
-  )
-  .await;
+  // let app = init_service(
+  //   App::new()
+  //     .app_data(web::Data::new(application.clone()))
+  //     .service(api::docs_create)
+  //     .service(api::docs_update)
+  //     .service(api::inventory_find)
+  //     .default_service(web::route().to(api::not_implemented)),
+  // )
+  // .await;
 
   // let goods1 = Uuid::from_u128(101);
   // let storage1 = Uuid::from_u128(201);
@@ -101,12 +98,15 @@ async fn app_store_test_change_move() {
 
   // let result = app.service("memories").find(object! {oid: oid, ctx: ctx, filter: filter})?;
 
-  let result = application
-    .service("memories")
-    .find(object! {oid: oid, ctx: ctx, filter: object! {}})
-    // .await
-    // .map_err(actix_web::error::ErrorInternalServerError)
-    .unwrap();
+  let filter = object! {};
+  let params = object! {oid: oid, ctx: ctx, filter: filter};
+  let result = application.service("memories").find(Context::local(), params).unwrap();
+
+  // let result = application
+  //   .service("memories").find(object! {oid: oid, ctx: ctx, filter: object! {}})
+  //   // .await
+  //   // .map_err(actix_web::error::ErrorInternalServerError)
+  //   .unwrap();
 
   println!("test_result: {result:?}");
 
