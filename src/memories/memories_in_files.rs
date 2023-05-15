@@ -60,17 +60,15 @@ impl Service for MemoriesInFiles {
 
       let search = self.params(&params)["search"].as_str().unwrap_or_default();
 
-      let result = {
+      let (total, result) = {
         let engine = self.app.search.read().unwrap();
         engine.search(search, limit, skip)
       };
 
-      let total = result.len();
-
       let list: Vec<JsonValue> = result
         .into_iter()
-        .skip(skip)
-        .take(limit)
+        // .skip(skip)
+        // .take(limit)
         .map(|id| id.resolve_to_json_object(&ws))
         .collect();
 

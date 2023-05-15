@@ -86,7 +86,7 @@ impl SearchEngine {
     Ok(())
   }
 
-  pub fn search(&self, text: &str, page_size: usize, offset: usize) -> Vec<Uuid> {
+  pub fn search(&self, text: &str, page_size: usize, offset: usize) -> (usize, Vec<Uuid>) {
     // println!("page_size = {page_size}, offset = {offset}");
     let text = text.to_lowercase().replace("ё", "е");
 
@@ -95,21 +95,22 @@ impl SearchEngine {
     let result_sim = self.sim.search(&text);
 
     let result_tan = remove_duplicates(result_tan, &result_full);
+    let result_tan: Vec<_> = [result_tan, result_full].concat();
+
     let result_sim = remove_duplicates(result_sim, &result_tan);
-    let result_sim = remove_duplicates(result_sim, &result_full);
 
     // PAGINATION
     let page_number = offset / page_size;
 
-    let cat_0_and_1: Vec<_> = [result_tan, result_full].concat();
+    let total = result_tan.len() + result_sim.len();
 
-    if page_number > (cat_0_and_1.len() + result_sim.len()) / page_size + 1 {
-      return vec![];
+    if page_number > total / page_size + 1 {
+      return (0, vec![]);
     }
 
     let half_page = page_size / 2;
 
-    let full_page_tan = cat_0_and_1.len() / half_page;
+    let full_page_tan = result_tan.len() / half_page;
     let full_page_sim = result_sim.len() / half_page;
 
     let full_page = full_page_tan.min(full_page_sim);
@@ -119,22 +120,22 @@ impl SearchEngine {
     if page_number < full_page {
       let offset = page_number * half_page;
       let mut result: Vec<Uuid> =
-        cat_0_and_1.iter().skip(offset).take(half_page).map(|s| *s).collect();
+        result_tan.iter().skip(offset).take(half_page).map(|s| *s).collect();
       result.extend(result_sim.into_iter().skip(offset).take(half_page));
 
-      return result;
+      return (total, result);
     } else if page_number == full_page {
       if full_page == full_page_tan {
         // println!("min - tan");
         let offset = page_number * half_page;
-        let take_tan = cat_0_and_1.len() - offset;
+        let take_tan = result_tan.len() - offset;
         let mut result: Vec<Uuid> =
-          cat_0_and_1.iter().skip(offset).take(take_tan).map(|s| *s).collect();
+          result_tan.iter().skip(offset).take(take_tan).map(|s| *s).collect();
 
         let take_sim = page_size - take_tan;
         result.extend(result_sim.into_iter().skip(offset).take(take_sim));
 
-        return result;
+        return (total, result);
       } else {
         // println!("min - sim");
         // println!("page_number = {page_number} half_page = {half_page} full_page_tan = {full_page_tan} full_page_sim = {full_page_sim} {} {}", cat_0_and_1.len(), result_sim.len());
@@ -144,15 +145,15 @@ impl SearchEngine {
         let result_sim: Vec<Uuid> = result_sim.iter().skip(offset).take(take).map(|s| *s).collect();
 
         let take = page_size - take;
-        let result_tan: Vec<Uuid> = cat_0_and_1.iter().skip(offset).take(take).map(|s| *s).collect();
+        let result_tan: Vec<Uuid> = result_tan.iter().skip(offset).take(take).map(|s| *s).collect();
         let result = [result_tan, result_sim].concat();
 
-        return result;
+        return (total, result);
       }
     } else {
       if full_page == full_page_tan {
         let offset_a = full_page * half_page;
-        let offset_b = page_size - (cat_0_and_1.len() - full_page * half_page);
+        let offset_b = page_size - (result_tan.len() - full_page * half_page);
         let offset_c = page_size * (page_number - full_page - 1);
         let offset_full = offset_a + offset_b + offset_c;
 
@@ -161,7 +162,7 @@ impl SearchEngine {
         let result: Vec<Uuid> =
           result_sim.iter().skip(offset_full).take(page_size).map(|s| *s).collect();
 
-        return result;
+        return (total, result);
       } else {
         let offset_a = full_page * half_page;
         let offset_b = page_size - (result_sim.len() - full_page * half_page);
@@ -171,9 +172,9 @@ impl SearchEngine {
         // println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
 
         let result: Vec<Uuid> =
-          cat_0_and_1.iter().skip(offset_full).take(page_size).map(|s| *s).collect();
+          result_tan.iter().skip(offset_full).take(page_size).map(|s| *s).collect();
 
-        return result;
+        return (total, result);
       }
     }
   }
