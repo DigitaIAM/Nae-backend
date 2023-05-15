@@ -99,7 +99,7 @@ impl SearchEngine {
     let result_sim = remove_duplicates(result_sim, &result_full);
 
     // PAGINATION
-    let page_number = offset;
+    let page_number = offset / page_size;
 
     let cat_0_and_1: Vec<_> = [result_tan, result_full].concat();
 
