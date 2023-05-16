@@ -1,7 +1,7 @@
 use base64::Engine;
 use blake2::Digest;
 use bytecheck::CheckBytes;
-use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize};
 use std::array::TryFromSliceError;
 use std::fmt::{Display, Formatter};
 

@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, AddAssign, Deref, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 
 use crate::batch::Batch;
 use crate::elements::{Goods, Mode, Store};

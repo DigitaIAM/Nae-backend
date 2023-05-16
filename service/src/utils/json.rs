@@ -1,5 +1,4 @@
 use std::str::FromStr;
-use std::thread::sleep;
 
 use chrono::{DateTime, Utc};
 use json::JsonValue;

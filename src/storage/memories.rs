@@ -81,6 +81,7 @@ fn save_data(
   // println!("loaded before {before:?}");
 
   crate::text_search::handle_mutation(app, ctx, &before, &data);
+  // TODO .map_err(|e| IOError(e.to_string()))?;
 
   let data = receive_data(app, ws.id.to_string().as_str(), time, data, ctx, before)
     .map_err(|e| Error::GeneralError(e.message()))?;
@@ -89,7 +90,7 @@ fn save_data(
 
   save(&path_current, data.dump())?;
 
-  symlink::remove_symlink_file(&path_latest);
+  symlink::remove_symlink_file(&path_latest)?;
   symlink::symlink_file(&file_name, &path_latest)?;
 
   if let Some(uuid) = uuid {

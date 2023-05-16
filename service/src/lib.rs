@@ -10,7 +10,6 @@ use json::JsonValue;
 use std::convert::TryFrom;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use uuid::Uuid;
 
 use error::Error;
 use utils::json::JsonParams;

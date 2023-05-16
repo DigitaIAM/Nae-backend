@@ -104,8 +104,8 @@ impl CommandMeta {
 
     if let Some(result) = self.result.as_ref() {
       match result {
-        Ok(data) => o.insert("data", data.clone()),
-        Err(error) => o.insert("errors", error.to_string()),
+        Ok(data) => o.insert("data", data.clone()).unwrap(),
+        Err(error) => o.insert("errors", error.to_string()).unwrap(),
       };
     };
 

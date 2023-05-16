@@ -1,7 +1,3 @@
-use std::future::{ready, Ready};
-
-use actix_web::dev::ServiceRequest;
-use actix_web::error::ErrorUnauthorized;
 use actix_web::{http, post, web, Error, FromRequest, HttpMessage, HttpRequest, HttpResponse};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use chrono::Duration;
