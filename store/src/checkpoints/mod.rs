@@ -11,7 +11,6 @@ use uuid::Uuid;
 
 pub trait CheckpointTopology {
   fn key(&self, store: Store, goods: Goods, batch: Batch, date: DateTime<Utc>) -> Vec<u8>;
-  fn key_checkpoint(&self, balance: &Balance, date_of_checkpoint: DateTime<Utc>) -> Vec<u8>;
 
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError>;
   fn set_balance(&self, key: &Vec<u8>, balance: BalanceForGoods) -> Result<(), WHError>;
@@ -81,7 +80,12 @@ pub trait CheckpointTopology {
       for old_checkpoint in old_checkpoints.iter() {
         let mut new_checkpoint_date = first_day_next_month(old_checkpoint.date);
         while new_checkpoint_date <= last_checkpoint_date {
-          let key = self.key_checkpoint(old_checkpoint, new_checkpoint_date);
+          let key = self.key(
+            old_checkpoint.store,
+            old_checkpoint.goods,
+            old_checkpoint.batch.clone(),
+            new_checkpoint_date,
+          );
           self.set_balance(&key, old_checkpoint.clone().number)?;
           new_checkpoint_date = first_day_next_month(new_checkpoint_date);
         }

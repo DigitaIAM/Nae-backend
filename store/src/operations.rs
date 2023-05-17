@@ -412,7 +412,11 @@ impl OpMutation {
     let n: BalanceDelta = self.after.as_ref().map(|i| i.clone().into()).unwrap_or_default();
     let o: BalanceDelta = self.before.as_ref().map(|i| i.clone().into()).unwrap_or_default();
 
-    n - o
+    let qty = if n.qty != o.qty { n.qty - o.qty } else { n.qty };
+
+    let cost = if n.cost != o.cost { n.cost - o.cost } else { n.cost };
+
+    BalanceDelta { qty, cost }
   }
 
   pub(crate) fn new_from_ops(before: Option<Op>, after: Option<Op>) -> OpMutation {
