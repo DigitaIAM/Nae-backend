@@ -1,171 +1,139 @@
 mod test_init;
 
+use chrono::{DateTime, Utc};
 use json::{array, object};
 use serde_json::from_str;
 use std::io;
+use std::str::FromStr;
 use std::sync::Arc;
 use test_init::init;
+use uuid::Uuid;
 
 use crate::test_init::create_record;
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
+use service::utils::json::JsonParams;
 use service::{Context, Services};
+use store::balance::Cost;
+use store::batch::Batch;
+use store::elements::{dt, Goods, Mode, Qty, Store};
+use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
+use store::GetWarehouse;
+
+const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
 #[actix_web::test]
 async fn recalculating_many_ops() {
   let (tmp_dir, settings, db) = init();
 
-  let (mut application, events_receiver) = Application::new(Arc::new(settings), Arc::new(db))
+  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db))
     .await
     .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
     .unwrap();
 
   let storage = Workspaces::new(tmp_dir.path().join("companies"));
-  application.storage = Some(storage.clone());
+  app.storage = Some(storage.clone());
 
-  application.register(MemoriesInFiles::new(application.clone(), "memories", storage.clone()));
-  application.register(nae_backend::inventory::service::Inventory::new(application.clone()));
+  app.register(MemoriesInFiles::new(app.clone(), "memories", storage.clone()));
+  app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
-  // write ops
-  let mut data = new_data();
-  create_record(&application, data).unwrap();
+  let s1 = store(&app, "s1");
+  let s2 = store(&app, "s2");
+  let g1 = goods(&app, "g1");
 
+  // transfer 26.01.2023 склад > цех 25
+  transfer(&app, "2023-01-26", s1, s2, g1, 25.into());
+
+  // transfer 26.01.2023 склад > цех 75
+  transfer(&app, "2023-01-26", s1, s2, g1, 75.into());
+
+  // transfer 27.01.2023 склад > цех 75
+  transfer(&app, "2023-01-26", s1, s2, g1, 25.into());
+
+  // receive 20.01.2023 склад 300
+  receive(&app, "2023-01-20", s1, g1, 300.into(), 30.into());
   // get result
-  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
-  let stock_ctx = vec!["warehouse", "stock"];
-
-  let mut filter = object! {};
-
-  let params = object! {oid: oid, ctx: stock_ctx.clone(), filter: filter.clone()};
-
-  let result = application.service("memories").find(Context::local(), params).unwrap();
-
-  // println!("test_result: {:#?}", result);
-
-  let data = result["data"][2].clone();
-  let qty = data["_balance"]["qty"].as_str().unwrap();
-
-  assert_eq!(300.0, from_str::<f64>(qty).unwrap());
-
-  // list of batches with balances
-  let goods = data["_uuid"].as_str().unwrap();
-
-  filter["goods"] = goods.into();
-
-  let params = object! {oid: oid, ctx: stock_ctx, filter: filter.clone()};
-
-  let batches = application.service("memories").find(Context::local(), params).unwrap();
-
-  // println!("batches: {:#?}", batches);
-
-  println!("batches&qts");
-  for b in batches["data"].members() {
-    println!(
-      "store {}\nbatch {}\nqty {}",
-      b["storage"]["name"], b["batch"]["barcode"], b["_balance"]["qty"]
-    );
-  }
-
-  assert_eq!(batches["data"].len(), 2);
-
-  // // operations
-  // let storage = batches["data"][0]["storage"]["_uuid"].as_str().unwrap();
-  // let batch_id = batches["data"][0]["batch"]["id"].as_str().unwrap();
-  // let batch_date = batches["data"][0]["batch"]["date"].as_str().unwrap();
-  // // println!("storage: {:#?}", storage);
-  //
-  // filter["dates"] =
-  //   object! {"from": "2022-01-01", "till": chrono::offset::Utc::now().date_naive().to_string()};
-  // filter["storage"] = storage.into();
-  // filter["batch_id"] = batch_id.into();
-  // filter["batch_date"] = batch_date.into();
-  //
-  // let inventory_ctx = vec!["warehouse", "inventory"];
-  // let params = array![object! {oid: oid, ctx: inventory_ctx.clone(), filter: filter.clone()}];
-  // // println!("filter: {:#?}", filter);
-  //
-  // let report = application.service("inventory").find(Context::local(), params).unwrap();
-  // // println!("report: {:#?}", report);
+  let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
+  print!("balances: {balances:?}");
 }
 
-fn new_data<'a>() -> Vec<(Vec<&'a str>, Vec<&'a str>)> {
-  let mut data = Vec::new();
+fn create(app: &Application, name: &str, ctx: Vec<&str>) -> Uuid {
+  let data = app
+    .service("memories")
+    .create(
+      Context::local(),
+      json::object! {
+        name: name
+      },
+      json::object! {
+        oid: WID,
+        ctx: ctx,
+      },
+    )
+    .unwrap();
 
-  let transfer_ctx = vec!["warehouse", "transfer"];
-  let receive_ctx = vec!["warehouse", "receive"];
+  data["_uuid"].uuid().unwrap()
+}
 
-  // transfer1
-  let data0_vec = vec![
-    "46",
-    "производство",
-    "Краситель полипропиленовый белый PP/F11481 Aksoy(Турция) (25кг)",
-    "285",
-    "кг",
-    "25",
-    "",
-    "26.01.2023",
-    "склад",
-    "цех",
-    "",
-    "",
-  ];
+fn store(app: &Application, name: &str) -> Uuid {
+  create(app, name, vec!["warehouse", "storage"])
+}
 
-  data.push((data0_vec, transfer_ctx.clone()));
+fn goods(app: &Application, name: &str) -> Uuid {
+  create(app, name, vec!["warehouse", "goods"])
+}
 
-  // transfer2
-  let data1_vec = vec![
-    "49",
-    "производство",
-    "Краситель полипропиленовый белый PP/F11481 Aksoy(Турция) (25кг)",
-    "285",
-    "кг",
-    "75",
-    "",
-    "26.01.2023",
-    "склад",
-    "цех",
-    "",
-    "",
-  ];
+fn receive(app: &Application, date: &str, store: Store, goods: Goods, qty: Qty, cost: Cost) -> Uuid {
+  let mut ops = vec![];
 
-  data.push((data1_vec, transfer_ctx.clone()));
+  let id = Uuid::new_v4();
+  let date = dt(date).unwrap();
+  ops.push(OpMutation {
+    id: id.clone(),
+    date: date.clone(),
+    store,
+    transfer: None,
+    goods,
+    batch: Batch { id, date },
+    before: None,
+    after: Some(InternalOperation::Receive(qty, cost)),
+    is_dependent: false,
+    dependant: vec![],
+  });
 
-  // transfer3
-  let data2_vec = vec![
-    "55",
-    "производство",
-    "Краситель полипропиленовый белый PP/F11481 Aksoy(Турция) (25кг)",
-    "285",
-    "кг",
-    "25",
-    "",
-    "27.01.2023",
-    "склад",
-    "цех",
-    "",
-    "",
-  ];
+  app.warehouse().mutate(&ops).unwrap();
 
-  data.push((data2_vec, transfer_ctx));
+  id
+}
 
-  // receive
-  let data3_vec = vec![
-    "L3Q",
-    "производство",
-    "Краситель полипропиленовый белый PP/F11481 Aksoy(Турция) (25кг)",
-    "965",
-    "кг",
-    "300.0",
-    "",
-    "20.01.2023",
-    "ИП ООО Telko Solution",
-    "склад",
-  ];
+fn transfer(
+  app: &Application,
+  date: &str,
+  from: Store,
+  into: Store,
+  goods: Goods,
+  qty: Qty,
+) -> Uuid {
+  let mut ops = vec![];
 
-  data.push((data3_vec, receive_ctx));
+  let id = Uuid::new_v4();
+  ops.push(OpMutation {
+    id,
+    date: dt(date).unwrap(),
+    store: from,
+    transfer: Some(into),
+    goods,
+    batch: Batch::no(),
+    before: None,
+    after: Some(InternalOperation::Issue(qty, Cost::ZERO, Mode::Auto)),
+    is_dependent: false,
+    dependant: vec![],
+  });
 
-  data
+  app.warehouse().mutate(&ops).unwrap();
+
+  id
 }

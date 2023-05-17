@@ -289,16 +289,16 @@ impl ToJson for Op {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpMutation {
   // key
-  pub(crate) id: Uuid,
-  pub(crate) date: DateTime<Utc>,
-  pub(crate) store: Store,
-  pub(crate) transfer: Option<Store>,
-  pub(crate) goods: Goods,
-  pub(crate) batch: Batch,
+  pub id: Uuid,
+  pub date: DateTime<Utc>,
+  pub store: Store,
+  pub transfer: Option<Store>,
+  pub goods: Goods,
+  pub batch: Batch,
   // value
-  pub(crate) before: Option<InternalOperation>,
-  pub(crate) after: Option<InternalOperation>,
-
+  pub before: Option<InternalOperation>,
+  pub after: Option<InternalOperation>,
+  // internal
   pub is_dependent: bool,
   pub dependant: Vec<Dependant>,
 }
