@@ -90,7 +90,8 @@ fn save_data(
 
   save(&path_current, data.dump())?;
 
-  symlink::remove_symlink_file(&path_latest)?;
+  // ignore error if file do not exist
+  symlink::remove_symlink_file(&path_latest);
   symlink::symlink_file(&file_name, &path_latest)?;
 
   if let Some(uuid) = uuid {
