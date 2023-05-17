@@ -4,7 +4,7 @@ pub(crate) mod socket_io;
 pub(crate) mod start;
 
 pub(crate) use messages::*;
-pub(crate) use start::start_connection;
+pub use start::start_connection;
 
 use json::JsonValue;
 

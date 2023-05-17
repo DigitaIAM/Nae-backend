@@ -269,37 +269,6 @@ impl Workspace {
     SLocation { id: id.clone(), oid: self.id.clone(), path }
   }
 
-  pub(crate) fn locations(&self) -> Vec<SLocation> {
-    let mut result = Vec::new();
-
-    let mut folder = self.path.clone();
-    folder.push("locations");
-
-    let entries = match std::fs::read_dir(&folder) {
-      Ok(entries) => entries,
-      Err(e) => {
-        println!("fail to read folder {}: {e}", folder.to_string_lossy());
-        return vec![];
-      },
-    };
-
-    for entry in entries {
-      let entry = entry.unwrap();
-      let path = entry.path();
-      if path.is_file() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if let Some(id) = name.strip_suffix(".json") {
-          match ID::from_base64(id.as_bytes()) {
-            Ok(id) => result.push(SLocation { id, oid: self.id.clone(), path }),
-            Err(_) => {}, // ignore?
-          }
-        }
-      }
-    }
-
-    result
-  }
-
   pub(crate) fn camera(&self, id: &ID) -> SCamera {
     let mut folder = self.folder.clone();
     folder.push("cameras");

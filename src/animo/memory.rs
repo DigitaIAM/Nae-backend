@@ -1,19 +1,15 @@
 use bytecheck::CheckBytes;
 use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
 
-use base64::Engine;
-use blake2::{Blake2s256, Digest};
 use json::JsonValue;
-use std::array::TryFromSliceError;
 use std::convert::TryFrom;
-use std::fmt::Formatter;
 use std::path::PathBuf;
 
 use crate::animo::db::{FromBytes, ToBytes};
 use crate::animo::error::DBError;
 use crate::animo::Time;
 use crate::warehouse::primitive_types::Decimal;
-use values::{ID, ID_BYTES};
+use values::ID;
 
 // #[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
 #[derive(

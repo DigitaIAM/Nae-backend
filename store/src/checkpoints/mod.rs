@@ -103,7 +103,7 @@ pub trait CheckpointTopology {
         log::debug!("del_balance: {key:?}");
         self.del_balance(&key)?;
       } else {
-        log::debug!("set_balance: {balance:#?} {key:?}");
+        log::debug!("set_balance: {balance:?}");
         self.set_balance(&key, balance)?;
       }
       tmp_date = check_point_date;

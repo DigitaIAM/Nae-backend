@@ -17,7 +17,7 @@ impl Batch {
   }
 
   // TODO make constant
-  pub(crate) fn no() -> Self {
+  pub fn no() -> Self {
     Batch { id: UUID_NIL, date: dt("1970-01-01").unwrap() }
   }
 

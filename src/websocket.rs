@@ -4,11 +4,9 @@ use actix::{
   fut, Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
   Running, StreamHandler, WrapFuture,
 };
-use std::sync::RwLock;
 
 use actix_web_actors::ws;
 
-use actix_web::HttpRequest;
 use service::Context;
 use std::time::{Duration, Instant};
 use uuid::Uuid;

@@ -8,7 +8,6 @@ use values::{ID, ID_BYTES, ID_MAX, ID_MIN};
 
 use crate::animo::db::{AnimoDB, FromBytes, FromKVBytes, Snapshot, ToBytes, ToKVBytes};
 use crate::animo::error::DBError;
-use crate::animo::memory::*;
 use crate::animo::ops_manager::*;
 use crate::animo::shared::*;
 use crate::animo::*;
