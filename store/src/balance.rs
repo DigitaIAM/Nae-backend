@@ -8,6 +8,7 @@ use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
+use std::str::FromStr;
 
 use crate::batch::Batch;
 use crate::elements::{Goods, Mode, Store};
@@ -71,6 +72,14 @@ impl Into<Decimal> for Cost {
 impl From<i32> for Cost {
   fn from(number: i32) -> Self {
     Cost(number.into())
+  }
+}
+
+impl TryFrom<&str> for Cost {
+  type Error = rust_decimal::Error;
+
+  fn try_from(number: &str) -> Result<Self, Self::Error> {
+    Ok(Cost(Decimal::from_str(number)?))
   }
 }
 

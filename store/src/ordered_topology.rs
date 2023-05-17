@@ -198,7 +198,13 @@ pub trait OrderedTopology {
     Ok(())
   }
 
-  fn cleanup_dependent(&self, op: &Op, new: Vec<Dependant>, ops: &mut Vec<Op>) -> Vec<Dependant> {
+  fn cleanup_dependent(
+    &self,
+    db: &Db,
+    op: &Op,
+    new: Vec<Dependant>,
+    ops: &mut Vec<Op>,
+  ) -> Vec<Dependant> {
     'old: for o in op.dependant.iter() {
       for n in new.iter() {
         if n == o {
@@ -214,7 +220,7 @@ pub trait OrderedTopology {
           zero.is_dependent = true;
           zero.op = InternalOperation::Receive(Decimal::ZERO, Cost::ZERO);
           // println!("zero = {zero:?}");
-          ops.push(zero);
+          ops.insert(0, zero);
           log::debug!("cleanup ops.push {ops:#?}");
         },
         Dependant::Issue(store, batch) => {
@@ -225,7 +231,7 @@ pub trait OrderedTopology {
           zero.is_dependent = true;
           zero.op = InternalOperation::Issue(Decimal::ZERO, Cost::ZERO, Mode::Manual);
           // println!("zero = {zero:?}");
-          ops.push(zero);
+          ops.insert(0, zero);
           log::debug!("cleanup ops.push {ops:#?}");
         },
       }
@@ -240,7 +246,7 @@ pub trait OrderedTopology {
     ops: &mut Vec<Op>,
     op: &mut Op,
   ) -> Result<(), WHError> {
-    self.cleanup(ops, op);
+    // self.cleanup(ops, op);
 
     let balance_before_operation = db.balances_for_store_goods_before_operation(&op)?;
     let balance = balance_before_operation.get(&op.batch).map(|b| b.clone()).unwrap_or_default();
@@ -280,7 +286,7 @@ pub trait OrderedTopology {
       new_dependant.push(Dependant::from(&new));
       self.cleanup_and_push(ops, new);
 
-      op.dependant = self.cleanup_dependent(&op, new_dependant, ops);
+      op.dependant = self.cleanup_dependent(db, &op, new_dependant, ops);
     } else {
       let (mut qty, cost, mode) = (diff_balance.qty, Decimal::ZERO, Mode::Auto);
 
@@ -321,7 +327,7 @@ pub trait OrderedTopology {
 
       // log::debug!("inventory qty left {qty}");
 
-      op.dependant = self.cleanup_dependent(&op, new_dependant, ops);
+      op.dependant = self.cleanup_dependent(db, &op, new_dependant, ops);
       self.save_op(db, op, Some(balance), None)?;
     }
 
@@ -334,7 +340,7 @@ pub trait OrderedTopology {
     ops: &mut Vec<Op>,
     op: &mut Op,
   ) -> Result<(), WHError> {
-    self.cleanup(ops, op);
+    // self.cleanup(ops, op);
 
     // calculate balance
     let balance_before_operation = db.balances_for_store_goods_before_operation(&op)?;
@@ -407,7 +413,7 @@ pub trait OrderedTopology {
       self.cleanup_and_push(ops, new);
     }
 
-    op.dependant = self.cleanup_dependent(&op, new_dependant, ops);
+    op.dependant = self.cleanup_dependent(db, &op, new_dependant, ops);
     self.save_op(db, op, Some(balance), None)?;
 
     Ok(())
