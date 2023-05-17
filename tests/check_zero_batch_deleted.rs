@@ -9,7 +9,7 @@ use std::sync::Arc;
 use test_init::init;
 use uuid::Uuid;
 
-use crate::test_init::create_record;
+use crate::test_init::{create_record, goods, receive, store, transfer};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
@@ -22,10 +22,8 @@ use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
 use store::GetWarehouse;
 
-const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-
 #[actix_web::test]
-async fn recalculating_many_ops() {
+async fn check_zero_batch_deleted() {
   std::env::set_var("RUST_LOG", "debug,tantivy=off");
   env_logger::init();
 
@@ -82,82 +80,4 @@ async fn recalculating_many_ops() {
     s2_g1_bs.get(&r1_batch).unwrap().clone(),
     BalanceForGoods { qty: 28.into(), cost: "2.8".try_into().unwrap() }
   )
-}
-
-fn create(app: &Application, name: &str, ctx: Vec<&str>) -> Uuid {
-  let data = app
-    .service("memories")
-    .create(
-      Context::local(),
-      json::object! {
-        name: name
-      },
-      json::object! {
-        oid: WID,
-        ctx: ctx,
-      },
-    )
-    .unwrap();
-
-  data["_uuid"].uuid().unwrap()
-}
-
-fn store(app: &Application, name: &str) -> Uuid {
-  create(app, name, vec!["warehouse", "storage"])
-}
-
-fn goods(app: &Application, name: &str) -> Uuid {
-  create(app, name, vec!["warehouse", "goods"])
-}
-
-fn receive(app: &Application, date: &str, store: Store, goods: Goods, qty: Qty, cost: Cost) -> Uuid {
-  let mut ops = vec![];
-
-  let id = Uuid::new_v4();
-  let date = dt(date).unwrap();
-  ops.push(OpMutation {
-    id: id.clone(),
-    date: date.clone(),
-    store,
-    transfer: None,
-    goods,
-    batch: Batch { id, date },
-    before: None,
-    after: Some(InternalOperation::Receive(qty, cost)),
-    is_dependent: false,
-    dependant: vec![],
-  });
-
-  app.warehouse().mutate(&ops).unwrap();
-
-  id
-}
-
-fn transfer(
-  app: &Application,
-  date: &str,
-  from: Store,
-  into: Store,
-  goods: Goods,
-  qty: Qty,
-) -> Uuid {
-  let mut ops = vec![];
-
-  let id = Uuid::new_v4();
-  ops.push(OpMutation {
-    id,
-    date: dt(date).unwrap(),
-    store: from,
-    transfer: Some(into),
-    goods,
-    batch: Batch::no(),
-    before: None,
-    after: Some(InternalOperation::Issue(qty, Cost::ZERO, Mode::Auto)),
-    is_dependent: false,
-    dependant: vec![],
-  });
-
-  app.warehouse().mutate(&ops).unwrap();
-
-  id
 }
