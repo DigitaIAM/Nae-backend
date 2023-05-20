@@ -10,13 +10,11 @@ use values::ID;
 pub struct Companies {
   app: Application,
   name: String,
-
-  ws: Workspaces,
 }
 
 impl Companies {
-  pub(crate) fn new(app: Application, ws: Workspaces) -> Arc<dyn Service> {
-    Arc::new(Companies { app, name: "companies".to_string(), ws })
+  pub(crate) fn new(app: Application) -> Arc<dyn Service> {
+    Arc::new(Companies { app, name: "companies".to_string() })
   }
 }
 
@@ -29,7 +27,7 @@ impl Service for Companies {
     let _limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let list = self.ws.list()?;
+    let list = self.app.wss.list()?;
     let total = list.len();
 
     let list = list.into_iter().skip(skip).take(total).map(|o| o.json()).collect();
@@ -43,7 +41,7 @@ impl Service for Companies {
 
   fn get(&self, _ctx: Context, id: String, _params: Params) -> crate::services::Result {
     let id = crate::services::string_to_id(id)?;
-    self.ws.get(&id).load()
+    self.app.wss.get(&id).load()
   }
 
   fn create(&self, _ctx: Context, data: Data, _params: Params) -> crate::services::Result {
@@ -55,7 +53,7 @@ impl Service for Companies {
       let mut obj = data.clone();
       obj["_id"] = JsonValue::String(id.to_base64());
 
-      self.ws.create(id)?.save(obj.dump())?;
+      self.app.wss.create(id)?.save(obj.dump())?;
 
       Ok(obj)
     }
@@ -76,7 +74,7 @@ impl Service for Companies {
       let mut obj = data.clone();
       obj["_id"] = id.to_base64().into();
 
-      self.ws.get(&id).save(obj.dump())?;
+      self.app.wss.get(&id).save(obj.dump())?;
 
       Ok(obj)
     }
@@ -94,7 +92,7 @@ impl Service for Companies {
     } else {
       let id = crate::services::string_to_id(id)?;
 
-      let storage = self.ws.get(&id);
+      let storage = self.app.wss.get(&id);
 
       let mut obj = storage.load()?;
       for (n, v) in data.entries() {
@@ -112,6 +110,6 @@ impl Service for Companies {
   fn remove(&self, _ctx: Context, id: String, _params: Params) -> crate::services::Result {
     let id = ID::from_base64(id.as_bytes()).map_err(|e| Error::GeneralError(e.to_string()))?;
 
-    self.ws.get(&id).delete()
+    self.app.wss.get(&id).delete()
   }
 }

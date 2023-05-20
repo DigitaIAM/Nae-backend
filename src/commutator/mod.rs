@@ -28,7 +28,7 @@ pub struct Application {
   pub(crate) job_scheduler: JobScheduler,
   services: Arc<RwLock<HashMap<String, Arc<dyn Service>>>>,
 
-  pub storage: Option<Workspaces>,
+  pub wss: Workspaces,
   pub(crate) warehouse: WHStorage,
 
   // background dispatcher
@@ -49,6 +49,7 @@ impl Application {
   pub async fn new(
     settings: Arc<Settings>,
     db: Arc<AnimoDB>,
+    wss: Workspaces,
   ) -> Result<(Self, Receiver<Event>), Error> {
     let services: Arc<RwLock<HashMap<String, Arc<dyn Service>>>> =
       Arc::new(RwLock::new(HashMap::new()));
@@ -66,7 +67,7 @@ impl Application {
       db,
       job_scheduler,
       services,
-      storage: None,
+      wss,
       warehouse: WHStorage::open(&settings.database.inventory)
         .map_err(|e| Error::GeneralError(e.message()))?,
       // channels: Arc::new(HashMap::new()),

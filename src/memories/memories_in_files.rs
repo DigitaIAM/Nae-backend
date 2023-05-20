@@ -26,13 +26,11 @@ use stock::find_items;
 pub struct MemoriesInFiles {
   app: Application,
   name: Arc<String>,
-
-  wss: Workspaces,
 }
 
 impl MemoriesInFiles {
-  pub fn new(app: Application, name: &str, ws: Workspaces) -> Arc<dyn Service> {
-    Arc::new(MemoriesInFiles { app, name: Arc::new(name.to_string()), wss: ws })
+  pub fn new(app: Application, name: &str) -> Arc<dyn Service> {
+    Arc::new(MemoriesInFiles { app, name: Arc::new(name.to_string()) })
   }
 }
 
@@ -56,7 +54,7 @@ impl Service for MemoriesInFiles {
 
     // workaround
     if ctx == vec!["drugs"] {
-      let ws = self.wss.get(&wsid);
+      let ws = self.app.wss.get(&wsid);
 
       let search = self.params(&params)["search"].as_str().unwrap_or_default();
 
@@ -92,7 +90,7 @@ impl Service for MemoriesInFiles {
         });
       }
 
-      let ws = self.wss.get(&wsid);
+      let ws = self.app.wss.get(&wsid);
 
       let warehouse = self.app.warehouse().database;
 
@@ -104,7 +102,7 @@ impl Service for MemoriesInFiles {
       return find_items(&ws, &balances, &filter, skip);
     }
 
-    let ws = self.wss.get(&wsid);
+    let ws = self.app.wss.get(&wsid);
     let memories = ws.memories(ctx.clone());
     let list = memories.list(Some(reverse))?;
 
@@ -175,6 +173,7 @@ impl Service for MemoriesInFiles {
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
       let produced = self
+        .app
         .wss
         .get(&wsid)
         .memories(vec!["production".into(), "produce".into()])
@@ -244,7 +243,7 @@ impl Service for MemoriesInFiles {
       return Err(Error::GeneralError(format!("id `{id}` not valid")));
     }
 
-    let ws = self.wss.get(&oid);
+    let ws = self.app.wss.get(&oid);
 
     if let Some(memories) = ws.memories(ctx.clone()).get(&id) {
       if do_enrich {
@@ -261,7 +260,7 @@ impl Service for MemoriesInFiles {
     let oid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
-    let ws = self.wss.get(&oid);
+    let ws = self.app.wss.get(&oid);
 
     let data = ws.memories(ctx).create(&self.app, data)?;
 
@@ -285,7 +284,7 @@ impl Service for MemoriesInFiles {
         return Err(Error::GeneralError(format!("id `{id}` not valid")));
       }
 
-      let ws = self.wss.get(&oid);
+      let ws = self.app.wss.get(&oid);
       let memories = ws.memories(ctx);
 
       let data = memories.update(&self.app, id, data)?;
@@ -302,7 +301,7 @@ impl Service for MemoriesInFiles {
       return Err(Error::GeneralError(format!("id `{id}` not valid")));
     }
 
-    let ws = self.wss.get(&oid);
+    let ws = self.app.wss.get(&oid);
     let memories = ws.memories(ctx);
 
     if !data.is_object() {

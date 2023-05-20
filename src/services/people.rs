@@ -16,13 +16,11 @@ lazy_static::lazy_static! {
 pub struct People {
   app: Application,
   path: Arc<String>,
-
-  ws: Workspaces,
 }
 
 impl People {
-  pub fn new(app: Application, ws: Workspaces) -> Arc<dyn Service> {
-    Arc::new(People { app, path: Arc::new("people".to_string()), ws })
+  pub fn new(app: Application) -> Arc<dyn Service> {
+    Arc::new(People { app, path: Arc::new("people".to_string()) })
   }
 }
 
@@ -37,7 +35,7 @@ impl Service for People {
     let limit = self.limit(&params);
     let skip = self.skip(&params);
 
-    let list = self.ws.get(&oid).people();
+    let list = self.app.wss.get(&oid).people();
 
     let (total, list) = if let Some(search) = params[0]["$search"].as_str() {
       let search = search.to_lowercase();
@@ -62,7 +60,7 @@ impl Service for People {
     let oid = crate::services::oid(&params)?;
 
     let id = crate::services::string_to_id(id)?;
-    self.ws.get(&oid).person(&id).load()
+    self.app.wss.get(&oid).person(&id).load()
   }
 
   fn create(&self, _ctx: Context, data: Data, _params: Params) -> crate::services::Result {
@@ -75,7 +73,7 @@ impl Service for People {
       let mut obj = data.clone();
       obj["_id"] = JsonValue::String(id.to_base64());
 
-      self.ws.get(&oid).person(&id).save(obj.dump())?;
+      self.app.wss.get(&oid).person(&id).save(obj.dump())?;
 
       Ok(obj)
     }
@@ -97,7 +95,7 @@ impl Service for People {
       let mut obj = data.clone();
       obj["_id"] = id.to_base64().into();
 
-      self.ws.get(&oid).person(&id).save(obj.dump())?;
+      self.app.wss.get(&oid).person(&id).save(obj.dump())?;
 
       Ok(obj)
     }
@@ -108,9 +106,9 @@ impl Service for People {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
-      let id = crate::services::string_to_id(id)?;
+      let id = string_to_id(id)?;
 
-      let storage = self.ws.get(&oid).person(&id);
+      let storage = self.app.wss.get(&oid).person(&id);
 
       let mut obj = storage.load()?;
       for (n, v) in data.entries() {
@@ -129,6 +127,6 @@ impl Service for People {
     let oid = crate::services::oid(&params)?;
     let id = string_to_id(id)?;
 
-    self.ws.get(&oid).shift(id).delete()
+    self.app.wss.get(&oid).shift(id).delete()
   }
 }
