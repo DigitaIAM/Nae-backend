@@ -159,6 +159,24 @@ impl BalanceForGoods {
   pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
     Ok(BalanceForGoods { qty: data["qty"].number(), cost: data["cost"].number().into() })
   }
+
+  pub fn apply(&mut self, op: &InternalOperation) {
+    match op {
+      InternalOperation::Inventory(b, d, ..) => {
+        self.qty += d.qty;
+        self.cost += d.cost;
+        assert_eq!(b, self);
+      },
+      InternalOperation::Receive(qty, cost) => {
+        self.qty += qty;
+        self.cost += cost;
+      },
+      InternalOperation::Issue(qty, cost, mode) => {
+        self.qty -= qty;
+        self.cost -= cost;
+      },
+    }
+  }
 }
 
 impl ToJson for BalanceForGoods {
@@ -215,25 +233,25 @@ impl Add<InternalOperation> for BalanceForGoods {
   }
 }
 
-impl AddAssign<&InternalOperation> for BalanceForGoods {
-  fn add_assign(&mut self, rhs: &InternalOperation) {
-    match rhs {
-      InternalOperation::Inventory(_, d, mode) => {
-        self.qty += d.qty;
-        self.cost +=
-          if mode == &Mode::Manual { d.cost } else { self.cost.price(self.qty).cost(d.qty) }
-      },
-      InternalOperation::Receive(qty, cost) => {
-        self.qty += qty;
-        self.cost += cost;
-      },
-      InternalOperation::Issue(qty, cost, mode) => {
-        self.qty -= qty;
-        self.cost -= if mode == &Mode::Manual { *cost } else { self.cost.price(self.qty).cost(*qty) }
-      },
-    }
-  }
-}
+// impl AddAssign<&InternalOperation> for BalanceForGoods {
+//   fn add_assign(&mut self, rhs: &InternalOperation) {
+//     match rhs {
+//       InternalOperation::Inventory(_, d, mode) => {
+//         self.qty += d.qty;
+//         self.cost +=
+//           if mode == &Mode::Manual { d.cost } else { self.cost.price(self.qty).cost(d.qty) }
+//       },
+//       InternalOperation::Receive(qty, cost) => {
+//         self.qty += qty;
+//         self.cost += cost;
+//       },
+//       InternalOperation::Issue(qty, cost, mode) => {
+//         self.qty -= qty;
+//         self.cost -= if mode == &Mode::Manual { *cost } else { self.cost.price(self.qty).cost(*qty) }
+//       },
+//     }
+//   }
+// }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BalanceDelta {
@@ -292,7 +310,7 @@ impl AddAssign<&OpMutation> for Balance {
     self.goods = rhs.goods;
     self.store = rhs.store;
     if let Some(o) = &rhs.after {
-      self.number += o;
+      self.number.apply(o);
     }
   }
 }

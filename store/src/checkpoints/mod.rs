@@ -11,7 +11,6 @@ use uuid::Uuid;
 
 pub trait CheckpointTopology {
   fn key(&self, store: Store, goods: Goods, batch: Batch, date: DateTime<Utc>) -> Vec<u8>;
-  fn key_checkpoint(&self, balance: &Balance, date_of_checkpoint: DateTime<Utc>) -> Vec<u8>;
 
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError>;
   fn set_balance(&self, key: &Vec<u8>, balance: BalanceForGoods) -> Result<(), WHError>;
@@ -67,7 +66,7 @@ pub trait CheckpointTopology {
     // log::debug!("ops len: {}", ops.len());
     // for op in ops {
     log::debug!("================================");
-    log::debug!("checkpoint_update {:?} {:?} {:?} {:?}", op.store, op.goods, op.batch, op.after);
+    log::debug!("checkpoint_update {:#?}", op);
     let mut tmp_date = op.date;
     let mut check_point_date = op.date;
     let mut last_checkpoint_date = self.get_latest_checkpoint_date()?;
@@ -81,7 +80,12 @@ pub trait CheckpointTopology {
       for old_checkpoint in old_checkpoints.iter() {
         let mut new_checkpoint_date = first_day_next_month(old_checkpoint.date);
         while new_checkpoint_date <= last_checkpoint_date {
-          let key = self.key_checkpoint(old_checkpoint, new_checkpoint_date);
+          let key = self.key(
+            old_checkpoint.store,
+            old_checkpoint.goods,
+            old_checkpoint.batch.clone(),
+            new_checkpoint_date,
+          );
           self.set_balance(&key, old_checkpoint.clone().number)?;
           new_checkpoint_date = first_day_next_month(new_checkpoint_date);
         }
@@ -94,10 +98,10 @@ pub trait CheckpointTopology {
       let key = self.key(op.store, op.goods, op.batch.clone(), check_point_date);
 
       let mut balance = self.get_balance(&key)?;
-      log::debug!("balance on {check_point_date} before operation {balance:#?}");
-      balance += op.to_delta();
+      log::debug!("balance on {check_point_date} before operation {balance:?}");
+      balance += op.to_delta(); // TODO: will fail at inventory operation
       log::debug!("dates: op {:#?} last checkpoint {last_checkpoint_date:#?}", op.date);
-      log::debug!("balance after {:#?} : {balance:?}", op.after);
+      log::debug!("{:?} > {balance:?}", op.after);
 
       if balance.is_zero() {
         log::debug!("del_balance: {key:?}");

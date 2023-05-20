@@ -43,10 +43,6 @@ impl CheckpointTopology for CheckBatchStoreDate {
       .collect()
   }
 
-  fn key_checkpoint(&self, _balance: &Balance, _date_of_checkpoint: DateTime<Utc>) -> Vec<u8> {
-    todo!()
-  }
-
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError> {
     match self.db.get_cf(&self.cf()?, key)? {
       Some(v) => Ok(serde_json::from_slice(&v)?),

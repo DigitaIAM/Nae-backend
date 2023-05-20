@@ -14,6 +14,7 @@ use crate::operations::Op;
 use crate::ordered_topology::OrderedTopology;
 use chrono::{DateTime, Utc};
 use json::JsonValue;
+use log::debug;
 use rocksdb::{
   BoundColumnFamily, ColumnFamilyDescriptor, Direction, IteratorMode, Options, ReadOptions, DB,
 };
@@ -56,16 +57,16 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     let cf = self.cf()?;
     let key = self.key(op);
     // log::debug!("put {key:?}");
-    // log::debug!("{op:?}");
+    log::debug!("put put put {op:#?}\n > {balance:?}");
 
-    let result = match self.db.get_cf(&cf, &key)? {
+    let before = match self.db.get_cf(&cf, &key)? {
       None => None,
       Some(bs) => Some(self.from_bytes(&bs)?),
     };
 
     self.db.put_cf(&cf, key, self.to_bytes(op, balance)?)?;
 
-    Ok(result)
+    Ok(before)
   }
 
   fn get(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
@@ -79,7 +80,7 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
   fn del(&self, op: &Op) -> Result<(), WHError> {
     let key = self.key(op);
     // log::debug!("del {key:?}");
-    // log::debug!("{op:?}");
+    log::debug!("del del del {op:?}");
     Ok(self.db.delete_cf(&self.cf()?, key)?)
   }
 
@@ -89,6 +90,10 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
 
   fn balance_on_op_or_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
     Err(WHError::new("not implemented"))
+  }
+
+  fn operation_after(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+    Err(WHError::new("Not supported"))
   }
 
   fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
@@ -165,9 +170,9 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
         continue;
       }
 
-      let (op, _) = self.from_bytes(&value)?;
+      let (op, b) = self.from_bytes(&value)?;
 
-      // println!("loaded_op {op:#?}");
+      debug!("loaded_op {op:#?}\n > {b:?}");
 
       // exclude virtual nodes
       if op.dependant.is_empty() {

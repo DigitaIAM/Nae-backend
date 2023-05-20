@@ -193,6 +193,50 @@ impl OrderedTopology for StoreBatchDateTypeId {
     Ok(res)
   }
 
+  fn operation_after(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+    // log::debug!("operations_after {op:#?}");
+
+    let key = self.key(op);
+    let till =
+      self.key_build(op.store, op.goods, op.batch.clone(), i64::MAX, u8::MAX, UUID_MAX, true);
+
+    // println!("key:");
+    // for b in key.iter() {
+    //   println!("{b:#010b}");
+    // }
+
+    let mut options = ReadOptions::default();
+    options.set_iterate_range(key.clone()..till);
+
+    // TODO change iterator with range from..till?
+    let mut iter =
+      self
+        .db
+        .iterator_cf_opt(&self.cf()?, options, IteratorMode::From(&key, Direction::Forward));
+
+    while let Some(bytes) = iter.next() {
+      if let Ok((k, v)) = bytes {
+        if k[0..] == key {
+          continue;
+        }
+
+        let (loaded_op, balance) = self.from_bytes(&v)?;
+
+        // log::debug!("operations_after loaded {loaded_op:#?}\nbalance {balance:#?}");
+
+        if loaded_op.store != op.store || loaded_op.goods != op.goods || loaded_op.batch != op.batch
+        {
+          // log::debug!("break");
+          break;
+        }
+
+        return Ok(Some((loaded_op, balance)));
+      }
+    }
+
+    Ok(None)
+  }
+
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
     ColumnFamilyDescriptor::new(StoreBatchDateTypeId::cf_name(), opts)
   }

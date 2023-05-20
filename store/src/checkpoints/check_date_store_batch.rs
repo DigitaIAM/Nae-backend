@@ -63,17 +63,6 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .collect()
   }
 
-  fn key_checkpoint(&self, balance: &Balance, date_of_checkpoint: DateTime<Utc>) -> Vec<u8> {
-    [].iter()
-      .chain((date_of_checkpoint.timestamp() as u64).to_be_bytes().iter())
-      .chain(balance.store.as_bytes().iter())
-      .chain(balance.goods.as_bytes().iter())
-      .chain((balance.batch.date.timestamp() as u64).to_be_bytes().iter())
-      .chain(balance.batch.id.as_bytes().iter())
-      .map(|b| *b)
-      .collect()
-  }
-
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError> {
     match self.db.get_cf(&self.cf()?, key)? {
       Some(v) => Ok(serde_json::from_slice(&v)?),

@@ -90,6 +90,10 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Err(WHError::new("Not supported"))
   }
 
+  fn operation_after(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+    Err(WHError::new("Not supported"))
+  }
+
   fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
     Err(WHError::new("Not supported"))
   }

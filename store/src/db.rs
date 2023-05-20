@@ -73,18 +73,18 @@ impl Db {
     // balances at closest checkpoint
     let (from, mut balances) = self.closest_checkpoint_balances_for_store_goods(operation)?;
 
-    log::debug!("closest_checkpoint_balances_for_store_goods: {balances:?}");
+    debug!("closest_checkpoint_balances_for_store_goods: {balances:#?}");
 
     // apply operation between from and till
     for op in self.operations_for_store_goods(from, operation)? {
       let bal = balances.entry(op.batch.clone()).or_default();
-      *bal += &op.op;
+      bal.apply(&op.op);
     }
 
     // remove zero balances
     let balances = balances.into_iter().filter(|(k, v)| !v.is_zero()).collect();
 
-    // log::debug!("balances_for_store_goods_before_operation: {balances:?}");
+    debug!("balances_for_store_goods_before_operation: {balances:#?}");
 
     Ok(balances)
   }
