@@ -25,21 +25,20 @@ use store::GetWarehouse;
 const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
 #[actix_web::test]
-async fn check_two_backdated_receive() {
+async fn check_backdated_set_cost() {
   std::env::set_var("RUST_LOG", "debug,tantivy=off");
   env_logger::init();
 
   let (tmp_dir, settings, db) = init();
 
-  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db))
+  let wss = Workspaces::new(tmp_dir.path().join("companies"));
+
+  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db), wss)
     .await
     .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
     .unwrap();
 
-  let storage = Workspaces::new(tmp_dir.path().join("companies"));
-  app.storage = Some(storage.clone());
-
-  app.register(MemoriesInFiles::new(app.clone(), "memories", storage.clone()));
+  app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
   let s1 = store(&app, "s1");
@@ -48,9 +47,6 @@ async fn check_two_backdated_receive() {
 
   log::debug!("transfer 26.01 s1 > s2 25");
   transfer(&app, "2023-01-26", s1, s2, g1, 25.into());
-
-  // log::debug!("transfer 27.01 s1 > s2 75");
-  // transfer(&app, "2023-01-27", s1, s2, g1, 75.into());
 
   log::debug!("receive 20.01 s1 25");
   let r1 = receive(&app, "2023-01-20", s1, g1, 25.into(), "25".try_into().unwrap());
