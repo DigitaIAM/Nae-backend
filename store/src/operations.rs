@@ -115,6 +115,24 @@ impl Op {
   //   }
   // }
 
+  pub fn into_zero(mut self) -> Self {
+    match self.op {
+      InternalOperation::Inventory(..) => {
+        self.op = InternalOperation::Inventory(
+          BalanceForGoods::default(),
+          BalanceDelta::default(),
+          Mode::Auto,
+        )
+      },
+      InternalOperation::Receive(..) => self.op = InternalOperation::Receive(Qty::ZERO, Cost::ZERO),
+      InternalOperation::Issue(..) => {
+        self.op = InternalOperation::Issue(Qty::ZERO, Cost::ZERO, Mode::Auto)
+      },
+    }
+
+    self
+  }
+
   pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
     let op = &data["op"];
     let mode = if op["mode"].as_str() == Some("Auto") { Mode::Auto } else { Mode::Manual };
@@ -409,14 +427,24 @@ impl OpMutation {
   }
 
   pub(crate) fn to_delta(&self) -> BalanceDelta {
-    let n: BalanceDelta = self.after.as_ref().map(|i| i.clone().into()).unwrap_or_default();
-    let o: BalanceDelta = self.before.as_ref().map(|i| i.clone().into()).unwrap_or_default();
+    if let Some(before) = self.before.as_ref() {
+      if let Some(after) = self.after.as_ref() {
+        let before: BalanceDelta = before.clone().into();
+        let after: BalanceDelta = after.clone().into();
 
-    let qty = if n.qty != o.qty { n.qty - o.qty } else { n.qty };
+        after - before
+      } else {
+        let before: BalanceDelta = before.clone().into();
 
-    let cost = if n.cost != o.cost { n.cost - o.cost } else { n.cost };
-
-    BalanceDelta { qty, cost }
+        BalanceDelta { qty: -before.qty, cost: -before.cost }
+      }
+    } else {
+      if let Some(after) = self.after.as_ref() {
+        after.clone().into()
+      } else {
+        BalanceDelta::default()
+      }
+    }
   }
 
   pub(crate) fn new_from_ops(before: Option<Op>, after: Option<Op>) -> OpMutation {

@@ -66,7 +66,7 @@ pub trait CheckpointTopology {
     // log::debug!("ops len: {}", ops.len());
     // for op in ops {
     log::debug!("================================");
-    log::debug!("checkpoint_update {:?} {:?} {:?} {:?}", op.store, op.goods, op.batch, op.after);
+    log::debug!("checkpoint_update {:#?}", op);
     let mut tmp_date = op.date;
     let mut check_point_date = op.date;
     let mut last_checkpoint_date = self.get_latest_checkpoint_date()?;
@@ -98,10 +98,10 @@ pub trait CheckpointTopology {
       let key = self.key(op.store, op.goods, op.batch.clone(), check_point_date);
 
       let mut balance = self.get_balance(&key)?;
-      log::debug!("balance on {check_point_date} before operation {balance:#?}");
-      balance += op.to_delta();
+      log::debug!("balance on {check_point_date} before operation {balance:?}");
+      balance += op.to_delta(); // TODO: will fail at inventory operation
       log::debug!("dates: op {:#?} last checkpoint {last_checkpoint_date:#?}", op.date);
-      log::debug!("balance after {:#?} : {balance:?}", op.after);
+      log::debug!("{:?} > {balance:?}", op.after);
 
       if balance.is_zero() {
         log::debug!("del_balance: {key:?}");

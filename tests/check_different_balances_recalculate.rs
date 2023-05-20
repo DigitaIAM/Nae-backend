@@ -46,15 +46,19 @@ async fn check_different_balances_recalculate() {
   let s2 = store(&app, "s2");
   let g1 = goods(&app, "g1");
 
-  log::debug!("transfer 26.01 s1 > s2 75");
-  transfer(&app, "2023-01-26", s1, s2, g1, 75.into());
+  log::debug!("transfer 26.01 s1 > s2 17");
+  transfer(&app, "2023-01-26", s1, s2, g1, 17.into());
 
-  log::debug!("transfer 27.01 s1 > s2 50");
-  transfer(&app, "2023-01-27", s1, s2, g1, 50.into());
+  log::debug!("transfer 27.01 s1 > s2 11");
+  transfer(&app, "2023-01-27", s1, s2, g1, 11.into());
 
-  log::debug!("receive 20.01 s1 100");
-  let r1 = receive(&app, "2023-01-20", s1, g1, 100.into(), 10.into());
+  log::debug!("receive 20.01 s1 21");
+  let r1 = receive(&app, "2023-01-20", s1, g1, 21.into(), "2.1".try_into().unwrap());
   let r1_batch = Batch { id: r1, date: dt("2023-01-20").unwrap() };
+
+  // s1 b0 -7 0
+  // s2 b0 +7 0
+  // s2 r1 21 2.1
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
   log::debug!("balances: {balances:#?}");
@@ -65,16 +69,11 @@ async fn check_different_balances_recalculate() {
   assert_eq!(s1_bs.len(), 1);
 
   let s1_g1_bs = s1_bs.get(&g1).unwrap();
-  assert_eq!(s1_g1_bs.len(), 2);
-
-  assert_eq!(
-    s1_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: 0.into(), cost: "0".try_into().unwrap() }
-  );
+  assert_eq!(s1_g1_bs.len(), 1);
 
   assert_eq!(
     s1_g1_bs.get(&Batch::no()).unwrap().clone(),
-    BalanceForGoods { qty: (-25).into(), cost: "0".try_into().unwrap() }
+    BalanceForGoods { qty: (-7).into(), cost: "0".try_into().unwrap() }
   );
 
   let s2_bs = balances.get(&s2).unwrap();
@@ -85,11 +84,11 @@ async fn check_different_balances_recalculate() {
 
   assert_eq!(
     s2_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: 100.into(), cost: "10".try_into().unwrap() }
+    BalanceForGoods { qty: 21.into(), cost: "2.1".try_into().unwrap() }
   );
 
   assert_eq!(
     s2_g1_bs.get(&Batch::no()).unwrap().clone(),
-    BalanceForGoods { qty: 25.into(), cost: "0".try_into().unwrap() }
+    BalanceForGoods { qty: 7.into(), cost: "0".try_into().unwrap() }
   );
 }
