@@ -16,7 +16,7 @@ pub(crate) fn import(app: &Application) {
     let duration = start.elapsed();
     println!("elapsed {:?}", duration);
   }
-  app.search.write().unwrap().commit();
+  app.search.write().unwrap().commit().unwrap();
 }
 
 pub(crate) fn report(app: &Application) {

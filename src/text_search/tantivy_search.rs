@@ -116,7 +116,7 @@ impl TextSearch {
           let mut document = Document::default();
           document.add_field_value(self.field_key, id);
           document.add_field_value(self.field_text, str);
-          w.add_document(document);
+          w.add_document(document).unwrap();
         }
 
         w.commit().map_err(convert)?;

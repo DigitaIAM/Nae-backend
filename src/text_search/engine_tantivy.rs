@@ -6,10 +6,10 @@ use std::time::Duration;
 
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
-use tantivy::query::{Query, QueryParser, QueryParserError};
-use tantivy::schema::{Field, Schema, Value, STORED, TEXT};
+use tantivy::query::QueryParser;
+use tantivy::schema::{Field, Schema, STORED, TEXT};
 use tantivy::{doc, Directory, Index, IndexReader, IndexWriter, ReloadPolicy, Term};
-use uuid::{Error, Uuid};
+use uuid::Uuid;
 
 const COMMIT_RATE: usize = 500;
 const COMMIT_TIME: Duration = Duration::from_secs(1);
