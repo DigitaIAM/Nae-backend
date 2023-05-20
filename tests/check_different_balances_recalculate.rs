@@ -22,8 +22,6 @@ use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
 use store::GetWarehouse;
 
-const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-
 #[actix_web::test]
 async fn check_different_balances_recalculate() {
   std::env::set_var("RUST_LOG", "debug,tantivy=off");
@@ -31,15 +29,14 @@ async fn check_different_balances_recalculate() {
 
   let (tmp_dir, settings, db) = init();
 
-  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db))
+  let wss = Workspaces::new(tmp_dir.path().join("companies"));
+
+  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db), wss)
     .await
     .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
     .unwrap();
 
-  let storage = Workspaces::new(tmp_dir.path().join("companies"));
-  app.storage = Some(storage.clone());
-
-  app.register(MemoriesInFiles::new(app.clone(), "memories", storage.clone()));
+  app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
   let s1 = store(&app, "s1");

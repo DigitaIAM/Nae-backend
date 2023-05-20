@@ -187,13 +187,30 @@ pub trait OrderedTopology {
         continue;
       }
 
-      if op.is_inventory() && op.batch.is_empty() && !op.is_dependent {
+      let (op, balance_changed) = if op.is_inventory() && op.batch.is_empty() && !op.is_dependent {
         // batch is always empty in inventory for now
-        pf.distribution_inventory(op)?;
+        (pf.distribution_inventory(op)?, true)
       } else if op.is_issue() && op.batch.is_empty() && !op.is_dependent {
-        pf.distribution_issue(op)?;
+        (pf.distribution_issue(op)?, true)
       } else {
-        self.calculate_op(db, &mut pf, op)?;
+        let (old, op, new) = self.calculate_op(db, &mut pf, op)?;
+        (op, !old.delta(&new).is_zero())
+      };
+
+      // propagate change ... note: virtual nodes do not change balance
+      if op.batch.is_empty() || balance_changed {
+        // log::debug!("propagation {} {current_balance:?} vs {new_balance:?}", op.batch.is_empty());
+        self.propagate(&op, &mut pf)?;
+
+        // check empty batched topology for changes
+        if !op.batch.is_empty() {
+          let mut empty_batch_op = op.clone();
+          empty_batch_op.batch = Batch::no();
+          // empty_batch_op.is_dependent = false; // help to avoid recursion
+          empty_batch_op.dependant = vec![];
+
+          self.propagate(&empty_batch_op, &mut pf)?;
+        }
       }
     }
 
@@ -309,7 +326,12 @@ pub trait OrderedTopology {
     Ok((balance_before, balance_after))
   }
 
-  fn calculate_op(&self, db: &Db, pf: &mut PropagationFront, op: Op) -> Result<(), WHError> {
+  fn calculate_op(
+    &self,
+    db: &Db,
+    pf: &mut PropagationFront,
+    op: Op,
+  ) -> Result<(BalanceForGoods, Op, BalanceForGoods), WHError> {
     // calculate balance
     let before_balance: BalanceForGoods = self.balance_before(&op)?; // Vec<(Batch, BalanceForGoods)>
     let (calculated_op, new_balance) = self.evaluate(&before_balance, &op);
@@ -320,7 +342,7 @@ pub trait OrderedTopology {
         log::debug!(
           "EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT"
         );
-        return Ok(());
+        return Ok((b, o, new_balance));
       }
 
       (Some(o.op), b)
@@ -342,23 +364,7 @@ pub trait OrderedTopology {
     // TODO: process dependant?
     assert!(calculated_op.dependant.is_empty());
 
-    // propagate change ... note: virtual nodes do not change balance
-    if !current_balance.delta(&new_balance).is_zero() {
-      log::debug!("start propagation {current_balance:?} vs {new_balance:?}");
-      self.propagate(&calculated_op, pf)?;
-
-      // check empty batched topology for changes
-      if !calculated_op.batch.is_empty() {
-        let mut empty_batch_op = calculated_op.clone();
-        empty_batch_op.batch = Batch::no();
-        // empty_batch_op.is_dependent = false; // help to avoid recursion
-        empty_batch_op.dependant = vec![];
-
-        self.propagate(&empty_batch_op, pf)?;
-      }
-    }
-
-    Ok(())
+    Ok((current_balance, calculated_op, new_balance))
   }
 
   fn delete_op(&self, db: &Db, pf: &mut PropagationFront, op: &Op) -> Result<(), WHError> {
@@ -659,7 +665,7 @@ impl<'a> PropagationFront<'a> {
     }
   }
 
-  fn distribution_inventory(&mut self, mut op: Op) -> Result<(), WHError> {
+  fn distribution_inventory(&mut self, mut op: Op) -> Result<Op, WHError> {
     // self.cleanup(ops, op);
 
     let balance_before_operation = self.db.balances_for_store_goods_before_operation(&op)?;
@@ -748,10 +754,10 @@ impl<'a> PropagationFront<'a> {
       self.mt.save_op(&self.db, &op, balance_before, None)?;
     }
 
-    Ok(())
+    Ok(op)
   }
 
-  fn distribution_issue(&mut self, mut op: Op) -> Result<(), WHError> {
+  fn distribution_issue(&mut self, mut op: Op) -> Result<Op, WHError> {
     // self.cleanup(ops, op);
 
     // calculate balance
@@ -840,7 +846,7 @@ impl<'a> PropagationFront<'a> {
     // let (op, balance_after) = self.mt.evaluate(&balance_before, &op);
     self.mt.save_op(&self.db, &op, balance_before, None)?;
 
-    Ok(())
+    Ok(op)
   }
 
   fn cleanup_dependent(&mut self, op: &Op, new: Vec<Dependant>) -> Result<Vec<Dependant>, WHError> {

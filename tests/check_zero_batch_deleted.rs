@@ -29,15 +29,14 @@ async fn check_zero_batch_deleted() {
 
   let (tmp_dir, settings, db) = init();
 
-  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db))
+  let wss = Workspaces::new(tmp_dir.path().join("companies"));
+
+  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db), wss)
     .await
     .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
     .unwrap();
 
-  let storage = Workspaces::new(tmp_dir.path().join("companies"));
-  app.storage = Some(storage.clone());
-
-  app.register(MemoriesInFiles::new(app.clone(), "memories", storage.clone()));
+  app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
   let s1 = store(&app, "s1");

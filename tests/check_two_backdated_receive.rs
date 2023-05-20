@@ -22,8 +22,6 @@ use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
 use store::GetWarehouse;
 
-const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-
 #[actix_web::test]
 async fn check_two_backdated_receive() {
   std::env::set_var("RUST_LOG", "debug,tantivy=off");
@@ -31,15 +29,14 @@ async fn check_two_backdated_receive() {
 
   let (tmp_dir, settings, db) = init();
 
-  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db))
+  let wss = Workspaces::new(tmp_dir.path().join("companies"));
+
+  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db), wss)
     .await
     .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
     .unwrap();
 
-  let storage = Workspaces::new(tmp_dir.path().join("companies"));
-  app.storage = Some(storage.clone());
-
-  app.register(MemoriesInFiles::new(app.clone(), "memories", storage.clone()));
+  app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
   let s1 = store(&app, "s1");
@@ -60,25 +57,13 @@ async fn check_two_backdated_receive() {
   let r2 = receive(&app, "2023-01-22", s1, g1, 40.into(), "40".try_into().unwrap());
   let r2_batch = Batch { id: r2, date: dt("2023-01-22").unwrap() };
 
-  // s1 b0 0 0
-  // s2 b0 100 100
   // s2 r1 60 60
+  // s2 r2 40 40
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
   log::debug!("balances: {balances:#?}");
 
   assert_eq!(balances.len(), 1);
-
-  let s1_bs = balances.get(&s1).unwrap();
-  assert_eq!(s1_bs.len(), 0);
-
-  let s1_g1_bs = s1_bs.get(&g1).unwrap();
-  assert_eq!(s1_g1_bs.len(), 0);
-
-  assert_eq!(
-    s1_g1_bs.get(&Batch::no()).unwrap().clone(),
-    BalanceForGoods { qty: (0).into(), cost: "0".try_into().unwrap() }
-  );
 
   let s2_bs = balances.get(&s2).unwrap();
   assert_eq!(s2_bs.len(), 1);
@@ -94,10 +79,5 @@ async fn check_two_backdated_receive() {
   assert_eq!(
     s2_g1_bs.get(&r2_batch).unwrap().clone(),
     BalanceForGoods { qty: 40.into(), cost: "40".try_into().unwrap() }
-  );
-
-  assert_eq!(
-    s2_g1_bs.get(&Batch::no()).unwrap().clone(),
-    BalanceForGoods { qty: 0.into(), cost: "0".try_into().unwrap() }
   );
 }
