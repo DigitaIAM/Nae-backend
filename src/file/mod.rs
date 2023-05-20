@@ -25,7 +25,7 @@ pub(crate) async fn get_file(
     Err(e) => return Ok(HttpResponse::from_error(e)),
   };
 
-  let path = app.storage.as_ref().unwrap().get(&oid).person(&pid).picture().path();
+  let path = app.wss.get(&oid).person(&pid).picture().path();
 
   let file = actix_files::NamedFile::open_async(path).await?;
 
@@ -61,7 +61,7 @@ pub(crate) async fn post_file(
     //   .get_filename()
     //   .map_or_else(|| Uuid::new_v4().to_string(), sanitize_filename::sanitize);
 
-    let path = app.storage.as_ref().unwrap().get(&oid).person(&pid).picture().path();
+    let path = app.wss.get(&oid).person(&pid).picture().path();
 
     let folder = match path.parent() {
       None => return Ok(HttpResponse::InternalServerError().finish()),

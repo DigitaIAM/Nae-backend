@@ -50,7 +50,7 @@ impl Workspaces {
     Workspace { id: id.clone(), folder, path }
   }
 
-  pub(crate) fn list(&self) -> Result<Vec<Workspace>, Error> {
+  pub fn list(&self) -> Result<Vec<Workspace>, Error> {
     let mut result = Vec::new();
 
     for entry in std::fs::read_dir(&self.folder).unwrap() {
@@ -98,6 +98,13 @@ impl Workspace {
     Err(Error::NotImplemented)
   }
 
+  pub(crate) fn contexts(&self) -> Result<Vec<Vec<String>>, Error> {
+    let mut top_folder = self.folder.clone();
+    top_folder.push("memories");
+
+    todo!()
+  }
+
   pub(crate) fn memories(&self, ctx: Vec<String>) -> Memories {
     let mut top_folder = self.folder.clone();
     top_folder.push("memories");
@@ -107,7 +114,7 @@ impl Workspace {
 
     // workaround because of first request fail with none existing folder
     // TODO remove it from here
-    std::fs::create_dir_all(&folder);
+    fs::create_dir_all(&folder);
 
     Memories { ws: self.clone(), ctx, top_folder, folder }
   }

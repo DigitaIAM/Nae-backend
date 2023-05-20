@@ -74,6 +74,7 @@ use crate::hr::services::shifts::Shifts;
 use crate::memories::MemoriesInFiles;
 use crate::services::People;
 use crate::settings::Settings;
+use crate::storage::organizations::Workspace;
 use crate::storage::Workspaces;
 use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use crate::warehouse::store_topology::WHStoreTopology;
@@ -97,11 +98,20 @@ struct Opt {
   data: PathBuf,
 }
 
-async fn server(
+async fn reindex(
   settings: Arc<Settings>,
   app: Application,
   com: Addr<Commutator>,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
+  // for ws in app.wss.list()? {
+  //   for context in ws.contexts()? {}
+  // }
+  //
+  // Ok(())
+  todo!()
+}
+
+async fn server(settings: Arc<Settings>, app: Application, com: Addr<Commutator>) -> io::Result<()> {
   let domain = "https://animi.ws";
   let address = "localhost"; // "127.0.0.1"
   let port = 3030;
@@ -165,33 +175,23 @@ async fn startup() -> std::io::Result<()> {
   println!("db started up");
 
   println!("app starting up");
-  let (mut app, events_receiver) = Application::new(settings.clone(), Arc::new(db))
-    .await
-    .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))?;
-
-  let storage = Workspaces::new("./data/companies/");
-  app.storage = Some(storage.clone());
+  let (mut app, events_receiver) =
+    Application::new(settings.clone(), Arc::new(db), Workspaces::new("./data/companies/"))
+      .await
+      .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))?;
 
   {
     let mut engine = app.search.write().unwrap();
-    engine.load(storage.clone()).unwrap();
+    engine.load(app.wss.clone()).unwrap();
   }
 
-  app.register(Actions::new(app.clone(), "actions", storage.clone()));
+  app.register(services::Authentication::new(app.clone(), "authentication"));
+  app.register(services::Users::new(app.clone(), "users"));
 
-  app.register(crate::services::Authentication::new(app.clone(), "authentication"));
-  app.register(crate::services::Users::new(app.clone(), "users"));
+  app.register(Companies::new(app.clone()));
+  app.register(People::new(app.clone()));
 
-  app.register(Companies::new(app.clone(), storage.clone()));
-  app.register(Departments::new(app.clone(), storage.clone()));
-  app.register(People::new(app.clone(), storage.clone()));
-  app.register(Shifts::new(app.clone(), storage.clone()));
-  app.register(AttendanceReport::new(app.clone(), storage.clone()));
-
-  app.register(Cameras::new(app.clone(), "cameras", storage.clone()));
-  app.register(Events::new(app.clone(), "events", storage.clone()));
-
-  app.register(MemoriesInFiles::new(app.clone(), "memories", storage.clone()));
+  app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(Inventory::new(app.clone()));
 
   println!("app started up");
@@ -201,6 +201,7 @@ async fn startup() -> std::io::Result<()> {
   println!("com started up");
 
   match opt.mode.as_str() {
+    "reindex" => reindex(settings, app, com).await,
     "server" => server(settings, app, com).await,
     "import" => {
       match opt.case.as_str() {

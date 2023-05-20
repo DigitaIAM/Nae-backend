@@ -121,7 +121,7 @@ impl Service for Actions {
 
         // let mut cameras = self.app.storage.as_ref().unwrap().get(&oid).camera_configs();
 
-        let camera = self.app.storage.as_ref().unwrap().get(&oid).camera(&cid).config()?;
+        let camera = self.app.wss.get(&oid).camera(&cid).config()?;
 
         let person = self.app.service("people").get(
           Context::local(),
@@ -157,7 +157,7 @@ impl Service for Actions {
         let pid = crate::services::pid(&params)?;
 
         // let mut cameras = self.app.storage.as_ref().unwrap().get(&oid).camera_configs();
-        let camera = self.app.storage.as_ref().unwrap().get(&oid).camera(&cid).config()?;
+        let camera = self.app.wss.get(&oid).camera(&cid).config()?;
 
         let person = self.app.service("people").get(
           Context::local(),
