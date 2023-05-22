@@ -55,8 +55,9 @@ impl CheckDateStoreBatch {
 
 impl CheckpointTopology for CheckDateStoreBatch {
   fn key(&self, store: Store, goods: Goods, batch: Batch, date: DateTime<Utc>) -> Vec<u8> {
-    [].iter()
-      .chain((date.timestamp() as u64).to_be_bytes().iter())
+    (date.timestamp() as u64)
+      .to_be_bytes()
+      .iter()
       .chain(store.as_bytes().iter())
       .chain(batch.to_bytes(&goods).iter())
       .map(|b| *b)
@@ -497,6 +498,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(min_batch().iter())
       .map(|b| *b)
       .collect();
+
     let till: Vec<u8> = ts
       .to_be_bytes()
       .iter()
