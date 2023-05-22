@@ -61,6 +61,12 @@ impl Batch {
       .map(|b| *b)
       .collect()
   }
+
+  pub(crate) fn bytes(&self) -> Vec<u8> {
+    let dt = self.date.timestamp() as u64;
+
+    dt.to_be_bytes().iter().chain(self.id.as_bytes().iter()).map(|b| *b).collect()
+  }
 }
 
 impl ToJson for Batch {

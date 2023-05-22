@@ -48,19 +48,23 @@ async fn check_transfer_receive_transfer() {
   transfer(&app, "2023-01-26", s1, s2, g1, 2.into());
 
   log::debug!("receive 20.01 s1 2");
-  let r1 = receive(&app, "2023-01-20", s1, g1, 2.into(), "2000".try_into().unwrap());
+  let r1 = receive(&app, "2023-01-20", s1, g1, 2.into(), "0.2".try_into().unwrap());
   let r1_batch = Batch { id: r1, date: dt("2023-01-20").unwrap() };
 
   log::debug!("transfer 23.01 s1 > s3 1");
   transfer(&app, "2023-01-23", s1, s3, g1, 1.into());
 
-  // s1 r0 -1 0
-  // s2 r0 1 0
-  // s2 r1 1 1000
-  // s3 r1 1 1000
+  // s1 b0 -1 0
+  // s2 b0 +1 0
+  // s2 r1 1 0.1
+  // s3 r1 1 0.1
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
   log::debug!("balances: {balances:#?}");
+
+  log::debug!("s1: {s1:#?}");
+  log::debug!("s2: {s2:#?}");
+  log::debug!("s3: {s3:#?}");
 
   assert_eq!(balances.len(), 3);
 
@@ -71,9 +75,14 @@ async fn check_transfer_receive_transfer() {
   let s1_g1_bs = s1_bs.get(&g1).unwrap();
   assert_eq!(s1_g1_bs.len(), 1);
 
+  assert_eq!(
+    s1_g1_bs.get(&Batch::no()).unwrap().clone(),
+    BalanceForGoods { qty: (-1).into(), cost: "0".try_into().unwrap() }
+  );
+
   // s2
   let s2_bs = balances.get(&s2).unwrap();
-  assert_eq!(s2_bs.len(), 2);
+  assert_eq!(s2_bs.len(), 1);
 
   let s2_g1_bs = s2_bs.get(&g1).unwrap();
   assert_eq!(s2_g1_bs.len(), 2);
@@ -85,7 +94,7 @@ async fn check_transfer_receive_transfer() {
 
   assert_eq!(
     s2_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: 1.into(), cost: "1000".try_into().unwrap() }
+    BalanceForGoods { qty: 1.into(), cost: "0.1".try_into().unwrap() }
   );
 
   // s3
@@ -97,6 +106,6 @@ async fn check_transfer_receive_transfer() {
 
   assert_eq!(
     s3_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: 1.into(), cost: "1000".try_into().unwrap() }
+    BalanceForGoods { qty: 1.into(), cost: "0.1".try_into().unwrap() }
   );
 }

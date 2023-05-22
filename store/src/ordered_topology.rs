@@ -644,7 +644,7 @@ impl<'a> PropagationFront<'a> {
   }
 
   fn insert(&mut self, op: Op) -> Result<(), WHError> {
-    log::debug!("push {op:#?}");
+    log::debug!("insert {op:#?}");
 
     let key = self.key_build(&op);
 
@@ -705,7 +705,7 @@ impl<'a> PropagationFront<'a> {
       // log::debug!("NEW_OP inventory receive: op {new:?}");
 
       new_dependant.push(Dependant::from(&new));
-      self.push(new)?;
+      self.insert(new)?;
 
       op.dependant = self.cleanup_dependent(&op, new_dependant)?;
     } else {
@@ -723,7 +723,7 @@ impl<'a> PropagationFront<'a> {
           // log::debug!("NEW_OP inventory partly: qty {qty} balance {balance:?} op {new:?}");
 
           new_dependant.push(Dependant::from(&new));
-          self.push(new)?;
+          self.insert(new)?;
 
           qty += balance.qty; // qty is always negative here
         } else if qty.abs() < balance.qty {
@@ -735,7 +735,7 @@ impl<'a> PropagationFront<'a> {
           // log::debug!("NEW_OP inventory full: qty {qty} balance {balance:?} op {new:?}");
 
           new_dependant.push(Dependant::from(&new));
-          self.push(new)?;
+          self.insert(new)?;
 
           // zero the qty
           qty -= qty;
@@ -796,7 +796,7 @@ impl<'a> PropagationFront<'a> {
         assert_eq!(balance, balance_before);
 
         new_dependant.push(Dependant::from(&new));
-        self.push(new)?;
+        self.insert(new)?;
 
         qty -= balance.qty;
 
@@ -813,7 +813,7 @@ impl<'a> PropagationFront<'a> {
         // assert_eq!(balance, balance_before);
 
         new_dependant.push(Dependant::from(&new));
-        self.push(new)?;
+        self.insert(new)?;
 
         qty -= qty;
         // log::debug!("NEW_OP: qty {:?}", qty);
@@ -838,7 +838,7 @@ impl<'a> PropagationFront<'a> {
       // assert_eq!(BalanceForGoods::default(), balance_before);
 
       new_dependant.push(Dependant::from(&new));
-      self.push(new)?;
+      self.insert(new)?;
     }
 
     op.dependant = self.cleanup_dependent(&op, new_dependant)?;
