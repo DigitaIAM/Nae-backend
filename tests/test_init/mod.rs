@@ -1,3 +1,4 @@
+use json::JsonValue;
 use std::sync::Arc;
 use tempfile::{tempdir, TempDir};
 use uuid::Uuid;
@@ -81,6 +82,39 @@ pub fn store(app: &Application, name: &str) -> Uuid {
 
 pub fn goods(app: &Application, name: &str) -> Uuid {
   create(app, name, vec!["warehouse", "goods"])
+}
+
+pub fn document_create(app: &Application, data: JsonValue, ctx: Vec<&str>) -> JsonValue {
+  let data = app
+    .service("memories")
+    .create(
+      Context::local(),
+      data,
+      json::object! {
+        oid: WID,
+        ctx: ctx,
+      },
+    )
+    .unwrap();
+
+  data
+}
+
+pub fn document_update(app: &Application, id: String, data: JsonValue, ctx: Vec<&str>) -> JsonValue {
+  let data = app
+    .service("memories")
+    .patch(
+      Context::local(),
+      id,
+      data,
+      json::object! {
+        oid: WID,
+        ctx: ctx,
+      },
+    )
+    .unwrap();
+
+  data
 }
 
 pub fn receive(

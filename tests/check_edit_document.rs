@@ -9,7 +9,9 @@ use std::sync::Arc;
 use test_init::init;
 use uuid::Uuid;
 
-use crate::test_init::{create_record, goods, receive, store, transfer};
+use crate::test_init::{
+  create_record, document_create, document_update, goods, receive, store, transfer,
+};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
@@ -23,7 +25,7 @@ use store::process_records::process_record;
 use store::GetWarehouse;
 
 #[actix_web::test]
-async fn check_receive_transfer_transfer() {
+async fn check_transfer_receive_transfer() {
   std::env::set_var("RUST_LOG", "debug,tantivy=off");
   env_logger::init();
 
@@ -41,56 +43,43 @@ async fn check_receive_transfer_transfer() {
 
   let s1 = store(&app, "s1");
   let s2 = store(&app, "s2");
+  let s3 = store(&app, "s3");
   let g1 = goods(&app, "g1");
 
-  log::debug!("receive 20.01 s1 2");
-  let r1 = receive(&app, "2023-01-20", s1, g1, 2.into(), "0.2".try_into().unwrap());
-  let r1_batch = Batch { id: r1, date: dt("2023-01-20").unwrap() };
+  let mut doc = object! {
+    date: "2023-01-20",
+    counterparty: s1.to_string(),
+    storage: s2.to_string(),
+    number: "1",
+  };
 
-  log::debug!("transfer 26.01 s1 > s2 2");
-  transfer(&app, "2023-01-26", s1, s2, g1, 2.into());
+  let d1 = document_create(&app, doc.clone(), vec!["warehouse", "receive", "document"]);
+  // log::debug!("d1: {:#?}", d1.dump());
 
-  log::debug!("transfer 20.01 s1 > s2 2");
-  transfer(&app, "2023-01-20", s1, s2, g1, 2.into());
+  let receive_doc = object! {
+    document: d1["_id"].to_string(),
+    goods: g1.to_string(),
+    qty: object! {number: "3.0"},
+    cost: object! {number: "0.3"},
+  };
 
-  // s1 b0 -2 0
-  // s2 b0 +2 0 (26.01)
-  // s2 r1 2 0.2 (20.01)
+  let receive = document_create(&app, receive_doc, vec!["warehouse", "receive"]);
+
+  // log::debug!("receive_data: {:#?}", receive.dump());
+
+  doc["storage"] = s3.to_string().into();
+
+  let d2 =
+    document_update(&app, d1["_uuid"].string(), doc, vec!["warehouse", "receive", "document"]);
+  // log::debug!("d2: {:#?}", d2.dump());
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
   log::debug!("balances: {balances:#?}");
 
   log::debug!("s1: {s1:#?}");
   log::debug!("s2: {s2:#?}");
+  log::debug!("s3: {s3:#?}");
 
-  assert_eq!(balances.len(), 2);
-
-  // s1
-  let s1_bs = balances.get(&s1).unwrap();
-  assert_eq!(s1_bs.len(), 1);
-
-  let s1_g1_bs = s1_bs.get(&g1).unwrap();
-  assert_eq!(s1_g1_bs.len(), 1);
-
-  assert_eq!(
-    s1_g1_bs.get(&Batch::no()).unwrap().clone(),
-    BalanceForGoods { qty: (-2).into(), cost: "0".try_into().unwrap() }
-  );
-
-  // s2
-  let s2_bs = balances.get(&s2).unwrap();
-  assert_eq!(s2_bs.len(), 1);
-
-  let s2_g1_bs = s2_bs.get(&g1).unwrap();
-  assert_eq!(s2_g1_bs.len(), 2);
-
-  assert_eq!(
-    s2_g1_bs.get(&Batch::no()).unwrap().clone(),
-    BalanceForGoods { qty: 2.into(), cost: "0".try_into().unwrap() }
-  );
-
-  assert_eq!(
-    s2_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: 2.into(), cost: "0.2".try_into().unwrap() }
-  );
+  let s3_bs = balances.get(&s3).unwrap();
+  assert_eq!(s3_bs.len(), 1);
 }
