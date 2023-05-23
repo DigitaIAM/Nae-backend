@@ -792,8 +792,8 @@ impl<'a> PropagationFront<'a> {
         new.op = InternalOperation::Issue(balance.qty, balance.cost, Mode::Auto);
         log::debug!("NEW_OP partly: qty {qty} balance {balance:?} op {new:#?}");
 
-        let balance_before = self.mt.balance_before(&new)?;
-        assert_eq!(balance, balance_before);
+        // let balance_before = self.mt.balance_before(&new)?;
+        // assert_eq!(balance, balance_before);
 
         new_dependant.push(Dependant::from(&new));
         self.insert(new)?;

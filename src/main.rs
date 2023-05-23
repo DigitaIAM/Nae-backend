@@ -29,6 +29,7 @@ use actix_web_httpauth::extractors::AuthenticationError;
 use actix_web_httpauth::middleware::HttpAuthentication;
 
 use dbase::{FieldValue, Record};
+use json::JsonValue;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::fs::File;
@@ -103,12 +104,26 @@ async fn reindex(
   app: Application,
   com: Addr<Commutator>,
 ) -> io::Result<()> {
-  // for ws in app.wss.list()? {
-  //   for context in ws.contexts()? {}
-  // }
-  //
-  // Ok(())
-  todo!()
+  let mut count = 0;
+  for ws in app.wss.list()? {
+    for doc in ws.clone().into_iter() {
+      // println!("{:?} {:?}", doc.id, doc.json().unwrap());
+      count += 1;
+
+      let ctx = &doc.mem.ctx;
+
+      let before = JsonValue::Null;
+      let after = doc.json().unwrap();
+
+      text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
+
+      store::elements::receive_data(&app, ws.id.to_string().as_str(), after, ctx, before).unwrap();
+    }
+  }
+
+  println!("count {count}");
+
+  Ok(())
 }
 
 async fn server(settings: Arc<Settings>, app: Application, com: Addr<Commutator>) -> io::Result<()> {

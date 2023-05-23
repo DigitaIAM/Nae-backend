@@ -146,7 +146,6 @@ pub(crate) fn time_to_naive_string(time: DateTime<Utc>) -> String {
 pub fn receive_data(
   app: &(impl GetWarehouse + Services),
   wid: &str,
-  time: DateTime<Utc>,
   data: JsonValue,
   ctx: &Vec<String>,
   before: JsonValue,
@@ -161,7 +160,7 @@ pub fn receive_data(
   let mut new_data = data.clone();
   let mut new_before = before.clone();
 
-  let before = match json_to_ops(app, wid, &mut new_before, time.clone(), ctx) {
+  let before = match json_to_ops(app, wid, &mut new_before, ctx) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ BEFORE: {}", e.message());
@@ -170,7 +169,7 @@ pub fn receive_data(
     },
   };
 
-  let mut after = match json_to_ops(app, wid, &mut new_data, time, ctx) {
+  let mut after = match json_to_ops(app, wid, &mut new_data, ctx) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ AFTER: {}", e.message());
@@ -232,7 +231,6 @@ fn json_to_ops(
   app: &(impl GetWarehouse + Services),
   wid: &str,
   data: &mut JsonValue,
-  time: DateTime<Utc>,
   ctx: &Vec<String>,
 ) -> Result<HashMap<String, Op>, WHError> {
   // log::debug!("json_to_ops {data:?}");

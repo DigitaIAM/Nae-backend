@@ -2,6 +2,7 @@ use json::JsonValue;
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+use walkdir::{DirEntry, WalkDir};
 
 use crate::storage::memories::{Document, Memories};
 use crate::storage::old_references::{SDepartment, SLocation, SPerson, SShift};
@@ -96,13 +97,6 @@ impl Workspace {
 
   pub(crate) fn delete(&self) -> crate::services::Result {
     Err(Error::NotImplemented)
-  }
-
-  pub(crate) fn contexts(&self) -> Result<Vec<Vec<String>>, Error> {
-    let mut top_folder = self.folder.clone();
-    top_folder.push("memories");
-
-    todo!()
   }
 
   pub(crate) fn memories(&self, ctx: Vec<String>) -> Memories {
@@ -381,5 +375,74 @@ impl Workspace {
     }
 
     result
+  }
+}
+
+pub struct Documents {
+  ws: Workspace,
+  it: Box<dyn Iterator<Item = DirEntry>>,
+}
+
+impl IntoIterator for Workspace {
+  type Item = Document;
+  type IntoIter = Documents;
+
+  fn into_iter(self) -> Self::IntoIter {
+    let mut top_folder = self.folder.clone();
+    top_folder.push("memories");
+
+    let it = WalkDir::new(top_folder.clone())
+      .follow_links(false)
+      .into_iter()
+      .filter_map(|e| e.ok())
+      .filter(|e| {
+        let f_name = e.file_name().to_string_lossy();
+        f_name == "latest.json"
+      });
+
+    Documents { ws: self, it: Box::new(it) }
+  }
+}
+
+impl Iterator for Documents {
+  type Item = Document;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if let Some(e) = self.it.next() {
+      let mut top_folder = self.ws.folder.canonicalize().unwrap();
+      top_folder.push("memories");
+      println!("top_ {top_folder:?}");
+
+      let mut path = e.into_path().canonicalize().unwrap();
+      println!("path {path:?}");
+
+      let record = path.parent().unwrap();
+
+      let mut name = record.file_name().unwrap().to_string_lossy().to_string();
+      let id = name.replace(".json", "");
+
+      let context = record.parent().unwrap().parent().unwrap().parent().unwrap();
+
+      let ctx: Vec<String> = context
+        .strip_prefix(&top_folder)
+        .unwrap()
+        .to_string_lossy()
+        .to_string()
+        .split("/")
+        .map(|s| s.to_string())
+        .collect();
+      let ctx_folder = context.into();
+
+      println!("ctx {ctx:?}");
+
+      let did = id;
+
+      let mem =
+        Memories { ws: self.ws.clone(), top_folder: top_folder.clone(), ctx, folder: ctx_folder };
+
+      Some(Document { mem, id: did, path })
+    } else {
+      None
+    }
   }
 }

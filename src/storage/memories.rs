@@ -83,7 +83,7 @@ fn save_data(
   crate::text_search::handle_mutation(app, ctx, &before, &data);
   // TODO .map_err(|e| IOError(e.to_string()))?;
 
-  let data = receive_data(app, ws.id.to_string().as_str(), time, data, ctx, before)
+  let data = receive_data(app, ws.id.to_string().as_str(), data, ctx, before)
     .map_err(|e| Error::GeneralError(e.message()))?;
 
   let uuid = data["_uuid"].as_str();
@@ -301,7 +301,7 @@ pub struct Document {
 }
 
 impl Document {
-  pub(crate) fn json(&self) -> Result<JsonValue, Error> {
+  pub fn json(&self) -> Result<JsonValue, Error> {
     load(&self.path)
   }
 }
