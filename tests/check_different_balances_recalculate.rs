@@ -31,10 +31,7 @@ async fn check_different_balances_recalculate() {
 
   let wss = Workspaces::new(tmp_dir.path().join("companies"));
 
-  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db), wss)
-    .await
-    .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
-    .unwrap();
+  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db), wss).await.unwrap();
 
   app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
