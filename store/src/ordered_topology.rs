@@ -290,7 +290,12 @@ pub trait OrderedTopology {
     Ok(())
   }
 
-  fn remove_op(&self, db: &Db, op: &Op) -> Result<(BalanceForGoods, BalanceForGoods), WHError> {
+  fn remove_op(
+    &self,
+    db: &Db,
+    pf: &mut PropagationFront,
+    op: &Op,
+  ) -> Result<(BalanceForGoods, BalanceForGoods), WHError> {
     let balance_before: BalanceForGoods = self.balance_before(&op)?;
 
     let (before_op, balance_after) = if op.dependant.is_empty() {
@@ -304,6 +309,7 @@ pub trait OrderedTopology {
     };
 
     self.del(&op)?;
+    pf.remove(&op);
 
     if op.dependant.is_empty() {
       db.update(
@@ -369,7 +375,7 @@ pub trait OrderedTopology {
 
   fn delete_op(&self, db: &Db, pf: &mut PropagationFront, op: &Op) -> Result<(), WHError> {
     // store update op with balance or delete
-    let (balance_before, balance_after) = self.remove_op(db, &op)?;
+    let (balance_before, balance_after) = self.remove_op(db, pf, &op)?;
 
     // propagate change
     if !balance_before.delta(&balance_after).is_zero() {
@@ -407,7 +413,7 @@ pub trait OrderedTopology {
   }
 
   fn propagate(&self, op: &Op, pf: &mut PropagationFront) -> Result<(), WHError> {
-    log::debug!("propagating from {op:#?}");
+    log::debug!("propagating"); // from {op:#?}");
 
     if let Some((next_op, _)) = self.operation_after(op)? {
       pf.push(next_op)?;
@@ -652,6 +658,15 @@ impl<'a> PropagationFront<'a> {
     self.points.insert(key, op);
 
     Ok(())
+  }
+
+  fn remove(&mut self, op: &Op) {
+    log::debug!("remove {op:#?}");
+
+    let key = self.key_build(op);
+
+    log::debug!("existing {:#?}", self.points.get(&key));
+    self.points.remove(&key);
   }
 
   fn next(&mut self) -> Option<Op> {
