@@ -113,11 +113,6 @@ pub fn process_record(
     _ => return Ok(()),
   };
 
-  // let goods_name = match &record[2] {
-  //   "Поддон деревянный (130х110)" => &record[2],
-  //   _ => return Ok(()),
-  // };
-
   println!("start process_record {record:?}");
 
   let date = &record[7];
@@ -179,7 +174,7 @@ pub fn process_record(
   } else if ctx.get(1) == Some(&"transfer") {
     (TRANSFER_DOCUMENT.to_vec(), true)
   } else {
-    (DISPATCH_DOCUMENT.to_vec(), true)
+    (DISPATCH_DOCUMENT.to_vec(), false)
   };
 
   let document = if &doc_ctx == &TRANSFER_DOCUMENT.to_vec() {
@@ -304,7 +299,11 @@ pub fn process_record(
   }
 
   if !ignore_cost {
-    data["cost"] = object! { number: cost.to_json(), currency: currency["_id"].clone() };
+    if ctx.get(1) == Some(&"receive") {
+      data["cost"] = object! { number: cost.to_json(), currency: currency["_id"].clone() };
+    } else {
+      data["sell_cost"] = object! { number: cost.to_json(), currency: currency["_id"].clone() };
+    }
   }
 
   let _res = memories_create(app, data, ctx.clone())?;
