@@ -250,17 +250,33 @@ fn json_to_ops(
     ["warehouse", "dispatch"] => OpType::Dispatch,
     ["warehouse", "transfer"] => OpType::Transfer,
     ["warehouse", "inventory"] => OpType::Inventory,
+    ["production", "produce"] => OpType::Receive,
     ["production", "material", "produced"] => OpType::Receive,
     ["production", "material", "used"] => OpType::Dispatch,
     _ => return Ok(ops),
   };
 
   let params = object! {oid: wid, ctx: [], enrich: false };
-  let document =
-    match app.service("memories").get(Context::local(), data["document"].string(), params) {
-      Ok(d) => d,
-      Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-    };
+  let mut document = match ctx_str[..] {
+    ["production", "produce"] => {
+      match app
+        .service("memories")
+        .get(Context::local(), data["order"].string(), params.clone())
+      {
+        Ok(d) => d,
+        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+      }
+    },
+    _ => {
+      match app
+        .service("memories")
+        .get(Context::local(), data["document"].string(), params.clone())
+      {
+        Ok(d) => d,
+        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+      }
+    },
+  };
 
   log::debug!("DOCUMENT: {:?}", document.dump());
 
@@ -296,10 +312,27 @@ fn json_to_ops(
 
     (store_from, Some(store_into))
   } else if ctx.get(0) == Some(&"production".to_string()) {
-    let store_from = match resolve_store(app, wid, &data, "storage_from") {
-      Ok(uuid) => uuid,
-      Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+    let store_from = if ctx.get(1) == Some(&"material".to_string()) {
+      match resolve_store(app, wid, &data, "storage_from") {
+        Ok(uuid) => uuid,
+        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+      }
+    } else {
+      //*********["production", "produce"]***********
+      let area = match app.service("memories").get(
+        Context::local(),
+        document["area"].string(),
+        params.clone(),
+      ) {
+        Ok(d) => d,
+        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+      };
+      match resolve_store(app, wid, &area, "storage") {
+        Ok(uuid) => uuid,
+        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
+      }
     };
+
     (store_from, None)
   } else {
     let store_from = match resolve_store(app, wid, &document, "storage") {
@@ -311,18 +344,42 @@ fn json_to_ops(
 
   println!("store from: {store_from:?} into: {store_into:?}");
 
-  let params = object! {oid: wid, ctx: vec!["goods"] };
-  let item = match app.service("memories").get(Context::local(), data["goods"].string(), params) {
-    Ok(d) => d,
-    Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+  let goods_params = object! {oid: wid, ctx: vec!["goods"] };
+  let goods = match ctx_str[..] {
+    ["production", "produce"] => {
+      let product =
+        match app
+          .service("memories")
+          .get(Context::local(), document["product"].string(), params)
+        {
+          Ok(d) => d,
+          Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+        };
+      match app
+        .service("memories")
+        .get(Context::local(), product["goods"].string(), goods_params)
+      {
+        Ok(d) => d,
+        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+      }
+    },
+    _ => {
+      match app
+        .service("memories")
+        .get(Context::local(), data["goods"].string(), goods_params)
+      {
+        Ok(d) => d,
+        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+      }
+    },
   };
 
-  let goods = match item["_uuid"].uuid_or_none() {
+  let goods_uuid = match goods["_uuid"].uuid_or_none() {
     Some(uuid) => uuid,
     None => return Ok(ops),
   };
 
-  // log::debug!("before op");
+  log::debug!("before op");
 
   let op = match type_of_operation {
     OpType::Inventory => {
@@ -341,7 +398,10 @@ fn json_to_ops(
       }
     },
     OpType::Receive => {
-      let qty = data["qty"]["number"].number_or_none();
+      let qty = match ctx_str[..] {
+        ["production", "produce"] => data["qty"].number_or_none(),
+        _ => data["qty"]["number"].number_or_none(),
+      };
       let cost = data["cost"]["number"].number_or_none();
 
       if qty.is_none() && cost.is_none() {
@@ -375,7 +435,36 @@ fn json_to_ops(
   };
 
   let batch = if type_of_operation == OpType::Receive {
-    Batch { id: tid, date }
+    if ctx.get(1) == Some(&"produce".to_string()) {
+      match document["_uuid"].uuid_or_none() {
+        Some(id) => Batch { id, date },
+        None => {
+          let did = Uuid::new_v4();
+          document["_uuid"] = JsonValue::String(did.to_string());
+          // patch order
+          let _app = app.service("memories");
+          let params = object! {oid: wid, ctx: vec!["production", "produce"] };
+          let _doc = _app.patch(Context::local(), document["_id"].string(), document, params)?;
+          println!("__doc {:#?}", _doc.dump());
+
+          // save_data(
+          //   app,
+          //   &_app.ws,
+          //   &_app.top_folder,
+          //   &folder,
+          //   &_app.ctx,
+          //   &document["_id"].to_string(),
+          //   Some(did),
+          //   time,
+          //   data,
+          // )?
+
+          Batch { id: _doc["_uuid"].uuid()?, date }
+        },
+      }
+    } else {
+      Batch { id: tid, date }
+    }
   } else if type_of_operation == OpType::Inventory {
     match &data["batch"] {
       JsonValue::Object(d) => Batch { id: d["_uuid"].uuid()?, date: d["date"].date_with_check()? },
@@ -413,7 +502,7 @@ fn json_to_ops(
     date,
     store: store_from,
     store_into,
-    goods,
+    goods: goods_uuid,
     batch,
     op,
     is_dependent: false, // data["is_dependent"].boolean(),
