@@ -39,6 +39,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{io, thread};
 use structopt::StructOpt;
+use uuid::Uuid;
 
 mod auth;
 mod commutator;
@@ -113,11 +114,26 @@ async fn reindex(
       let ctx = &doc.mem.ctx;
 
       let before = JsonValue::Null;
-      let after = doc.json().unwrap();
+      let mut after = doc.json().unwrap();
+
+      // inject uuid if missing
+      if after["_uuid"].is_null() {
+        let uuid = Uuid::new_v4().to_string();
+        after["_uuid"] = uuid.clone().into();
+
+        storage::memories::index_uuid(
+          &doc.mem.top_folder,
+          &doc.path.parent().unwrap().into(),
+          uuid.as_str(),
+        )?;
+      }
 
       text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
 
-      store::elements::receive_data(&app, ws.id.to_string().as_str(), after, ctx, before).unwrap();
+      let after =
+        store::elements::receive_data(&app, ws.id.to_string().as_str(), after, ctx, before).unwrap();
+
+      storage::save(&doc.path, after.dump())?;
     }
   }
 

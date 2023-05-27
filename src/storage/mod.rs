@@ -29,7 +29,7 @@ fn json(id: String, path: &PathBuf) -> JsonValue {
   }
 }
 
-fn save(path: &PathBuf, data: String) -> Result<(), Error> {
+pub(crate) fn save(path: &PathBuf, data: String) -> Result<(), Error> {
   let folder = match path.parent() {
     None => return Err(Error::IOError(format!("can't get parent for {}", path.to_string_lossy()))),
     Some(f) => f,
