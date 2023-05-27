@@ -95,28 +95,34 @@ fn save_data(
   symlink::symlink_file(&file_name, &path_latest)?;
 
   if let Some(uuid) = uuid {
-    // let str = uuid.to_string();
-    let mut path_folder = top_folder.clone();
-    path_folder.push("uuid");
-    path_folder.push(uuid.slice(0..4));
-
-    std::fs::create_dir_all(&path_folder).map_err(|e| {
-      Error::IOError(format!("can't create folder {}: {}", path_folder.to_string_lossy(), e))
-    })?;
-
-    let mut path_uuid = path_folder.clone();
-    path_uuid.push(uuid);
-
-    if let Some(folder) = pathdiff::diff_paths(folder.canonicalize()?, path_folder.canonicalize()?) {
-      if !path_uuid.exists() {
-        symlink::symlink_dir(&folder, &path_uuid)?;
-      }
-    } else {
-      todo!("raise error")
-    }
+    index_uuid(top_folder, folder, uuid)?;
   }
 
   Ok(data)
+}
+
+pub(crate) fn index_uuid(top_folder: &PathBuf, folder: &PathBuf, uuid: &str) -> Result<(), Error> {
+  // let str = uuid.to_string();
+  let mut path_folder = top_folder.clone();
+  path_folder.push("uuid");
+  path_folder.push(uuid.slice(0..4));
+
+  std::fs::create_dir_all(&path_folder).map_err(|e| {
+    Error::IOError(format!("can't create folder {}: {}", path_folder.to_string_lossy(), e))
+  })?;
+
+  let mut path_uuid = path_folder.clone();
+  path_uuid.push(uuid);
+
+  if let Some(folder) = pathdiff::diff_paths(folder.canonicalize()?, path_folder.canonicalize()?) {
+    if !path_uuid.exists() {
+      symlink::symlink_dir(&folder, &path_uuid)?;
+    }
+  } else {
+    todo!("raise error")
+  }
+
+  Ok(())
 }
 
 // remove context details
