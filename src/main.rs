@@ -20,7 +20,7 @@ extern crate uuid;
 use crate::commutator::{Application, Commutator};
 use actix::{Actor, Addr};
 use actix_cors::Cors;
-use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
+// use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
 use actix_web::dev::ServiceRequest;
 use actix_web::http::header;
 use actix_web::{http, middleware, web, App, HttpServer};
