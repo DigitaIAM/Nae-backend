@@ -344,34 +344,9 @@ fn json_to_ops(
 
   println!("store from: {store_from:?} into: {store_into:?}");
 
-  let goods_params = object! {oid: wid, ctx: vec!["goods"] };
-  let goods = match ctx_str[..] {
-    ["production", "produce"] => {
-      let product =
-        match app
-          .service("memories")
-          .get(Context::local(), document["product"].string(), params)
-        {
-          Ok(d) => d,
-          Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-        };
-      match app
-        .service("memories")
-        .get(Context::local(), product["goods"].string(), goods_params)
-      {
-        Ok(d) => d,
-        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-      }
-    },
-    _ => {
-      match app
-        .service("memories")
-        .get(Context::local(), data["goods"].string(), goods_params)
-      {
-        Ok(d) => d,
-        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-      }
-    },
+  let goods = match goods(app, wid, data, &document, ctx_str.clone()) {
+    Ok(g) => g,
+    Err(_) => return Ok(ops),
   };
 
   let goods_uuid = match goods["_uuid"].uuid_or_none() {
@@ -445,7 +420,7 @@ fn json_to_ops(
           let _app = app.service("memories");
           let params = object! {oid: wid, ctx: vec!["production", "produce"] };
           let _doc = _app.patch(Context::local(), document["_id"].string(), document, params)?;
-          println!("__doc {:#?}", _doc.dump());
+          log::debug!("__doc {:#?}", _doc.dump());
 
           // save_data(
           //   app,
@@ -512,6 +487,78 @@ fn json_to_ops(
   ops.insert(tid.to_string(), op);
 
   Ok(ops)
+}
+
+fn goods(
+  app: &(impl GetWarehouse + Services),
+  wid: &str,
+  data: &JsonValue,
+  document: &JsonValue,
+  ctx_str: Vec<&str>,
+) -> Result<JsonValue, WHError> {
+  let params = object! {oid: wid, ctx: [], enrich: false };
+  let goods_params = object! {oid: wid, ctx: vec!["goods"] };
+
+  match ctx_str[..] {
+    ["production", "produce"] => {
+      let product =
+        match app
+          .service("memories")
+          .get(Context::local(), document["product"].string(), params)
+        {
+          Ok(d) => d,
+          Err(e) => return Err(WHError::new(&e.to_string())), // TODO handle IO error differently!!!!
+        };
+
+      if let Some(goods) = product["goods"].string_or_none() {
+        Ok(app.service("memories").get(Context::local(), goods, goods_params)?)
+      } else {
+        if let (Some(customer), Some(label)) =
+          (data["customer"].string_or_none(), data["label"].string_or_none())
+        {
+          let goods_name =
+            format!("{} {} {customer} {label}", product["name"], product["part_number"])
+              .replace(",", "")
+              .replace(".", "")
+              .replace("  ", " ");
+
+          let params = object! {
+            oid: wid,
+            ctx: ["goods"],
+            limit: 1,
+            skip: 0,
+            filter: object!{name: goods_name.clone()},
+          };
+
+          let find = app.service("memories").find(Context::local(), params.clone())?;
+
+          match find["data"].len() {
+            1 => {
+              // log::debug!("_old_ {:?}", find["data"][0]);
+              return Ok(find["data"][0].clone());
+            },
+            0 => {
+              let goods = object! {
+                name: goods_name,
+                uom: product["uom"].clone(),
+              };
+              let res = app.service("memories").create(Context::local(), goods, params)?;
+              // log::debug!("_new_ {res:?}");
+              return Ok(res);
+            },
+            _ => return Err(WHError::new("More than one goods with same name")),
+          }
+        } else {
+          return Err(WHError::new("No data for goods"));
+        };
+      }
+    },
+    _ => Ok(
+      app
+        .service("memories")
+        .get(Context::local(), data["goods"].string(), goods_params)?,
+    ),
+  }
 }
 
 fn resolve_store(
