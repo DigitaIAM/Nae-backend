@@ -219,7 +219,7 @@ pub fn receive_data(
   }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 enum OpType {
   Inventory,
   Receive,
@@ -268,10 +268,7 @@ fn json_to_ops(
       }
     },
     _ => {
-      match app
-        .service("memories")
-        .get(Context::local(), data["document"].string(), params.clone())
-      {
+      match app.service("memories").get(Context::local(), data["document"].string(), params) {
         Ok(d) => d,
         Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
       }
@@ -285,62 +282,11 @@ fn json_to_ops(
     Err(_) => return Ok(ops),
   };
 
-  let (store_from, store_into) = if type_of_operation == OpType::Transfer {
-    let store_from = if data["storage_from"].string() == "" {
-      match resolve_store(app, wid, &document, "from") {
-        Ok(uuid) => uuid,
-        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
-      }
-    } else {
-      match resolve_store(app, wid, &data, "storage_from") {
-        Ok(uuid) => uuid,
-        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
-      }
+  let (store_from, store_into) =
+    match storages(app, wid, &ctx, data, &document, type_of_operation.clone()) {
+      Ok((from, into)) => (from, into),
+      Err(_) => return Ok(ops),
     };
-
-    let store_into = if data["storage_into"].string() == "" {
-      match resolve_store(app, wid, &document, "into") {
-        Ok(uuid) => uuid,
-        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
-      }
-    } else {
-      match resolve_store(app, wid, &data, "storage_into") {
-        Ok(uuid) => uuid,
-        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
-      }
-    };
-
-    (store_from, Some(store_into))
-  } else if ctx.get(0) == Some(&"production".to_string()) {
-    let store_from = if ctx.get(1) == Some(&"material".to_string()) {
-      match resolve_store(app, wid, &data, "storage_from") {
-        Ok(uuid) => uuid,
-        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
-      }
-    } else {
-      //*********["production", "produce"]***********
-      let area = match app.service("memories").get(
-        Context::local(),
-        document["area"].string(),
-        params.clone(),
-      ) {
-        Ok(d) => d,
-        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-      };
-      match resolve_store(app, wid, &area, "storage") {
-        Ok(uuid) => uuid,
-        Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
-      }
-    };
-
-    (store_from, None)
-  } else {
-    let store_from = match resolve_store(app, wid, &document, "storage") {
-      Ok(uuid) => uuid,
-      Err(_) => return Ok(ops), // TODO handle errors better, allow to catch only 'not found'
-    };
-    (store_from, None)
-  };
 
   println!("store from: {store_from:?} into: {store_into:?}");
 
@@ -456,11 +402,11 @@ fn json_to_ops(
     }
   };
 
-  data["batch"] = object! {
-    "_uuid": batch.id.to_string(),
-    "date": time_to_string(batch.date),
-    "barcode": batch.to_barcode(),
-  };
+  // data["batch"] = object! {
+  //   "_uuid": batch.id.to_string(),
+  //   "date": time_to_string(batch.date),
+  //   "barcode": batch.to_barcode(),
+  // };
 
   // let mut dependant = vec![];
   // match &data["batches"] {
@@ -487,6 +433,76 @@ fn json_to_ops(
   ops.insert(tid.to_string(), op);
 
   Ok(ops)
+}
+
+fn storages(
+  app: &(impl GetWarehouse + Services),
+  wid: &str,
+  ctx: &Vec<String>,
+  data: &JsonValue,
+  document: &JsonValue,
+  type_of_operation: OpType,
+) -> Result<(Uuid, Option<Uuid>), WHError> {
+  let params = object! {oid: wid, ctx: [], enrich: false };
+
+  return if type_of_operation == OpType::Transfer {
+    let store_from = if data["storage_from"].string() == "" {
+      match resolve_store(app, wid, document, "from") {
+        Ok(uuid) => uuid,
+        Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
+      }
+    } else {
+      match resolve_store(app, wid, &data, "storage_from") {
+        Ok(uuid) => uuid,
+        Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
+      }
+    };
+
+    let store_into = if data["storage_into"].string() == "" {
+      match resolve_store(app, wid, document, "into") {
+        Ok(uuid) => uuid,
+        Err(_) => return Err(WHError::new("no into store")), // TODO handle errors better, allow to catch only 'not found'
+      }
+    } else {
+      match resolve_store(app, wid, &data, "storage_into") {
+        Ok(uuid) => uuid,
+        Err(_) => return Err(WHError::new("no into store")), // TODO handle errors better, allow to catch only 'not found'
+      }
+    };
+
+    Ok((store_from, Some(store_into)))
+  } else if ctx.get(0) == Some(&"production".to_string()) {
+    let store_from = if ctx.get(1) == Some(&"material".to_string()) {
+      match resolve_store(app, wid, &data, "storage_from") {
+        Ok(uuid) => uuid,
+        Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
+      }
+    } else if ctx.get(1) == Some(&"produce".to_string()) {
+      //*********["production", "produce"]***********
+      let area = match app.service("memories").get(
+        Context::local(),
+        document["area"].clone().string(),
+        params,
+      ) {
+        Ok(d) => d,
+        Err(_) => return Err(WHError::new("no area in production")), // TODO handle IO error differently!!!!
+      };
+      match resolve_store(app, wid, &area, "storage") {
+        Ok(uuid) => uuid,
+        Err(_) => return Err(WHError::new("no storage in production")), // TODO handle errors better, allow to catch only 'not found'
+      }
+    } else {
+      return Err(WHError::new("unknown context in production"));
+    };
+
+    Ok((store_from, None))
+  } else {
+    let store_from = match resolve_store(app, wid, document, "storage") {
+      Ok(uuid) => uuid,
+      Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
+    };
+    Ok((store_from, None))
+  };
 }
 
 fn goods(
