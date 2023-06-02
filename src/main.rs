@@ -28,6 +28,7 @@ use actix_web_httpauth::extractors::bearer::{BearerAuth, Config};
 use actix_web_httpauth::extractors::AuthenticationError;
 use actix_web_httpauth::middleware::HttpAuthentication;
 
+use config::FileFormat::Json;
 use dbase::{FieldValue, Record};
 use json::JsonValue;
 use lazy_static::lazy_static;
@@ -127,6 +128,19 @@ async fn reindex(
           uuid.as_str(),
         )?;
       }
+
+      // delete batch from document if it exists
+      let mut after = if after["batch"].is_object() {
+        let mut tmp = JsonValue::new_object();
+        for (name, item) in after.entries() {
+          if name != "batch" {
+            tmp[name] = item.clone();
+          }
+        }
+        tmp
+      } else {
+        after
+      };
 
       text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
 
