@@ -49,3 +49,13 @@ pub(crate) fn save(path: &PathBuf, data: String) -> Result<(), Error> {
     .write_all(data.as_bytes())
     .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))
 }
+
+pub(crate) fn remove_dir(path: &PathBuf) -> Result<(), Error> {
+  let folder = match path.parent() {
+    None => return Err(Error::IOError(format!("can't get parent for {}", path.to_string_lossy()))),
+    Some(f) => f,
+  };
+
+  std::fs::remove_dir_all(folder)
+    .map_err(|e| Error::IOError(format!("can't remove folder {}: {}", folder.to_string_lossy(), e)))
+}
