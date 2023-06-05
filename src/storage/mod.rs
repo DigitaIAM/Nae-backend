@@ -51,7 +51,7 @@ pub(crate) fn save(path: &PathBuf, data: String) -> Result<(), Error> {
 }
 
 pub(crate) fn remove_dir(path: &PathBuf) -> Result<(), Error> {
-  let folder = match path.parent() {
+  let folder = match path.as_path() {
     None => return Err(Error::IOError(format!("can't get parent for {}", path.to_string_lossy()))),
     Some(f) => f,
   };
