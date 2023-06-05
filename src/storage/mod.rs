@@ -51,11 +51,7 @@ pub(crate) fn save(path: &PathBuf, data: String) -> Result<(), Error> {
 }
 
 pub(crate) fn remove_dir(path: &PathBuf) -> Result<(), Error> {
-  let folder = match path.as_path() {
-    None => return Err(Error::IOError(format!("can't get parent for {}", path.to_string_lossy()))),
-    Some(f) => f,
-  };
-
-  std::fs::remove_dir_all(folder)
-    .map_err(|e| Error::IOError(format!("can't remove folder {}: {}", folder.to_string_lossy(), e)))
+  let p = path.as_path();
+  std::fs::remove_dir_all(p)
+    .map_err(|e| Error::IOError(format!("can't remove folder {}: {}", p.to_string_lossy(), e)))
 }
