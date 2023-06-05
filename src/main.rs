@@ -130,17 +130,7 @@ async fn reindex(
       }
 
       // delete batch from document if it exists
-      let mut after = if after["batch"].is_object() {
-        let mut tmp = JsonValue::new_object();
-        for (name, item) in after.entries() {
-          if name != "batch" {
-            tmp[name] = item.clone();
-          }
-        }
-        tmp
-      } else {
-        after
-      };
+      after.remove("batch");
 
       text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
 

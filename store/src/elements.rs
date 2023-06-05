@@ -1,10 +1,12 @@
 // #![allow(dead_code, unused_variables, unused_imports)]
 
 use chrono::{DateTime, Datelike, Month, NaiveDate, Utc};
+use csv::Writer;
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs::OpenOptions;
 use uuid::{uuid, Uuid};
 
 pub use super::error::WHError;
@@ -277,9 +279,20 @@ fn json_to_ops(
 
   log::debug!("DOCUMENT: {:?}", document.dump());
 
-  let date = match document["date"].date_with_check() {
-    Ok(d) => d,
-    Err(_) => return Ok(ops),
+  // let date = match document["date"].date_with_check() {
+  //   Ok(d) => d,
+  //   Err(_) => return Ok(ops),
+  // };
+
+  let date = match ctx_str[..] {
+    ["production", "produce"] => match data["date"].date_with_check() {
+      Ok(d) => d,
+      Err(_) => return Ok(ops),
+    },
+    _ => match document["date"].date_with_check() {
+      Ok(d) => d,
+      Err(_) => return Ok(ops),
+    },
   };
 
   let (store_from, store_into) =
@@ -402,12 +415,6 @@ fn json_to_ops(
     }
   };
 
-  // data["batch"] = object! {
-  //   "_uuid": batch.id.to_string(),
-  //   "date": time_to_string(batch.date),
-  //   "barcode": batch.to_barcode(),
-  // };
-
   // let mut dependant = vec![];
   // match &data["batches"] {
   //   JsonValue::Array(array) => {
@@ -527,7 +534,14 @@ fn goods(
         };
 
       if let Some(goods) = product["goods"].string_or_none() {
-        Ok(app.service("memories").get(Context::local(), goods, goods_params)?)
+        let goods = app.service("memories").get(Context::local(), goods, goods_params)?;
+        write_to_file(
+          document["date"].string(),
+          data["date"].string(),
+          goods["name"].string(),
+          data["qty"].string(),
+        );
+        Ok(goods)
       } else {
         if let (Some(customer), Some(label)) =
           (data["customer"].string_or_none(), data["label"].string_or_none())
@@ -591,4 +605,16 @@ fn resolve_store(
   let storage = app.service("memories").get(Context::local(), store_id, params)?;
   log::debug!("storage {:?}", storage.dump());
   storage["_uuid"].uuid()
+}
+
+fn write_to_file(doc_date: String, date: String, name: String, qty: String) {
+  let file = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .append(true)
+    .open("production.csv")
+    .unwrap();
+  let mut wtr = Writer::from_writer(file);
+
+  wtr.write_record([doc_date, date, name, qty]).unwrap();
 }
