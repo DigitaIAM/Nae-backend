@@ -1,12 +1,10 @@
 // #![allow(dead_code, unused_variables, unused_imports)]
 
 use chrono::{DateTime, Datelike, Month, NaiveDate, Utc};
-use csv::Writer;
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::OpenOptions;
 use uuid::{uuid, Uuid};
 
 pub use super::error::WHError;
@@ -534,16 +532,9 @@ fn goods(
         };
 
       if let Some(goods) = product["goods"].string_or_none() {
-        let goods = app.service("memories").get(Context::local(), goods, goods_params)?;
-        write_to_file(
-          document["date"].string(),
-          data["date"].string(),
-          goods["name"].string(),
-          data["qty"].string(),
-        );
-        Ok(goods)
+        Ok(app.service("memories").get(Context::local(), goods, goods_params)?)
       } else {
-        if let (Some(customer), Some(label)) =
+        return if let (Some(customer), Some(label)) =
           (data["customer"].string_or_none(), data["label"].string_or_none())
         {
           let goods_name =
@@ -565,7 +556,7 @@ fn goods(
           match find["data"].len() {
             1 => {
               // log::debug!("_old_ {:?}", find["data"][0]);
-              return Ok(find["data"][0].clone());
+              Ok(find["data"][0].clone())
             },
             0 => {
               let goods = object! {
@@ -574,12 +565,12 @@ fn goods(
               };
               let res = app.service("memories").create(Context::local(), goods, params)?;
               // log::debug!("_new_ {res:?}");
-              return Ok(res);
+              Ok(res)
             },
-            _ => return Err(WHError::new("More than one goods with same name")),
+            _ => Err(WHError::new("More than one goods with same name")),
           }
         } else {
-          return Err(WHError::new("No data for goods"));
+          Err(WHError::new("No data for goods"))
         };
       }
     },
@@ -605,16 +596,4 @@ fn resolve_store(
   let storage = app.service("memories").get(Context::local(), store_id, params)?;
   log::debug!("storage {:?}", storage.dump());
   storage["_uuid"].uuid()
-}
-
-fn write_to_file(doc_date: String, date: String, name: String, qty: String) {
-  let file = OpenOptions::new()
-    .write(true)
-    .create(true)
-    .append(true)
-    .open("production.csv")
-    .unwrap();
-  let mut wtr = Writer::from_writer(file);
-
-  wtr.write_record([doc_date, date, name, qty]).unwrap();
 }

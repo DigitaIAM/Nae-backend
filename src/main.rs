@@ -269,6 +269,7 @@ async fn startup() -> std::io::Result<()> {
       Ok(())
     },
     "delete" => use_cases::uc_delete::delete(&app),
+    "save" => use_cases::uc_save::save(&app),
     _ => unreachable!(),
   }
 }
