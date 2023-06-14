@@ -160,7 +160,11 @@ pub fn receive_data(
   let mut new_data = data.clone();
   let mut new_before = before.clone();
 
-  let before = match json_to_ops(app, wid, &mut new_before, ctx) {
+  if data["status"].string() == "deleted".to_string() {
+    return Ok(old_data);
+  }
+
+  let before = match json_to_ops(app, wid, &new_before, ctx) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ BEFORE: {}", e.message());
@@ -169,7 +173,7 @@ pub fn receive_data(
     },
   };
 
-  let mut after = match json_to_ops(app, wid, &mut new_data, ctx) {
+  let mut after = match json_to_ops(app, wid, &new_data, ctx) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ AFTER: {}", e.message());
@@ -230,7 +234,7 @@ enum OpType {
 fn json_to_ops(
   app: &(impl GetWarehouse + Services),
   wid: &str,
-  data: &mut JsonValue,
+  data: &JsonValue,
   ctx: &Vec<String>,
 ) -> Result<HashMap<String, Op>, WHError> {
   // log::debug!("json_to_ops {data:?}");
@@ -361,9 +365,7 @@ fn json_to_ops(
   let tid = if let Some(tid) = data["_uuid"].uuid_or_none() {
     tid
   } else {
-    let tid = Uuid::new_v4();
-    data["_uuid"] = JsonValue::String(tid.to_string());
-    tid
+    return Ok(ops);
   };
 
   let batch = if type_of_operation == OpType::Receive {
@@ -551,7 +553,7 @@ fn goods(
             filter: object!{name: goods_name.clone()},
           };
 
-          let find = app.service("memories").find(Context::local(), params.clone())?;
+          let find = app.service("memories").find(Context::local(), params)?;
 
           match find["data"].len() {
             1 => {
@@ -563,6 +565,7 @@ fn goods(
                 name: goods_name,
                 uom: product["uom"].clone(),
               };
+              let params = object! {oid: wid, ctx: ["goods"]};
               let res = app.service("memories").create(Context::local(), goods, params)?;
               // log::debug!("_new_ {res:?}");
               Ok(res)

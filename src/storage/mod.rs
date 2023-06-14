@@ -49,9 +49,3 @@ pub(crate) fn save(path: &PathBuf, data: String) -> Result<(), Error> {
     .write_all(data.as_bytes())
     .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))
 }
-
-pub(crate) fn remove_dir(path: &PathBuf) -> Result<(), Error> {
-  let p = path.as_path();
-  std::fs::remove_dir_all(p)
-    .map_err(|e| Error::IOError(format!("can't remove folder {}: {}", p.to_string_lossy(), e)))
-}
