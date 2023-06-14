@@ -28,7 +28,6 @@ use actix_web_httpauth::extractors::bearer::{BearerAuth, Config};
 use actix_web_httpauth::extractors::AuthenticationError;
 use actix_web_httpauth::middleware::HttpAuthentication;
 
-use config::FileFormat::Json;
 use dbase::{FieldValue, Record};
 use json::JsonValue;
 use lazy_static::lazy_static;
