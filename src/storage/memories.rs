@@ -71,7 +71,9 @@ fn save_data(
   let before = match load(&path_latest) {
     Ok(b) => {
       //WORKAROUND: make sure that id & uuid stay same
-      data["_id"] = b["_id"].clone();
+      if !b["_id"].is_null() {
+        data["_id"] = b["_id"].clone();
+      }
       if !b["_uuid"].is_null() {
         data["_uuid"] = b["_uuid"].clone();
       }
