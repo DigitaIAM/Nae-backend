@@ -72,7 +72,9 @@ fn save_data(
     Ok(b) => {
       //WORKAROUND: make sure that id & uuid stay same
       data["_id"] = b["_id"].clone();
-      data["_uuid"] = b["_uuid"].clone();
+      if !b["_uuid"].is_null() {
+        data["_uuid"] = b["_uuid"].clone();
+      }
       b
     },
     Err(_) => JsonValue::Null,
