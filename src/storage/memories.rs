@@ -164,7 +164,7 @@ impl Memories {
       let _lock = LOCK.lock().unwrap();
 
       let mut count = 0;
-      let mut time = chrono::Utc::now();
+      let mut time = Utc::now();
       loop {
         count += 1;
         if count > 1_000_000 {
