@@ -376,6 +376,22 @@ impl Workspace {
 
     result
   }
+
+  pub(crate) fn produce_iter(self) -> Documents {
+    let mut top_folder = self.folder.clone();
+    top_folder.push("memories/production/produce");
+
+    let it = WalkDir::new(top_folder.clone())
+      .follow_links(false)
+      .into_iter()
+      .filter_map(|e| e.ok())
+      .filter(|e| {
+        let f_name = e.file_name().to_string_lossy();
+        f_name == "latest.json"
+      });
+
+    Documents { ws: self, it: Box::new(it) }
+  }
 }
 
 pub struct Documents {

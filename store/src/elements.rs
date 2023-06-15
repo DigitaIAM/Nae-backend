@@ -537,45 +537,6 @@ fn goods(
         Ok(app.service("memories").get(Context::local(), goods, goods_params)?)
       } else {
         Err(WHError::new("No data for goods"))
-        // return if let (Some(customer), Some(label)) =
-        //   (data["customer"].string_or_none(), data["label"].string_or_none())
-        // {
-        //   let goods_name =
-        //     format!("{} {} {customer} {label}", product["name"], product["part_number"])
-        //       .replace(",", "")
-        //       .replace(".", "")
-        //       .replace("  ", " ");
-        //
-        //   let params = object! {
-        //     oid: wid,
-        //     ctx: ["goods"],
-        //     limit: 1,
-        //     skip: 0,
-        //     filter: object!{name: goods_name.clone()},
-        //   };
-        //
-        //   let find = app.service("memories").find(Context::local(), params)?;
-        //
-        //   match find["data"].len() {
-        //     1 => {
-        //       // log::debug!("_old_ {:?}", find["data"][0]);
-        //       Ok(find["data"][0].clone())
-        //     },
-        //     0 => {
-        //       let goods = object! {
-        //         name: goods_name,
-        //         uom: product["uom"].clone(),
-        //       };
-        //       let params = object! {oid: wid, ctx: ["goods"]};
-        //       let res = app.service("memories").create(Context::local(), goods, params)?;
-        //       // log::debug!("_new_ {res:?}");
-        //       Ok(res)
-        //     },
-        //     _ => Err(WHError::new("More than one goods with same name")),
-        //   }
-        // } else {
-        //   Err(WHError::new("No data for goods"))
-        // };
       }
     },
     _ => Ok(
