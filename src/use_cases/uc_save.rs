@@ -7,14 +7,21 @@ use service::utils::json::JsonParams;
 use service::{Context, Services};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Error, ErrorKind};
+use values::ID;
 
 pub fn save_roll(app: &Application) -> Result<(), Error> {
   let mut count = 0;
 
-  let ws = app.wss.list()?[0].clone();
+  let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
+    .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
+  let ws = app.wss.get(&oid);
+
+  let ctx = ["production".to_string(), "produce".to_string()].to_vec();
+  let produce_docs = ws.memories(ctx).list(Some(false))?;
+
   let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
 
-  for doc in ws.clone().into_iter() {
+  for doc in produce_docs {
     let ctx = doc.mem.ctx.clone();
 
     let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
@@ -94,10 +101,16 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
 pub fn save_half_stuff_cups(app: &Application) -> Result<(), Error> {
   let mut count = 0;
 
-  let ws = app.wss.list()?[0].clone();
+  let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
+    .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
+  let ws = app.wss.get(&oid);
+
+  let ctx = ["production".to_string(), "produce".to_string()].to_vec();
+  let produce_docs = ws.memories(ctx).list(Some(false))?;
+
   let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
 
-  for doc in ws.clone().into_iter() {
+  for doc in produce_docs {
     let ctx = doc.mem.ctx.clone();
 
     let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
@@ -186,10 +199,16 @@ pub fn save_half_stuff_cups(app: &Application) -> Result<(), Error> {
 pub fn save_produced(app: &Application) -> Result<(), Error> {
   let mut count = 0;
 
-  let ws = app.wss.list()?[0].clone();
+  let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
+    .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
+  let ws = app.wss.get(&oid);
+
+  let ctx = ["production".to_string(), "material".to_string(), "produced".to_string()].to_vec();
+  let produced_docs = ws.memories(ctx).list(None)?;
+
   let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
 
-  for doc in ws.clone().into_iter() {
+  for doc in produced_docs {
     let ctx = doc.mem.ctx.clone();
 
     let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
