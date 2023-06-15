@@ -187,6 +187,7 @@ impl Service for MemoriesInFiles {
           .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
           .filter(|o| o.is_object())
           .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
+          .filter(|o| o["status"].string() != "deleted".to_string())
           .map(|o| o["qty"].number())
           .map(|o| {
             boxes += 1;
