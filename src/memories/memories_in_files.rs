@@ -114,6 +114,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
+        .filter(|o| o["status"].string() != "deleted".to_string())
         .filter(|o| {
           for (_name, v) in o.entries() {
             if let Some(str) = v.as_str() {
@@ -143,6 +144,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
+        .filter(|o| o["status"].string() != "deleted".to_string())
         .filter(|o| filters.entries().all(|(n, v)| &o[n] == v))
         .map(|o| {
           total += 1;
@@ -166,6 +168,8 @@ impl Service for MemoriesInFiles {
           .skip(skip)
           .take(limit)
           .map(|o| o.json())
+          // there shouldn't be status filter because we want to show all objects in relevant menu section (but not in pop up list)
+          // .filter(|o| o.as_ref().unwrap()["status"].string() != "deleted".to_string())
           .collect::<Result<_, _>>()?,
       )
     };
