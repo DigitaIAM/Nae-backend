@@ -480,9 +480,9 @@ fn storages(
     Ok((store_from, Some(store_into)))
   } else if ctx.get(0) == Some(&"production".to_string()) {
     let store_from = if ctx.get(1) == Some(&"material".to_string()) {
-      match resolve_store(app, wid, &data, "storage_from") {
+      match resolve_store(app, wid, &data, "storage_into") {
         Ok(uuid) => uuid,
-        Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
+        Err(_) => return Err(WHError::new("no storage for production/material")), // TODO handle errors better, allow to catch only 'not found'
       }
     } else if ctx.get(1) == Some(&"produce".to_string()) {
       //*********["production", "produce"]***********

@@ -284,6 +284,11 @@ pub fn process_record(
     object! {name: "uzd"}
   })?;
 
+  let comment = match &record[11] {
+    "" => None,
+    s => Some(s),
+  };
+
   let mut data = object! {
     document: document["_id"].clone(),
     goods: item["_id"].clone(),
@@ -304,6 +309,10 @@ pub fn process_record(
     } else {
       data["sell_cost"] = object! { number: cost.to_json(), currency: currency["_id"].clone() };
     }
+  }
+
+  if let Some(c) = comment {
+    data["comment"] = c.into();
   }
 
   let _res = memories_create(app, data, ctx.clone())?;
