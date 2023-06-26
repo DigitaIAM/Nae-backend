@@ -289,6 +289,8 @@ pub fn process_record(
     s => Some(s),
   };
 
+  let comment = record[11].trim();
+
   let mut data = object! {
     document: document["_id"].clone(),
     goods: item["_id"].clone(),
@@ -311,8 +313,8 @@ pub fn process_record(
     }
   }
 
-  if let Some(c) = comment {
-    data["comment"] = c.into();
+  if !comment.is_empty() {
+    data["comment"] = comment.into();
   }
 
   let _res = memories_create(app, data, ctx.clone())?;
