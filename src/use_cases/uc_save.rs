@@ -1,12 +1,14 @@
 use crate::commutator::Application;
 use crate::storage;
 use actix_web::App;
-use csv::Writer;
+use csv::{ReaderBuilder, Trim, Writer};
 use json::object;
 use service::utils::json::JsonParams;
 use service::{Context, Services};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Error, ErrorKind};
+use store::error::WHError;
+use store::process_records::memories_find;
 use values::ID;
 
 pub fn save_roll(app: &Application) -> Result<(), Error> {
@@ -331,6 +333,116 @@ pub fn save_produced(app: &Application) -> Result<(), Error> {
         count += 1;
       },
       _ => continue,
+    }
+  }
+
+  println!("count {count}");
+
+  Ok(())
+}
+
+pub fn save_transfer(app: &Application) -> Result<(), Error> {
+  let mut count = 0;
+
+  let mut reader = ReaderBuilder::new()
+    .delimiter(b',')
+    .trim(Trim::All)
+    .from_path("./import/transfer_extra.csv")
+    .unwrap();
+
+  let doc_ctx = ["warehouse", "transfer", "document"].to_vec();
+  let storage_ctx = ["warehouse", "storage"].to_vec();
+  let op_ctx = ["warehouse", "transfer"].to_vec();
+
+  for record in reader.records() {
+    let record = record.unwrap();
+    let number = match &record[0] {
+      "" => "-1",
+      n => n,
+    };
+
+    let date = &record[7];
+    let date = format!("{}-{}-{}", &date[6..=9], &date[3..=4], &date[0..=1]);
+
+    let from_name = &record[8].replace("\\", "").replace("\"", "").replace(",,", ",");
+
+    let from = if let Ok(items) =
+      memories_find(app, object! { name: from_name.to_string() }, storage_ctx.clone())
+    {
+      match items.len() {
+        0 => Err(WHError::new("not found")),
+        1 => Ok(items[0].clone()),
+        _ => Err(WHError::new("too many docs found")),
+      }
+    } else {
+      Err(WHError::new("not found"))
+    }
+    .unwrap();
+
+    let into_name = &record[9].replace("\\", "").replace("\"", "").replace(",,", ",");
+    let into = if let Ok(items) =
+      memories_find(app, object! { name: into_name.to_string() }, storage_ctx.clone())
+    {
+      match items.len() {
+        0 => Err(WHError::new("not found")),
+        1 => Ok(items[0].clone()),
+        _ => Err(WHError::new("too many docs found")),
+      }
+    } else {
+      Err(WHError::new("not found"))
+    }
+    .unwrap();
+
+    let filter = object! {number: number, from: from["_id"].clone(), into: into["_id"].clone(), date: date.clone()};
+
+    let doc = if let Ok(items) = memories_find(app, filter, doc_ctx.clone()) {
+      match items.len() {
+        0 => Err(WHError::new("not found")),
+        1 => Ok(items[0].clone()),
+        _ => Err(WHError::new("too many docs found")),
+      }
+    } else {
+      Err(WHError::new("not found"))
+    }
+    .unwrap();
+
+    let operations = memories_find(app, object! { document: doc["_id"].string() }, op_ctx.clone())?;
+
+    // println!("_OPERS {operations:?}");
+
+    let file = OpenOptions::new()
+      .write(true)
+      .create(true)
+      .append(true)
+      .open("transfer_ops.csv")
+      .unwrap();
+    let mut wtr = Writer::from_writer(file);
+
+    for op in operations {
+      let goods_name = op["goods"]["name"].string();
+      let uom = op["qty"]["uom"]["name"].string();
+      let qty = op["qty"]["number"].string();
+
+      if goods_name != record[2].to_string().replace("\"", "")
+        || uom != record[4].to_string()
+        || qty != record[5].to_string()
+      {
+        continue;
+      }
+
+      wtr
+        .write_record([
+          doc["number"].string(),
+          doc["date"].string(),
+          goods_name,
+          qty,
+          uom,
+          from["name"].string(),
+          into["name"].string(),
+        ])
+        .unwrap();
+
+      count += 1;
     }
   }
 

@@ -58,7 +58,7 @@ pub fn receive_csv_to_json(
   Ok(())
 }
 
-pub(crate) fn memories_find(
+pub fn memories_find(
   app: &(impl GetWarehouse + Services),
   filter: JsonValue,
   ctx: Vec<&str>,
@@ -284,6 +284,13 @@ pub fn process_record(
     object! {name: "uzd"}
   })?;
 
+  let comment = match &record[11] {
+    "" => None,
+    s => Some(s),
+  };
+
+  let comment = record[11].trim();
+
   let mut data = object! {
     document: document["_id"].clone(),
     goods: item["_id"].clone(),
@@ -304,6 +311,10 @@ pub fn process_record(
     } else {
       data["sell_cost"] = object! { number: cost.to_json(), currency: currency["_id"].clone() };
     }
+  }
+
+  if !comment.is_empty() {
+    data["comment"] = comment.into();
   }
 
   let _res = memories_create(app, data, ctx.clone())?;
