@@ -272,6 +272,7 @@ async fn startup() -> std::io::Result<()> {
       "roll" => use_cases::uc_save::save_roll(&app),
       "cups" => use_cases::uc_save::save_half_stuff_cups(&app),
       "produced" => use_cases::uc_save::save_produced(&app),
+      "transfer" => use_cases::uc_save::save_transfer(&app),
       _ => unreachable!(),
     },
     _ => unreachable!(),

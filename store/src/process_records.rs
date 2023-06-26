@@ -58,7 +58,7 @@ pub fn receive_csv_to_json(
   Ok(())
 }
 
-pub(crate) fn memories_find(
+pub fn memories_find(
   app: &(impl GetWarehouse + Services),
   filter: JsonValue,
   ctx: Vec<&str>,
