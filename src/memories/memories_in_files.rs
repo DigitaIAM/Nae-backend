@@ -114,7 +114,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| o["status"].string() != "deleted".to_string())
+        .filter(|o| show_deleted(&ctx) || o["status"].string() != "deleted".to_string())
         .filter(|o| {
           for (_name, v) in o.entries() {
             if let Some(str) = v.as_str() {
@@ -144,7 +144,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| o["status"].string() != "deleted".to_string())
+        .filter(|o| show_deleted(&ctx) || o["status"].string() != "deleted".to_string())
         .filter(|o| filters.entries().all(|(n, v)| &o[n] == v))
         .map(|o| {
           total += 1;
@@ -173,6 +173,17 @@ impl Service for MemoriesInFiles {
           .collect::<Result<_, _>>()?,
       )
     };
+
+    fn show_deleted(ctx: &Vec<String>) -> bool {
+      let ctx: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+
+      match ctx[..] {
+        ["warehouse", "receive"] => true,
+        ["warehouse", "transfer"] => true,
+        ["warehouse", "dispatch"] => true,
+        _ => false,
+      }
+    }
 
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
