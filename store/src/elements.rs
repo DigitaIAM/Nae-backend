@@ -160,9 +160,9 @@ pub fn receive_data(
   let mut new_data = data.clone();
   let mut new_before = before.clone();
 
-  // if data["status"].string() == "deleted".to_string() {
-  //   return Ok(old_data);
-  // }
+  if data["status"].string() == "deleted".to_string() {
+    return Ok(old_data);
+  }
 
   let before = match json_to_ops(app, wid, &new_before, ctx) {
     Ok(res) => res,
@@ -334,31 +334,24 @@ fn json_to_ops(
       }
     },
     OpType::Receive => {
-      let qty = if data["status"] == "deleted" {
-        None
-      } else {
-        match ctx_str[..] {
-          ["production", "produce"] => data["qty"].number_or_none(),
-          _ => data["qty"]["number"].number_or_none(),
-        }
+      let qty = match ctx_str[..] {
+        ["production", "produce"] => data["qty"].number_or_none(),
+        _ => data["qty"]["number"].number_or_none(),
       };
-      let cost =
-        if data["status"] == "deleted" { None } else { data["cost"]["number"].number_or_none() };
+      let cost = data["cost"]["number"].number_or_none();
 
       if qty.is_none() && cost.is_none() {
-        // return Ok(ops);
-        InternalOperation::Receive(0.into(), 0.into())
+        return Ok(ops);
       } else {
         InternalOperation::Receive(qty.unwrap_or_default(), cost.unwrap_or_default().into())
       }
     },
     OpType::Transfer | OpType::Dispatch => {
-      let qty = if data["status"] == "deleted" { None } else { data["qty"]["number"].number_or_none() };
-      let cost = if data["status"] == "deleted" { None } else { data["cost"]["number"].number_or_none() };
+      let qty = data["qty"]["number"].number_or_none();
+      let cost = data["cost"]["number"].number_or_none();
 
       if qty.is_none() && cost.is_none() {
-        // return Ok(ops);
-        InternalOperation::Issue(0.into(), 0.into(), Mode::Manual)
+        return Ok(ops);
       } else {
         let (cost, mode) =
           if let Some(cost) = cost { (cost.into(), Mode::Manual) } else { (0.into(), Mode::Auto) };
