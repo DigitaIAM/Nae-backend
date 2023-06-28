@@ -160,10 +160,6 @@ pub fn receive_data(
   let mut new_data = data.clone();
   let mut new_before = before.clone();
 
-  if data["status"].string() == "deleted".to_string() {
-    return Ok(old_data);
-  }
-
   let before = match json_to_ops(app, wid, &new_before, ctx) {
     Ok(res) => res,
     Err(e) => {
@@ -184,6 +180,16 @@ pub fn receive_data(
 
   log::debug!("OPS BEFOR: {before:#?}");
   log::debug!("OPS AFTER: {after:#?}");
+
+  if data["status"].string() == "deleted".to_string() {
+    if !before.is_empty() {
+      app.warehouse().delete_ops(Vec::from_iter(before.into_values()))?;
+      return Ok(old_data);
+    } else {
+      app.warehouse().delete_ops(Vec::from_iter(after.into_values()))?;
+      return Ok(old_data);
+    }
+  }
 
   let mut before = before.into_iter();
 

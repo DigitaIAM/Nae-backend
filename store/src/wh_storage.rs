@@ -1,5 +1,5 @@
 use crate::checkpoints::CheckpointTopology;
-use crate::operations::OpMutation;
+use crate::operations::{Op, OpMutation};
 use crate::ordered_topology::OrderedTopology;
 use crate::topologies::store_batch_date_type_id::StoreBatchDateTypeId;
 use crate::topologies::store_goods_date_type_id_batch::StoreGoodsDateTypeIdBatch;
@@ -19,6 +19,15 @@ pub struct WHStorage {
 impl WHStorage {
   pub fn mutate(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
     Ok(self.database.record_ops(ops)?)
+  }
+
+  pub fn delete_ops(&self, ops: Vec<Op>) -> Result<(), WHError> {
+    for ordered_topology in self.database.ordered_topologies.iter() {
+      for op in &ops {
+        ordered_topology.del(op)?;
+      }
+    }
+    Ok(())
   }
 
   pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, WHError> {
