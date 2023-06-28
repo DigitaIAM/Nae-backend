@@ -160,10 +160,6 @@ pub fn receive_data(
   let mut new_data = data.clone();
   let mut new_before = before.clone();
 
-  if data["status"].string() == "deleted".to_string() {
-    return Ok(old_data);
-  }
-
   let before = match json_to_ops(app, wid, &new_before, ctx) {
     Ok(res) => res,
     Err(e) => {
@@ -242,6 +238,10 @@ fn json_to_ops(
   let mut ops = HashMap::new();
 
   if !data.is_object() {
+    return Ok(ops);
+  }
+
+  if data["status"].string() == "deleted".to_string() {
     return Ok(ops);
   }
 

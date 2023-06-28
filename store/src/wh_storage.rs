@@ -1,5 +1,5 @@
 use crate::checkpoints::CheckpointTopology;
-use crate::operations::OpMutation;
+use crate::operations::{Op, OpMutation};
 use crate::ordered_topology::OrderedTopology;
 use crate::topologies::store_batch_date_type_id::StoreBatchDateTypeId;
 use crate::topologies::store_goods_date_type_id_batch::StoreGoodsDateTypeIdBatch;
