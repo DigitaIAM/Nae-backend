@@ -181,16 +181,6 @@ pub fn receive_data(
   log::debug!("OPS BEFOR: {before:#?}");
   log::debug!("OPS AFTER: {after:#?}");
 
-  if data["status"].string() == "deleted".to_string() {
-    if !before.is_empty() {
-      app.warehouse().delete_ops(Vec::from_iter(before.into_values()))?;
-      return Ok(old_data);
-    } else {
-      app.warehouse().delete_ops(Vec::from_iter(after.into_values()))?;
-      return Ok(old_data);
-    }
-  }
-
   let mut before = before.into_iter();
 
   let mut ops: Vec<OpMutation> = Vec::new();
@@ -248,6 +238,10 @@ fn json_to_ops(
   let mut ops = HashMap::new();
 
   if !data.is_object() {
+    return Ok(ops);
+  }
+
+  if data["status"].string() == "deleted".to_string() {
     return Ok(ops);
   }
 

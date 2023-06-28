@@ -21,15 +21,6 @@ impl WHStorage {
     Ok(self.database.record_ops(ops)?)
   }
 
-  pub fn delete_ops(&self, ops: Vec<Op>) -> Result<(), WHError> {
-    for ordered_topology in self.database.ordered_topologies.iter() {
-      for op in &ops {
-        ordered_topology.del(op)?;
-      }
-    }
-    Ok(())
-  }
-
   pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, WHError> {
     std::fs::create_dir_all(&path).map_err(|e| WHError::new("Can't create folder for WHStorage"))?;
 
