@@ -176,6 +176,36 @@ pub fn delete(
   app.warehouse().mutate(&ops).unwrap();
 }
 
+pub fn update(
+  app: &Application,
+  date: &str,
+  store: Store,
+  into: Option<Store>,
+  goods: Goods,
+  id: Uuid,
+  batch: Batch,
+  before: InternalOperation,
+  after: InternalOperation,
+) {
+  let mut ops = vec![];
+
+  let date = dt(date).unwrap();
+  ops.push(OpMutation {
+    id: id.clone(),
+    date: date.clone(),
+    store,
+    transfer: into,
+    goods,
+    batch,
+    before: Some(before),
+    after: Some(after),
+    is_dependent: false,
+    dependant: vec![],
+  });
+
+  app.warehouse().mutate(&ops).unwrap();
+}
+
 pub fn transfer(
   app: &Application,
   date: &str,
