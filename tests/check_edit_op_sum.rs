@@ -47,6 +47,7 @@ async fn check_zero_batch_deleted() {
   log::debug!("transfer 07.01 s1 > s2 14007.6");
   let t1 = transfer(&app, "2023-01-07", s1, s2, g1, "14007.6".try_into().unwrap());
 
+  log::debug!("update receive 06.01.23 s1 14000 > 14007.6");
   update(
     &app,
     "2023-01-06",

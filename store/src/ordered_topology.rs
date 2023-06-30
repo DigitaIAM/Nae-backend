@@ -455,7 +455,7 @@ pub trait OrderedTopology {
       InternalOperation::Issue(q, c, m) => {
         let mut cost = c.clone();
         let op = if m == &Mode::Auto {
-          cost = balance.price().cost(*q);
+          cost = if balance.qty == *q { balance.cost } else { balance.price().cost(*q) };
           Op {
             id: op.id,
             date: op.date,
