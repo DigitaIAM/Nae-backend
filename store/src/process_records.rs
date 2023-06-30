@@ -64,7 +64,7 @@ pub fn memories_find(
   ctx: Vec<&str>,
 ) -> Result<Vec<JsonValue>, Error> {
   let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-  let params = object! {oid: oid, ctx: ctx, filter: filter};
+  let params = object! {oid: oid, ctx: ctx, filter: filter, "$limit": 100};
   let result = app.service("memories").find(Context::local(), params)?;
 
   Ok(result["data"].members().map(|o| o.clone()).collect())
