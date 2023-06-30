@@ -2,7 +2,7 @@ use crate::commutator::Application;
 use crate::storage;
 use actix_web::App;
 use csv::{ReaderBuilder, Trim, Writer};
-use json::object;
+use json::{object, JsonValue};
 use service::utils::json::JsonParams;
 use service::{Context, Services};
 use std::fs::{File, OpenOptions};
@@ -341,7 +341,7 @@ pub fn save_produced(app: &Application) -> Result<(), Error> {
   Ok(())
 }
 
-pub fn save_transfer(app: &Application) -> Result<(), Error> {
+pub fn save_transfer_from_file(app: &Application) -> Result<(), Error> {
   let mut count = 0;
 
   let mut reader = ReaderBuilder::new()
@@ -444,6 +444,120 @@ pub fn save_transfer(app: &Application) -> Result<(), Error> {
 
       count += 1;
     }
+  }
+
+  println!("count {count}");
+
+  Ok(())
+}
+
+pub fn save_transfer_for_goods(app: &Application) -> Result<(), Error> {
+  let mut count = 0;
+
+  let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
+    .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
+  let ws = app.wss.get(&oid);
+
+  let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+
+  let goods_filter = object! {name: "Гофрокоробка 50*57*37.5"};
+
+  let goods = if let Ok(goods) = memories_find(app, goods_filter, ["goods"].to_vec()) {
+    match goods.len() {
+      0 => Err(WHError::new("goods not found")),
+      1 => Ok(goods[0].clone()),
+      _ => Err(WHError::new("too many goods found")),
+    }
+  } else {
+    Err(WHError::new("goods not found"))
+  }
+  .unwrap();
+
+  println!("_goods: {:?}", goods);
+
+  let filter = object! {goods: goods["_id"].string()};
+
+  let transfer_ops =
+    if let Ok(items) = memories_find(app, filter, ["warehouse", "receive"].to_vec()) {
+      match items.len() {
+        0 => Err(WHError::new("not found")),
+        1 => Ok(items),
+        _ => Ok(items),
+      }
+    } else {
+      Err(WHError::new("not found"))
+    }
+    .unwrap();
+
+  println!("_transfers: {:?}", transfer_ops.len());
+
+  for transfer in transfer_ops {
+    let document = match app.service("memories").get(
+      Context::local(),
+      transfer["document"].string(),
+      params.clone(),
+    ) {
+      Ok(p) => p,
+      Err(_) => JsonValue::Null,
+    };
+
+    let from = match app.service("memories").get(
+      Context::local(),
+      document["counterparty"].string(),
+      params.clone(),
+    ) {
+      Ok(p) => p,
+      Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find from storage")),
+    };
+
+    let into = match app.service("memories").get(
+      Context::local(),
+      document["storage"].string(),
+      params.clone(),
+    ) {
+      Ok(p) => p,
+      Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find into storage")),
+    };
+
+    let storage_from = match app.service("memories").get(
+      Context::local(),
+      transfer["storage_from"].string(),
+      params.clone(),
+    ) {
+      Ok(p) => p,
+      Err(_) => JsonValue::Null,
+    };
+
+    let storage_into = match app.service("memories").get(
+      Context::local(),
+      transfer["storage_into"].string(),
+      params.clone(),
+    ) {
+      Ok(p) => p,
+      Err(_) => JsonValue::Null,
+    };
+
+    let file = OpenOptions::new()
+      .write(true)
+      .create(true)
+      .append(true)
+      .open("receive_boxes.csv")
+      .unwrap();
+    let mut wtr = Writer::from_writer(file);
+
+    wtr
+      .write_record([
+        document["date"].string(),
+        goods["name"].string(),
+        from["name"].string(),
+        into["name"].string(),
+        transfer["qty"]["number"].string(),
+        storage_from["name"].string(),
+        storage_into["name"].string(),
+      ])
+      .unwrap();
+
+    count += 1;
   }
 
   println!("count {count}");
