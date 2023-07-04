@@ -369,32 +369,10 @@ fn json_to_ops(
   };
 
   let batch = if type_of_operation == OpType::Receive {
-    if ctx.get(1) == Some(&"produce".to_string()) {
+    if ctx == &vec!["production".to_owned(), "produce".to_owned()] {
       match document["_uuid"].uuid_or_none() {
         Some(id) => Batch { id, date },
-        None => {
-          let did = Uuid::new_v4();
-          document["_uuid"] = JsonValue::String(did.to_string());
-          // patch order
-          let _app = app.service("memories");
-          let params = object! {oid: wid, ctx: vec!["production", "produce"] };
-          let _doc = _app.patch(Context::local(), document["_id"].string(), document, params)?;
-          log::debug!("__doc {:#?}", _doc.dump());
-
-          // save_data(
-          //   app,
-          //   &_app.ws,
-          //   &_app.top_folder,
-          //   &folder,
-          //   &_app.ctx,
-          //   &document["_id"].to_string(),
-          //   Some(did),
-          //   time,
-          //   data,
-          // )?
-
-          Batch { id: _doc["_uuid"].uuid()?, date }
-        },
+        None => return Ok(ops), // TODO: assert!(false)
       }
     } else {
       Batch { id: tid, date }
@@ -414,16 +392,6 @@ fn json_to_ops(
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
     }
   };
-
-  // let mut dependant = vec![];
-  // match &data["batches"] {
-  //   JsonValue::Array(array) => {
-  //     for batch in array {
-  //       dependant.push(Batch { id: batch["id"].uuid()?, date: batch["date"].date_with_check()? });
-  //     }
-  //   },
-  //   _ => (),
-  // }
 
   let op = Op {
     id: tid,
