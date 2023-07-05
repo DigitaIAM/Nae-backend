@@ -1,4 +1,4 @@
-extern crate json;
+use quick_error::quick_error;
 
 use json::JsonValue;
 

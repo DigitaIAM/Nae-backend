@@ -1,7 +1,3 @@
-extern crate actix_web;
-extern crate nae_backend;
-extern crate structopt;
-
 mod test_init;
 
 use test_init::init;

@@ -165,7 +165,6 @@ impl<'a,O:FromKVBytes<O>> Iterator for BetweenHeavyIterator<'a,O> {
 }
 
 impl OpsManager {
-
     pub(crate) fn ops_between_light<'a,O,F,T>(
         &self, s: &'a Snapshot, from: &'a F, till: &'a T
     ) -> BetweenLightIterator<'a,O>

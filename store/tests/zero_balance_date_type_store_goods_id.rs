@@ -1,7 +1,3 @@
-extern crate uuid;
-extern crate tempfile;
-extern crate store;
-
 use uuid::Uuid;
 use tempfile::TempDir;
 use store::wh_storage::WHStorage;

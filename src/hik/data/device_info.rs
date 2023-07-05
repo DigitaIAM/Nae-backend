@@ -1,5 +1,6 @@
 use minidom::Element;
 use serde::{Deserialize, Serialize};
+use quick_error::quick_error;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct DeviceInfo {

@@ -1,5 +1,3 @@
-extern crate store;
-
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::elements::{
   dt, AggregationStore, AgregationStoreGoods, Balance, Batch, InternalOperation, Mode, OpMutation,

@@ -1,9 +1,3 @@
-extern crate chrono;
-extern crate json;
-extern crate rust_decimal;
-extern crate service;
-extern crate uuid;
-
 use wh_storage::WHStorage;
 
 pub mod aggregations;
