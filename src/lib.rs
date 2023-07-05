@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate quick_error;
-
 mod auth;
 pub mod commutator;
 mod file;

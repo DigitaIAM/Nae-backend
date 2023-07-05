@@ -1,7 +1,3 @@
-extern crate actix_web;
-extern crate chrono;
-extern crate json;
-
 pub mod error;
 pub mod utils;
 
@@ -14,9 +10,6 @@ use std::time::Duration;
 use error::Error;
 use utils::json::JsonParams;
 use utils::time::DateRange;
-
-#[macro_use]
-extern crate quick_error;
 
 use values::{ID, ID_MIN};
 

@@ -1,7 +1,3 @@
-extern crate tempfile;
-extern crate store;
-extern crate uuid;
-
 use tempfile::TempDir;
 use store::wh_storage::WHStorage;
 use store::elements::{dt, Batch, OpMutation, InternalOperation, Mode, Balance};

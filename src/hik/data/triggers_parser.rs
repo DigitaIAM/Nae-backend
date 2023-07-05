@@ -1,5 +1,7 @@
 use minidom::Element;
 use serde::{Deserialize, Serialize};
+use quick_error::quick_error;
+
 use crate::hik::data::event_type::EventIdentifier;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]

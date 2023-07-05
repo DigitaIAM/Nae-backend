@@ -1,6 +1,3 @@
-extern crate store;
-extern crate rocksdb;
-
 use store::error::WHError;
 use tempfile::TempDir;
 use store::wh_storage::WHStorage;

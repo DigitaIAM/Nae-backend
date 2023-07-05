@@ -1,5 +1,4 @@
-
-
+use quick_error::quick_error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

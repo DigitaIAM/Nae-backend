@@ -1,6 +1,3 @@
-extern crate store;
-extern crate uuid;
-
 use store::elements::{dt, Batch};
 use uuid::Uuid;
 use store::check_date_store_batch::CheckDateStoreBatch;

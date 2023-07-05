@@ -1,7 +1,3 @@
-extern crate uuid;
-extern crate store;
-extern crate tempfile;
-
 use uuid::Uuid;
 use tempfile::TempDir;
 use store::error::WHError;
