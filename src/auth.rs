@@ -189,13 +189,7 @@ pub(crate) async fn logout(
   let account =
     Account::jwt(app.get_ref(), auth.token()).map_err(actix_web::error::ErrorUnauthorized)?;
 
-  let now = now_in_millis();
-
-  log::debug!("logout {}", now);
-
-  let mutation =
-    vec![ChangeTransformation::create(*DESC, account.id, "last_logout", Value::U128(now))];
-  app.db.modify(mutation).map_err(actix_web::error::ErrorInternalServerError)?;
+  logout_procedure(&app, account).map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
   Ok(HttpResponse::Ok().json("logged out"))
 }
@@ -308,6 +302,18 @@ pub(crate) fn login_procedure(
   } else {
     Err("invalid password".to_string())
   }
+}
+
+pub(crate) fn logout_procedure(app: &Application, account: Account) -> Result<(), String> {
+  let now = now_in_millis();
+
+  log::debug!("logout {}", now);
+
+  let mutation =
+    vec![ChangeTransformation::create(*DESC, account.id, "last_logout", Value::U128(now))];
+  app.db.modify(mutation)?;
+
+  Ok(())
 }
 
 #[post("/ping")]

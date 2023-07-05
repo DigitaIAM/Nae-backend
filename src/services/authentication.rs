@@ -106,7 +106,11 @@ impl Service for Authentication {
     Err(Error::NotImplemented)
   }
 
-  fn remove(&self, _ctx: Context, _id: String, _params: Params) -> crate::services::Result {
-    Err(Error::NotImplemented)
+  fn remove(&self, ctx: Context, _id: String, _params: Params) -> crate::services::Result {
+    let account = { ctx.account.read().unwrap().clone() };
+    match crate::auth::logout_procedure(&self.app, account) {
+      Ok(_) => Ok(JsonValue::Null),
+      Err(msg) => Err(Error::GeneralError(msg)),
+    }
   }
 }
