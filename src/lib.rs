@@ -12,7 +12,6 @@ mod utils;
 mod websocket;
 mod ws;
 
-mod accounts;
 pub mod animo;
 pub mod api;
 mod hr;
