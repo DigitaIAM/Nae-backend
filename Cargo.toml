@@ -73,8 +73,7 @@ json = "0.12.4" # replacement for serde_json ?
 #bincode = "1.3.3"
 base64 = "0.21"
 
-#ckb-rocksdb have transaction
-rocksdb = { version = "0.20", default-features = false, features = ["lz4", "multi-threaded-cf"] }
+rocksdb = { version = "0.21", default-features = false, features = ["lz4", "multi-threaded-cf"] }
 
 tantivy = { version = "0.19", features = ["mmap"] }
 simsearch = "0.2.4"
