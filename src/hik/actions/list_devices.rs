@@ -75,6 +75,40 @@ impl ToHttpRequest for PostRequest {
 
 #[derive(Debug, Message)]
 #[rtype(result = "()")]
+pub struct PutRequest {
+  pub id: ID,
+
+  pub url: Url,
+  pub username: String,
+  pub password: String,
+
+  pub json: String,
+}
+
+struct DataJson {
+  client: Client,
+  url: Url,
+  json: String,
+}
+
+#[async_trait]
+impl RequestGenerator for DataJson {
+  async fn request(&self) -> crate::hik::error::Result<RequestBuilder> {
+    let bytes = self.json.as_bytes().to_vec();
+    let record = multipart::Part::bytes(bytes)
+      .mime_str("application/json")
+      .map_err(|e| Error::IOError(e.to_string()))?;
+
+    let parts = multipart::Form::new() // custom(gen_boundary())
+      .percent_encode_noop()
+      .part("FaceDataRecord", record);
+
+    Ok(self.client.put(self.url.clone()).multipart(parts))
+  }
+}
+
+#[derive(Debug, Message)]
+#[rtype(result = "()")]
 pub struct PutMultiRequest {
   pub id: ID,
 
@@ -136,6 +170,18 @@ impl RequestGenerator for Data {
       .part("img", file);
 
     Ok(self.client.put(self.url.clone()).multipart(parts))
+  }
+}
+
+#[async_trait]
+impl ToHttpRequest for PutRequest {
+  async fn request(&self, client: Client) -> Result<Response, Error> {
+    let url = self.url.clone();
+    let json = self.json.clone();
+
+    let builder = DataJson { client, url, json };
+
+    digest_auth(builder, &self.username, &self.password).await
   }
 }
 
@@ -286,6 +332,38 @@ impl DeviceMgmt {
       password: self.password.clone(),
     })
   }
+
+  pub(crate) fn delete_picture(
+    &self,
+    id: ID,
+    dev_index: &String,
+    employee: ID,
+  ) -> Result<PutRequest, Error> {
+    let protocol = &self.protocol;
+    let ip = &self.ip;
+    let port = self.port.as_ref().map(|p| format!(":{}", p)).unwrap_or_default();
+    let path = format!("/ISAPI/Intelligent/FDLib/FDSetUp?format=json&devIndex={dev_index}");
+
+    let url = format!("{protocol}://{ip}{port}{path}");
+    // println!("url {url}");
+    let url = Url::parse(url.as_str()).map_err(|e| Error::UrlError(e.to_string()))?;
+
+    let record = json::object! {
+      "faceLibType": "blackFD",
+      "FDID": "1",
+      "FPID": employee.to_clear(),
+      "deleteFP": true,
+    };
+    let json = record.dump();
+
+    Ok(PutRequest {
+      id,
+      url,
+      json,
+      username: self.username.clone(),
+      password: self.password.clone(),
+    })
+  }
 }
 
 pub struct HttpClient {
@@ -362,6 +440,16 @@ impl Handler<PostRequest> for HttpClient {
   type Result = ();
 
   fn handle(&mut self, msg: PostRequest, ctx: &mut Self::Context) -> Self::Result {
+    let app = self.app.clone();
+    let client = self.client.clone();
+    actix_web::rt::spawn(async move { HttpClient::process(app, client, msg.id, msg).await });
+  }
+}
+
+impl Handler<PutRequest> for HttpClient {
+  type Result = ();
+
+  fn handle(&mut self, msg: PutRequest, ctx: &mut Self::Context) -> Self::Result {
     let app = self.app.clone();
     let client = self.client.clone();
     actix_web::rt::spawn(async move { HttpClient::process(app, client, msg.id, msg).await });

@@ -205,6 +205,38 @@ impl Service for Actions {
 
         Ok(answer)
       },
+      "hikvision-unregister_image" => {
+        let id = ID::random();
+
+        let oid = self.oid(&params)?;
+        let cid = self.cid(&params)?;
+        let pid = self.pid(&params)?;
+
+        // let mut cameras = self.app.storage.as_ref().unwrap().get(&oid).camera_configs();
+
+        let camera = self.app.storage.as_ref().unwrap().get(&oid).camera(&cid).config()?;
+
+        let person = self
+          .app
+          .service("people")
+          .get(pid.to_base64(), json::object! { "oid": oid.to_base64() })?;
+
+        let dev_index = &camera.dev_index;
+
+        let mgmt = DeviceMgmt::new(&camera);
+        let request = mgmt.delete_picture(id, dev_index, pid).map_err(Error::CameraError)?;
+
+        let meta = CommandMeta::new(id, command.clone(), params);
+        let answer = meta.to_json();
+        {
+          let mut tasks = self.tasks.write().unwrap();
+          tasks.insert(id, meta);
+        }
+
+        self.actor.do_send(request);
+
+        Ok(answer)
+      },
       _ => Err(Error::NotImplemented),
     }
   }

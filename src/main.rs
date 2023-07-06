@@ -76,7 +76,7 @@ struct Opt {
   case: String,
 
   /// Data folder
-  #[structopt(short, long, parse(from_os_str))]
+  #[structopt(short, long, parse(from_os_str), default_value = "./data/memories")]
   data: PathBuf,
 }
 
