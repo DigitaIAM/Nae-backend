@@ -33,7 +33,6 @@ mod utils;
 mod websocket;
 mod ws;
 
-mod accounts;
 mod animo;
 mod api;
 mod hr;
