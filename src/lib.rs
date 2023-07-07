@@ -18,6 +18,3 @@ pub mod use_cases;
 pub mod warehouse;
 
 mod hik;
-
-// #[cfg(test)]
-// mod test;
