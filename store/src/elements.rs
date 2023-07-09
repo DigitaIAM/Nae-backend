@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use uuid::{uuid, Uuid};
 
 pub use super::error::WHError;
-use service::utils::time::{date_to_string, time_to_string};
+use service::utils::time::date_to_string;
 
 use crate::GetWarehouse;
 use service::{Context, Services};
@@ -157,8 +157,8 @@ pub fn receive_data(
   log::debug!("AFTER: {:?}", data.dump());
 
   let old_data = data.clone();
-  let mut new_data = data.clone();
-  let mut new_before = before.clone();
+  let new_data = data.clone();
+  let new_before = before;
 
   let before = match json_to_ops(app, wid, &new_before, ctx) {
     Ok(res) => res,
@@ -181,11 +181,11 @@ pub fn receive_data(
   log::debug!("OPS BEFOR: {before:#?}");
   log::debug!("OPS AFTER: {after:#?}");
 
-  let mut before = before.into_iter();
+  let before = before.into_iter();
 
   let mut ops: Vec<OpMutation> = Vec::new();
 
-  while let Some(ref b) = before.next() {
+  for ref b in before {
     if let Some(a) = after.remove_entry(&b.0) {
       if a.1.store == b.1.store
         && a.1.goods == b.1.goods
@@ -203,9 +203,9 @@ pub fn receive_data(
     }
   }
 
-  let mut after = after.into_iter();
+  let after = after.into_iter();
 
-  while let Some(ref a) = after.next() {
+  for ref a in after {
     ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
   }
 
@@ -241,7 +241,7 @@ fn json_to_ops(
     return Ok(ops);
   }
 
-  if data["status"].string() == "deleted".to_string() {
+  if data["status"].string() == *"deleted" {
     return Ok(ops);
   }
 
@@ -261,12 +261,9 @@ fn json_to_ops(
   };
 
   let params = object! {oid: wid, ctx: [], enrich: false };
-  let mut document = match ctx_str[..] {
+  let document = match ctx_str[..] {
     ["production", "produce"] => {
-      match app
-        .service("memories")
-        .get(Context::local(), data["order"].string(), params.clone())
-      {
+      match app.service("memories").get(Context::local(), data["order"].string(), params) {
         Ok(d) => d,
         Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
       }
@@ -298,7 +295,7 @@ fn json_to_ops(
   };
 
   let (store_from, store_into) =
-    match storages(app, wid, &ctx, data, &document, type_of_operation.clone()) {
+    match storages(app, wid, ctx, data, &document, type_of_operation.clone()) {
       Ok((from, into)) => (from, into),
       Err(_) => return Ok(ops),
     };
@@ -384,7 +381,7 @@ fn json_to_ops(
     }
   } else {
     match &data["batch"] {
-      JsonValue::Object(d) => {
+      JsonValue::Object(_d) => {
         // let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["warehouse", "receive", "document"] };
         // let doc_from = app.service("memories").get(d["_id"].string(), params)?;
         Batch { id: data["batch"]["_uuid"].uuid()?, date: data["batch"]["date"].date_with_check()? }
@@ -427,7 +424,7 @@ fn storages(
         Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
       }
     } else {
-      match resolve_store(app, wid, &data, "storage_from") {
+      match resolve_store(app, wid, data, "storage_from") {
         Ok(uuid) => uuid,
         Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
       }
@@ -439,7 +436,7 @@ fn storages(
         Err(_) => return Err(WHError::new("no into store")), // TODO handle errors better, allow to catch only 'not found'
       }
     } else {
-      match resolve_store(app, wid, &data, "storage_into") {
+      match resolve_store(app, wid, data, "storage_into") {
         Ok(uuid) => uuid,
         Err(_) => return Err(WHError::new("no into store")), // TODO handle errors better, allow to catch only 'not found'
       }
@@ -448,7 +445,7 @@ fn storages(
     Ok((store_from, Some(store_into)))
   } else if ctx.get(0) == Some(&"production".to_string()) {
     let store_from = if ctx.get(1) == Some(&"material".to_string()) {
-      match resolve_store(app, wid, &data, "storage_into") {
+      match resolve_store(app, wid, data, "storage_into") {
         Ok(uuid) => uuid,
         Err(_) => return Err(WHError::new("no storage for production/material")), // TODO handle errors better, allow to catch only 'not found'
       }

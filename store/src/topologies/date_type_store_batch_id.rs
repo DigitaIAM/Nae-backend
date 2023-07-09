@@ -7,13 +7,11 @@ use crate::{
 
 use crate::ordered_topology::OrderedTopology;
 
-use crate::aggregations::{get_aggregations_for_one_goods, new_get_aggregations};
-use crate::balance::Balance;
+use crate::aggregations::new_get_aggregations;
 use crate::batch::Batch;
-use crate::elements::{dt, Goods, Qty};
-use crate::operations::{InternalOperation, Op};
+use crate::elements::Goods;
+use crate::operations::Op;
 use chrono::{DateTime, Utc};
-use json::JsonValue;
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 use std::convert::TryFrom;
 use std::io::Read;
@@ -45,10 +43,8 @@ impl OrderedTopology for DateTypeStoreBatchId {
     op: &Op,
     balance: &BalanceForGoods,
   ) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
-    if op.is_receive() {
-      if !op.is_dependent {
-        debug_assert!(!op.batch.is_empty(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
-      }
+    if op.is_receive() && !op.is_dependent {
+      debug_assert!(!op.batch.is_empty(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
     }
     debug_assert!(!op.op.is_zero(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
 
@@ -68,7 +64,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
   }
 
   fn get(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
-    if let Some(bytes) = self.db.get_cf(&self.cf()?, self.key(&op))? {
+    if let Some(bytes) = self.db.get_cf(&self.cf()?, self.key(op))? {
       Ok(Some(self.from_bytes(&bytes)?))
     } else {
       Ok(None)
@@ -82,19 +78,19 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(self.db.delete_cf(&self.cf()?, key)?)
   }
 
-  fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
+  fn balance_before(&self, _op: &Op) -> Result<BalanceForGoods, WHError> {
     Err(WHError::new("Not supported"))
   }
 
-  fn balance_on_op_or_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
+  fn balance_on_op_or_before(&self, _op: &Op) -> Result<BalanceForGoods, WHError> {
     Err(WHError::new("Not supported"))
   }
 
-  fn operation_after(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+  fn operation_after(&self, _op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
     Err(WHError::new("Not supported"))
   }
 
-  fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
+  fn operations_after(&self, _op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
     Err(WHError::new("Not supported"))
   }
 
@@ -118,7 +114,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let till_date = till_date.timestamp() as u64;
@@ -131,14 +127,14 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(UUID_MAX.as_bytes().iter())
       .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
 
     // store
-    let expected: Vec<u8> = storage.as_bytes().iter().map(|b| *b).collect();
+    let expected: Vec<u8> = storage.as_bytes().to_vec();
 
     // log::debug!("exp {expected:?}");
 
@@ -182,7 +178,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let till_date = till_date.timestamp() as u64;
@@ -195,7 +191,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(UUID_MAX.as_bytes().iter())
       .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut options = ReadOptions::default();
@@ -231,7 +227,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let ts_till = u64::try_from(till_date.timestamp()).unwrap_or_default();
@@ -244,14 +240,14 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(UUID_MAX.as_bytes().iter())
       .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut options = ReadOptions::default();
     options.set_iterate_range(from..till);
 
-    let expected_store: Vec<u8> = store.as_bytes().iter().map(|b| *b).collect();
-    let expected_goods: Vec<u8> = goods.as_bytes().iter().map(|b| *b).collect();
+    let expected_store: Vec<u8> = store.as_bytes().to_vec();
+    let expected_goods: Vec<u8> = goods.as_bytes().to_vec();
 
     let mut res = Vec::new();
 
@@ -296,17 +292,21 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(res)
   }
 
-  fn operations_for_store_goods(&self, from: DateTime<Utc>, till: &Op) -> Result<Vec<Op>, WHError> {
+  fn operations_for_store_goods(
+    &self,
+    _from: DateTime<Utc>,
+    _till: &Op,
+  ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
   fn ops_for_store_goods_and_batch(
     &self,
-    store: Store,
-    goods: Goods,
-    batch: &Batch,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _store: Store,
+    _goods: Goods,
+    _batch: &Batch,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("Not supported"))
   }
@@ -319,10 +319,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
   ) -> Result<Vec<Op>, WHError> {
     // let goods: Vec<[u8; 16]> = goods.into_iter().as_slice().iter().map(|b| *b).collect();
 
-    let byte_goods: Vec<Vec<u8>> = goods
-      .iter()
-      .map(|g: &Goods| g.as_bytes().iter().map(|b| *b).collect())
-      .collect();
+    let byte_goods: Vec<Vec<u8>> = goods.iter().map(|g: &Goods| g.as_bytes().to_vec()).collect();
 
     let ts_from = u64::try_from(from_date.timestamp()).unwrap_or_default();
     let from: Vec<u8> = ts_from
@@ -334,7 +331,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let ts_till = u64::try_from(till_date.timestamp()).unwrap_or_default();
@@ -347,7 +344,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(UUID_MAX.as_bytes().iter())
       .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut options = ReadOptions::default();
@@ -405,7 +402,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
       .chain(batch.to_bytes(&goods).iter())
       .chain(op_id.as_bytes().iter())
       .chain(op_dependant.to_be_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect()
   }
 }

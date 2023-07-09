@@ -38,7 +38,7 @@ impl CheckpointTopology for CheckBatchStoreDate {
       .chain(batch.to_bytes(&goods).iter())
       .chain(store.as_bytes().iter())
       .chain((date.timestamp() as u64).to_be_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect()
   }
 
@@ -68,7 +68,7 @@ impl CheckpointTopology for CheckBatchStoreDate {
       .chain(UUID_NIL.as_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect()
   }
 

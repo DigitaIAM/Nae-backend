@@ -82,7 +82,7 @@ impl Db {
     }
 
     // remove zero balances
-    let balances = balances.into_iter().filter(|(k, v)| !v.is_zero()).collect();
+    let balances = balances.into_iter().filter(|(_k, v)| !v.is_zero()).collect();
 
     debug!("balances_for_store_goods_before_operation: {balances:#?}");
 
@@ -122,7 +122,7 @@ impl Db {
       match checkpoint_topology.get_checkpoints_for_one_goods(store, goods, date) {
         Ok(result) => return Ok(result),
         Err(e) => {
-          if e.message() == "Not supported".to_string() {
+          if e.message() == *"Not supported" {
             continue;
           } else {
             return Err(e);
@@ -146,7 +146,7 @@ impl Db {
       {
         Ok(result) => return Ok(result),
         Err(e) => {
-          if e.message() == "Not supported".to_string() {
+          if e.message() == *"Not supported" {
             continue;
           } else {
             return Err(e);
@@ -168,7 +168,7 @@ impl Db {
       match checkpoint_topology.get_checkpoint_for_goods_and_batch(store, goods, batch, date) {
         Ok(result) => return Ok(result),
         Err(e) => {
-          if e.message() == "Not supported".to_string() {
+          if e.message() == *"Not supported" {
             continue;
           } else {
             return Err(e);
@@ -188,7 +188,7 @@ impl Db {
       match checkpoint_topology.get_checkpoints_for_one_storage_before_date(store, date) {
         Ok(result) => return Ok(result),
         Err(e) => {
-          if e.message() == "Not supported".to_string() {
+          if e.message() == *"Not supported" {
             continue;
           } else {
             return Err(e);
@@ -208,7 +208,7 @@ impl Db {
     till_date: DateTime<Utc>,
   ) -> Result<JsonValue, WHError> {
     for ordered_topology in self.ordered_topologies.iter() {
-      match ordered_topology.get_report_for_goods(&self, storage, goods, batch, from_date, till_date)
+      match ordered_topology.get_report_for_goods(self, storage, goods, batch, from_date, till_date)
       {
         Ok(report) => return Ok(report),
         Err(_) => {}, // ignore
@@ -225,7 +225,7 @@ impl Db {
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
     for ordered_topology in self.ordered_topologies.iter() {
-      match ordered_topology.get_report_for_storage(&self, storage, from_date, till_date) {
+      match ordered_topology.get_report_for_storage(self, storage, from_date, till_date) {
         Ok(report) => return Ok(report),
         Err(_) => {}, // ignore
       }
@@ -279,8 +279,8 @@ impl Db {
     let (from_date, checkpoints) = loop {
       if let Some(checkpoint_topology) = it.next() {
         match checkpoint_topology.get_checkpoints_for_one_goods_with_date(
-          storage.clone(),
-          goods.clone(),
+          *storage,
+          *goods,
           date,
         ) {
           Ok(result) => {

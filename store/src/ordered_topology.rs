@@ -1,12 +1,12 @@
 use crate::aggregations::get_aggregations_for_one_goods;
-use crate::balance::{Balance, BalanceDelta, BalanceForGoods, Cost};
+use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::db::Db;
-use crate::elements::{dt, Goods, Mode, Qty, Report, Store, ToJson, WHError};
+use crate::elements::{dt, Goods, Mode, Report, Store, WHError};
 use crate::operations::{Dependant, InternalOperation, Op, OpMutation};
-use actix::ActorTryFutureExt;
+
 use chrono::{DateTime, Utc};
-use json::{array, JsonValue};
+use json::JsonValue;
 use rocksdb::{ColumnFamilyDescriptor, Options};
 use rust_decimal::Decimal;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -164,7 +164,7 @@ pub trait OrderedTopology {
 
     if let Some(mut op) = op_mut.to_op_after() {
       // do not trust external data
-      let existing = if let Some((o, b)) = self.get(&op)? { o.dependant } else { vec![] };
+      let existing = if let Some((o, _b)) = self.get(&op)? { o.dependant } else { vec![] };
       op.dependant = existing;
 
       // let balance_before: BalanceForGoods = self.balance_before(&op)?;
@@ -231,12 +231,10 @@ pub trait OrderedTopology {
     let before_op = if op.dependant.is_empty() {
       if let Some(before) = before_op {
         before
+      } else if let Some((o, _)) = self.get(op)? {
+        Some(o.op)
       } else {
-        if let Some((o, _)) = self.get(&op)? {
-          Some(o.op)
-        } else {
-          None
-        }
+        None
       }
     } else {
       None
@@ -245,7 +243,7 @@ pub trait OrderedTopology {
     // store update op with balance or delete
     if op.can_delete() && op.dependant.is_empty() {
       log::debug!("DEL: {op:#?}");
-      self.del(&op)?;
+      self.del(op)?;
 
       if op.dependant.is_empty() {
         db.update(
@@ -266,7 +264,7 @@ pub trait OrderedTopology {
       }
     } else {
       log::debug!("PUT: {op:#?} {balance_after:#?}");
-      self.put(&op, &balance_after)?;
+      self.put(op, &balance_after)?;
 
       if op.dependant.is_empty() {
         db.update(
@@ -296,10 +294,10 @@ pub trait OrderedTopology {
     pf: &mut PropagationFront,
     op: &Op,
   ) -> Result<(BalanceForGoods, BalanceForGoods), WHError> {
-    let balance_before: BalanceForGoods = self.balance_before(&op)?;
+    let balance_before: BalanceForGoods = self.balance_before(op)?;
 
     let (before_op, balance_after) = if op.dependant.is_empty() {
-      if let Some((o, b)) = self.get(&op)? {
+      if let Some((o, b)) = self.get(op)? {
         (Some(o.op), b)
       } else {
         (None, BalanceForGoods::default())
@@ -308,8 +306,8 @@ pub trait OrderedTopology {
       (None, BalanceForGoods::default())
     };
 
-    self.del(&op)?;
-    pf.remove(&op);
+    self.del(op)?;
+    pf.remove(op);
 
     if op.dependant.is_empty() {
       db.update(
@@ -375,12 +373,12 @@ pub trait OrderedTopology {
 
   fn delete_op(&self, db: &Db, pf: &mut PropagationFront, op: &Op) -> Result<(), WHError> {
     // store update op with balance or delete
-    let (balance_before, balance_after) = self.remove_op(db, pf, &op)?;
+    let (balance_before, balance_after) = self.remove_op(db, pf, op)?;
 
     // propagate change
     if !balance_before.delta(&balance_after).is_zero() {
       // log::debug!("start propagation");
-      self.propagate(&op, pf)?;
+      self.propagate(op, pf)?;
 
       // check empty batched topology for changes
       if op.batch != Batch::no() {
@@ -453,7 +451,7 @@ pub trait OrderedTopology {
         (op.clone(), BalanceForGoods { qty: balance.qty + q, cost: balance.cost + *c })
       },
       InternalOperation::Issue(q, c, m) => {
-        let mut cost = c.clone();
+        let mut cost = *c;
         let op = if m == &Mode::Auto {
           cost = if balance.qty == *q { balance.cost } else { balance.price().cost(*q) };
           Op {
@@ -463,7 +461,7 @@ pub trait OrderedTopology {
             goods: op.goods,
             batch: op.batch.clone(),
             store_into: op.store_into,
-            op: InternalOperation::Issue(q.clone(), cost.clone(), m.clone()),
+            op: InternalOperation::Issue(*q, cost, m.clone()),
             is_dependent: op.is_dependent,
             dependant: op.dependant.clone(),
           }
@@ -522,7 +520,7 @@ pub trait OrderedTopology {
     goods: &Vec<Goods>,
     checkpoints: HashMap<Uuid, BalanceForGoods>,
   ) -> Result<HashMap<Uuid, BalanceForGoods>, WHError> {
-    let mut result = checkpoints.clone();
+    let mut result = checkpoints;
 
     // get operations between checkpoint date and requested date
     let ops = self.get_ops_for_many_goods(goods, from_date, till_date)?;
@@ -532,11 +530,9 @@ pub trait OrderedTopology {
         .entry(op.goods)
         .and_modify(|bal| bal.apply(&op.op))
         .or_insert(match &op.op {
-          InternalOperation::Inventory(_, d, _) => {
-            BalanceForGoods { qty: d.qty.clone(), cost: d.cost.clone() }
-          },
-          InternalOperation::Receive(q, c) => BalanceForGoods { qty: q.clone(), cost: c.clone() },
-          InternalOperation::Issue(q, c, _) => BalanceForGoods { qty: -q.clone(), cost: -c.clone() },
+          InternalOperation::Inventory(_, d, _) => BalanceForGoods { qty: d.qty, cost: d.cost },
+          InternalOperation::Receive(q, c) => BalanceForGoods { qty: *q, cost: *c },
+          InternalOperation::Issue(q, c, _) => BalanceForGoods { qty: -*q, cost: -*c },
         });
     }
 
@@ -551,10 +547,10 @@ pub trait OrderedTopology {
     goods: &Goods,
     checkpoints: HashMap<Uuid, BalanceForGoods>,
   ) -> Result<HashMap<Uuid, BalanceForGoods>, WHError> {
-    let mut result = checkpoints.clone();
+    let mut result = checkpoints;
 
     // get operations between checkpoint date and requested date
-    let ops = self.get_ops_for_one_goods(store.clone(), goods.clone(), from_date, till_date)?;
+    let ops = self.get_ops_for_one_goods(*store, *goods, from_date, till_date)?;
 
     for op in ops {
       result.entry(op.goods).and_modify(|bal| bal.apply(&op.op)).or_insert_with(|| {
@@ -581,9 +577,9 @@ pub trait OrderedTopology {
     for op in ops {
       result
         .entry(op.store)
-        .or_insert_with(|| HashMap::new())
+        .or_insert_with(HashMap::new)
         .entry(op.goods)
-        .or_insert_with(|| HashMap::new())
+        .or_insert_with(HashMap::new)
         .entry(op.batch)
         .and_modify(|bal| bal.apply(&op.op))
         .or_insert_with(|| {
@@ -634,7 +630,7 @@ impl<'a> PropagationFront<'a> {
       .chain(op.batch.to_bytes(&op.goods).iter())
       .chain(op.id.as_bytes().iter())
       .chain(op_dependant.to_be_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect()
   }
 
@@ -675,7 +671,7 @@ impl<'a> PropagationFront<'a> {
   }
 
   fn debug(&self) {
-    for (k, o) in &self.points {
+    for (_k, o) in &self.points {
       log::debug!(" > {o:#?}");
     }
   }
@@ -684,8 +680,7 @@ impl<'a> PropagationFront<'a> {
     // self.cleanup(ops, op);
 
     let balance_before_operation = self.db.balances_for_store_goods_before_operation(&op)?;
-    let balance_before =
-      balance_before_operation.get(&op.batch).map(|b| b.clone()).unwrap_or_default();
+    let balance_before = balance_before_operation.get(&op.batch).cloned().unwrap_or_default();
 
     // sort for FIFO
     let mut balance_before_operation: Vec<(Batch, BalanceForGoods)> =
@@ -695,7 +690,7 @@ impl<'a> PropagationFront<'a> {
     log::debug!("INVENTORY BEFORE BALANCE: {:#?}", balance_before_operation);
 
     let mut stock_balance = BalanceForGoods::default();
-    for (batch, balance) in balance_before_operation.iter() {
+    for (_batch, balance) in balance_before_operation.iter() {
       if balance.qty > Decimal::ZERO {
         stock_balance.qty += balance.qty;
         stock_balance.cost += balance.cost;
@@ -715,7 +710,7 @@ impl<'a> PropagationFront<'a> {
       let mut new = op.clone();
       new.is_dependent = true;
       new.dependant = vec![];
-      new.batch = batch.clone();
+      new.batch = batch;
       new.op = InternalOperation::Receive(diff_balance.qty, diff_balance.cost);
       // log::debug!("NEW_OP inventory receive: op {new:?}");
 
@@ -724,7 +719,7 @@ impl<'a> PropagationFront<'a> {
 
       op.dependant = self.cleanup_dependent(&op, new_dependant)?;
     } else {
-      let (mut qty, cost, mode) = (diff_balance.qty, Decimal::ZERO, Mode::Auto);
+      let (mut qty, _cost, _mode) = (diff_balance.qty, Decimal::ZERO, Mode::Auto);
 
       for (batch, balance) in balance_before_operation {
         if balance.qty <= Decimal::ZERO || batch == Batch::no() {
@@ -766,7 +761,7 @@ impl<'a> PropagationFront<'a> {
       op.dependant = self.cleanup_dependent(&op, new_dependant)?;
 
       // let (op, balance_after) = self.mt.evaluate(&balance_before, &op);
-      self.mt.save_op(&self.db, &op, balance_before, None)?;
+      self.mt.save_op(self.db, &op, balance_before, None)?;
     }
 
     Ok(op)
@@ -777,8 +772,7 @@ impl<'a> PropagationFront<'a> {
 
     // calculate balance
     let balance_before_operation = self.db.balances_for_store_goods_before_operation(&op)?;
-    let balance_before =
-      balance_before_operation.get(&op.batch).map(|b| b.clone()).unwrap_or_default();
+    let balance_before = balance_before_operation.get(&op.batch).cloned().unwrap_or_default();
 
     // sort for FIFO
     let mut balance_before_operation: Vec<(Batch, BalanceForGoods)> =
@@ -859,7 +853,7 @@ impl<'a> PropagationFront<'a> {
     op.dependant = self.cleanup_dependent(&op, new_dependant)?;
 
     // let (op, balance_after) = self.mt.evaluate(&balance_before, &op);
-    self.mt.save_op(&self.db, &op, balance_before, None)?;
+    self.mt.save_op(self.db, &op, balance_before, None)?;
 
     Ok(op)
   }
@@ -874,7 +868,7 @@ impl<'a> PropagationFront<'a> {
       match o {
         Dependant::Receive(store, batch) => {
           let mut zero = op.clone();
-          zero.store = store.clone();
+          zero.store = *store;
           zero.batch = batch.clone();
           zero.dependant = vec![];
           zero.is_dependent = true;
@@ -882,11 +876,11 @@ impl<'a> PropagationFront<'a> {
           // println!("zero = {zero:?}");
           // ops.insert(0, zero);
           // log::debug!("cleanup ops.push {ops:#?}");
-          self.mt.delete_op(&self.db, self, &zero)?;
+          self.mt.delete_op(self.db, self, &zero)?;
         },
         Dependant::Issue(store, batch) => {
           let mut zero = op.clone();
-          zero.store = store.clone();
+          zero.store = *store;
           zero.batch = batch.clone();
           zero.dependant = vec![];
           zero.is_dependent = true;
@@ -894,7 +888,7 @@ impl<'a> PropagationFront<'a> {
           // println!("zero = {zero:?}");
           // ops.insert(0, zero);
           // log::debug!("cleanup ops.push {ops:#?}");
-          self.mt.delete_op(&self.db, self, &zero)?;
+          self.mt.delete_op(self.db, self, &zero)?;
         },
       }
     }

@@ -3,10 +3,8 @@ use crate::batch::Batch;
 use crate::elements::{Goods, Mode, Qty, Store, ToJson, WHError};
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use service::utils::json::JsonParams;
-use std::cmp::Ordering;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -45,8 +43,8 @@ impl From<&Op> for Dependant {
   fn from(op: &Op) -> Self {
     match op.op {
       InternalOperation::Inventory(..) => unreachable!(),
-      InternalOperation::Receive(..) => Dependant::Receive(op.store.clone(), op.batch.clone()),
-      InternalOperation::Issue(..) => Dependant::Issue(op.store.clone(), op.batch.clone()),
+      InternalOperation::Receive(..) => Dependant::Receive(op.store, op.batch.clone()),
+      InternalOperation::Issue(..) => Dependant::Issue(op.store, op.batch.clone()),
     }
   }
 }
@@ -226,14 +224,14 @@ impl Op {
     // } else
     if let Some(store_into) = self.store_into {
       match &self.op {
-        InternalOperation::Issue(q, c, m) => Some(Op {
+        InternalOperation::Issue(q, c, _m) => Some(Op {
           id: self.id,
           date: self.date,
           store: store_into,
           goods: self.goods,
           batch: self.batch.clone(),
           store_into: Some(self.store),
-          op: InternalOperation::Receive(q.clone(), c.clone()),
+          op: InternalOperation::Receive(*q, *c),
           is_dependent: true,
           dependant: vec![],
         }),
@@ -391,39 +389,31 @@ impl OpMutation {
   }
 
   pub fn to_op_before(&self) -> Option<Op> {
-    if let Some(op) = self.before.as_ref() {
-      Some(Op {
-        id: self.id.clone(),
-        date: self.date.clone(),
-        store: self.store.clone(),
-        goods: self.goods.clone(),
-        batch: self.batch.clone(),
-        store_into: self.transfer.clone(),
-        op: op.clone(),
-        is_dependent: self.is_dependent,
-        dependant: self.dependant.clone(),
-      })
-    } else {
-      None
-    }
+    self.before.as_ref().map(|op| Op {
+      id: self.id,
+      date: self.date,
+      store: self.store,
+      goods: self.goods,
+      batch: self.batch.clone(),
+      store_into: self.transfer,
+      op: op.clone(),
+      is_dependent: self.is_dependent,
+      dependant: self.dependant.clone(),
+    })
   }
 
   pub fn to_op_after(&self) -> Option<Op> {
-    if let Some(op) = self.after.as_ref() {
-      Some(Op {
-        id: self.id.clone(),
-        date: self.date.clone(),
-        store: self.store.clone(),
-        goods: self.goods.clone(),
-        batch: self.batch.clone(),
-        store_into: self.transfer.clone(),
-        op: op.clone(),
-        is_dependent: self.is_dependent,
-        dependant: self.dependant.clone(),
-      })
-    } else {
-      None
-    }
+    self.after.as_ref().map(|op| Op {
+      id: self.id,
+      date: self.date,
+      store: self.store,
+      goods: self.goods,
+      batch: self.batch.clone(),
+      store_into: self.transfer,
+      op: op.clone(),
+      is_dependent: self.is_dependent,
+      dependant: self.dependant.clone(),
+    })
   }
 
   pub(crate) fn to_delta(&self) -> BalanceDelta {
@@ -438,12 +428,10 @@ impl OpMutation {
 
         BalanceDelta { qty: -before.qty, cost: -before.cost }
       }
+    } else if let Some(after) = self.after.as_ref() {
+      after.clone().into()
     } else {
-      if let Some(after) = self.after.as_ref() {
-        after.clone().into()
-      } else {
-        BalanceDelta::default()
-      }
+      BalanceDelta::default()
     }
   }
 
@@ -555,7 +543,7 @@ impl InternalOperation {
 
   pub(crate) fn is_zero(&self) -> bool {
     match self {
-      InternalOperation::Inventory(q, c, _) => false,
+      InternalOperation::Inventory(_q, _c, _) => false,
       InternalOperation::Receive(q, c) => q.is_zero() && c.is_zero(),
       InternalOperation::Issue(q, c, _) => q.is_zero() && c.is_zero(),
     }
@@ -596,9 +584,9 @@ impl ToJson for InternalOperation {
 
 trait Operation {}
 
-impl Into<BalanceDelta> for InternalOperation {
-  fn into(self) -> BalanceDelta {
-    match self {
+impl From<InternalOperation> for BalanceDelta {
+  fn from(val: InternalOperation) -> Self {
+    match val {
       InternalOperation::Inventory(_, d, _) => d, // TODO: ("undefined?"), don't know how to replace it
       InternalOperation::Receive(qty, cost) => BalanceDelta { qty, cost },
       InternalOperation::Issue(qty, cost, _) => BalanceDelta { qty: -qty, cost: -cost },

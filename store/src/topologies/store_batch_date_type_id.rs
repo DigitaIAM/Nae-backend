@@ -1,19 +1,17 @@
 use crate::{
   balance::BalanceForGoods,
   db::Db,
-  elements::{first_day_current_month, Report, Store},
+  elements::{Report, Store},
   error::WHError,
 };
 
-use crate::aggregations::{get_aggregations_for_one_goods, new_get_aggregations};
-use crate::balance::Balance;
 use crate::batch::Batch;
-use crate::elements::{dt, Goods, Qty};
+use crate::elements::Goods;
 use crate::elements::{UUID_MAX, UUID_NIL};
 use crate::operations::Op;
 use crate::ordered_topology::OrderedTopology;
 use chrono::{DateTime, Utc};
-use json::JsonValue;
+
 use rocksdb::{
   BoundColumnFamily, ColumnFamilyDescriptor, Direction, IteratorMode, Options, ReadOptions, DB,
 };
@@ -46,10 +44,8 @@ impl OrderedTopology for StoreBatchDateTypeId {
     op: &Op,
     balance: &BalanceForGoods,
   ) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
-    if op.is_receive() {
-      if !op.is_dependent {
-        debug_assert!(!op.batch.is_empty(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
-      }
+    if op.is_receive() && !op.is_dependent {
+      debug_assert!(!op.batch.is_empty(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
     }
     debug_assert!(!op.op.is_zero(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
 
@@ -69,7 +65,7 @@ impl OrderedTopology for StoreBatchDateTypeId {
   }
 
   fn get(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
-    if let Some(bytes) = self.db.get_cf(&self.cf()?, self.key(&op))? {
+    if let Some(bytes) = self.db.get_cf(&self.cf()?, self.key(op))? {
       Ok(Some(self.from_bytes(&bytes)?))
     } else {
       Ok(None)
@@ -88,11 +84,11 @@ impl OrderedTopology for StoreBatchDateTypeId {
 
     let key = self.key(op);
 
-    let mut iter = self
+    let iter = self
       .db
       .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Reverse));
 
-    while let Some(bytes) = iter.next() {
+    for bytes in iter {
       let (k, v) = bytes?;
 
       if k[0..] == key {
@@ -119,12 +115,12 @@ impl OrderedTopology for StoreBatchDateTypeId {
 
     let key = self.key(op);
 
-    let mut iter = self
+    let iter = self
       .db
       .iterator_cf(&self.cf()?, IteratorMode::From(&key, rocksdb::Direction::Reverse));
 
-    while let Some(bytes) = iter.next() {
-      let (k, v) = bytes?;
+    for bytes in iter {
+      let (_k, v) = bytes?;
 
       let (loaded_op, balance) = self.from_bytes(&v)?;
 
@@ -160,12 +156,12 @@ impl OrderedTopology for StoreBatchDateTypeId {
     options.set_iterate_range(key.clone()..till);
 
     // TODO change iterator with range from..till?
-    let mut iter =
+    let iter =
       self
         .db
         .iterator_cf_opt(&self.cf()?, options, IteratorMode::From(&key, Direction::Forward));
 
-    while let Some(bytes) = iter.next() {
+    for bytes in iter {
       if let Ok((k, v)) = bytes {
         if k[0..] == key {
           continue;
@@ -209,12 +205,12 @@ impl OrderedTopology for StoreBatchDateTypeId {
     options.set_iterate_range(key.clone()..till);
 
     // TODO change iterator with range from..till?
-    let mut iter =
+    let iter =
       self
         .db
         .iterator_cf_opt(&self.cf()?, options, IteratorMode::From(&key, Direction::Forward));
 
-    while let Some(bytes) = iter.next() {
+    for bytes in iter {
       if let Ok((k, v)) = bytes {
         if k[0..] == key {
           continue;
@@ -243,33 +239,37 @@ impl OrderedTopology for StoreBatchDateTypeId {
 
   fn get_ops_for_storage(
     &self,
-    storage: Store,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _storage: Store,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
   fn get_ops_for_all(
     &self,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
   fn get_ops_for_one_goods(
     &self,
-    store: Store,
-    goods: Goods,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _store: Store,
+    _goods: Goods,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
   // operations for store+goods (return all batches)
-  fn operations_for_store_goods(&self, from: DateTime<Utc>, till: &Op) -> Result<Vec<Op>, WHError> {
+  fn operations_for_store_goods(
+    &self,
+    _from: DateTime<Utc>,
+    _till: &Op,
+  ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
@@ -294,7 +294,7 @@ impl OrderedTopology for StoreBatchDateTypeId {
     let mut res = Vec::new();
 
     for item in self.db.iterator_cf_opt(&self.cf()?, options, IteratorMode::Start) {
-      let (k, value) = item?;
+      let (_k, value) = item?;
 
       let (op, _) = self.from_bytes(&value)?;
 
@@ -327,19 +327,19 @@ impl OrderedTopology for StoreBatchDateTypeId {
 
   fn get_ops_for_many_goods(
     &self,
-    goods: &Vec<Goods>,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _goods: &Vec<Goods>,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
   fn get_report_for_storage(
     &self,
-    db: &Db,
-    storage: Store,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _db: &Db,
+    _storage: Store,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
     Err(WHError::new("not implemented"))
   }
@@ -365,8 +365,8 @@ impl OrderedTopology for StoreBatchDateTypeId {
       .chain(date.to_be_bytes().iter()) // date
       .chain(op_order.to_be_bytes().iter()) // op order
       .chain(op_id.as_bytes().iter()) // op id
-      .chain(op_dependant.to_be_bytes().iter()) // op dependant
-      .map(|b| *b)
+      .chain(op_dependant.to_be_bytes().iter())
+      .copied()
       .collect()
   }
 }

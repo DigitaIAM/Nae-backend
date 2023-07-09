@@ -59,7 +59,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .iter()
       .chain(store.as_bytes().iter())
       .chain(batch.to_bytes(&goods).iter())
-      .map(|b| *b)
+      .copied()
       .collect()
   }
 
@@ -89,7 +89,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect()
   }
 
@@ -134,7 +134,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(goods.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
     let till: Vec<u8> = ts
       .to_be_bytes()
@@ -143,15 +143,15 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(goods.as_bytes().iter())
       .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut opts = ReadOptions::default();
     opts.set_iterate_range(from..till);
 
-    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+    let iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
 
-    while let Some(res) = iter.next() {
+    for res in iter {
       let (k, v) = res?;
       let b: BalanceForGoods = serde_json::from_slice(&v)?;
       // println!("BAL: {b:#?}");
@@ -190,7 +190,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(goods.as_bytes().iter())
       .chain(ts_batch.to_be_bytes().iter())
       .chain(batch.id.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     if let Some(v) = self.db.get(key)? {
@@ -227,7 +227,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
     let till: Vec<u8> = ts
       .to_be_bytes()
@@ -236,15 +236,15 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(UUID_MAX.as_bytes().iter())
       .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut opts = ReadOptions::default();
     opts.set_iterate_range(from..till);
 
-    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+    let iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
 
-    while let Some(res) = iter.next() {
+    for res in iter {
       let (k, v) = res?;
       let b: BalanceForGoods = serde_json::from_slice(&v)?;
 
@@ -278,7 +278,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
     let till: Vec<u8> = ts
       .to_be_bytes()
@@ -287,16 +287,16 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(UUID_MAX.as_bytes().iter())
       .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut opts = ReadOptions::default();
     opts.set_iterate_range(from..till);
 
-    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+    let iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
 
     let mut balances: HashMap<Batch, BalanceForGoods> = HashMap::new();
-    while let Some(res) = iter.next() {
+    for res in iter {
       let (k, v) = res?;
       let balance: BalanceForGoods = serde_json::from_slice(&v)?;
 
@@ -316,7 +316,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
     goods: &Vec<Goods>,
   ) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
     let mut balances: HashMap<Uuid, BalanceForGoods> =
-      goods.into_iter().map(|key| (key.clone(), BalanceForGoods::default())).collect();
+      goods.iter().map(|key| (*key, BalanceForGoods::default())).collect();
 
     let current_date = first_day_current_month(date);
 
@@ -334,7 +334,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
     let till: Vec<u8> = ts
       .to_be_bytes()
@@ -343,15 +343,15 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(UUID_MAX.as_bytes().iter())
       .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut opts = ReadOptions::default();
     opts.set_iterate_range(from..till);
 
-    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+    let iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
 
-    while let Some(res) = iter.next() {
+    for res in iter {
       let (k, v) = res?;
       let b: BalanceForGoods = serde_json::from_slice(&v)?;
 
@@ -389,7 +389,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(UUID_NIL.as_bytes().iter())
       .chain(u64::MIN.to_be_bytes().iter())
       .chain(UUID_NIL.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
     let till: Vec<u8> = ts
       .to_be_bytes()
@@ -398,7 +398,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(UUID_MAX.as_bytes().iter())
       .chain(u64::MAX.to_be_bytes().iter())
       .chain(UUID_MAX.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut opts = ReadOptions::default();
@@ -406,8 +406,8 @@ impl CheckpointTopology for CheckDateStoreBatch {
 
     let mut result = HashMap::with_capacity(10_000);
 
-    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
-    while let Some(res) = iter.next() {
+    let iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+    for res in iter {
       let (k, v) = res?;
       let stock: BalanceForGoods = serde_json::from_slice(&v)?;
 
@@ -415,9 +415,9 @@ impl CheckpointTopology for CheckDateStoreBatch {
 
       result
         .entry(store)
-        .or_insert_with(|| HashMap::new())
+        .or_insert_with(HashMap::new)
         .entry(goods)
-        .or_insert_with(|| HashMap::new())
+        .or_insert_with(HashMap::new)
         .insert(batch, stock);
     }
 
@@ -446,22 +446,22 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .iter()
       .chain(store.as_bytes().iter())
       .chain(min_batch().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
     let till: Vec<u8> = ts
       .to_be_bytes()
       .iter()
       .chain(store.as_bytes().iter())
       .chain(max_batch().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut opts = ReadOptions::default();
     opts.set_iterate_range(from..till);
 
-    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+    let iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
 
-    while let Some(res) = iter.next() {
+    for res in iter {
       let (k, v) = res?;
       let b: BalanceForGoods = serde_json::from_slice(&v)?;
       // println!("BAL: {b:#?}");
@@ -495,7 +495,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .iter()
       .chain(UUID_NIL.as_bytes().iter())
       .chain(min_batch().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let till: Vec<u8> = ts
@@ -503,15 +503,15 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .iter()
       .chain(UUID_MAX.as_bytes().iter())
       .chain(max_batch().iter())
-      .map(|b| *b)
+      .copied()
       .collect();
 
     let mut opts = ReadOptions::default();
     opts.set_iterate_range(from..till);
 
-    let mut iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
+    let iter = self.db.iterator_cf_opt(&self.cf()?, opts, IteratorMode::Start);
 
-    while let Some(res) = iter.next() {
+    for res in iter {
       let (k, v) = res?;
       let b: BalanceForGoods = serde_json::from_slice(&v)?;
       // println!("BAL: {b:#?}");

@@ -18,7 +18,7 @@ trait Agregation {
   fn is_applyable_for(&self, op: &OpMutation) -> bool;
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct AgregationStoreGoods {
   // ключ
   pub store: Option<Store>,
@@ -74,20 +74,6 @@ impl ToJson for AgregationStoreGoods {
       }
     } else {
       JsonValue::Null
-    }
-  }
-}
-
-impl Default for AgregationStoreGoods {
-  fn default() -> Self {
-    Self {
-      store: None,
-      goods: None,
-      batch: None,
-      open_balance: BalanceForGoods::default(),
-      receive: BalanceDelta::default(),
-      issue: BalanceDelta::default(),
-      close_balance: BalanceForGoods::default(),
     }
   }
 }
@@ -230,7 +216,7 @@ impl Agregation for AgregationStoreGoods {
 
   fn apply_operation(&mut self, op: &Op) {
     match &op.op {
-      InternalOperation::Inventory(b, d, mode) => {
+      InternalOperation::Inventory(_b, d, mode) => {
         self.issue.qty += d.qty;
         if mode == &Mode::Auto {
           let balance = self.open_balance.clone() + self.receive.clone();
@@ -258,7 +244,7 @@ impl Agregation for AgregationStoreGoods {
     self.close_balance = self.open_balance.clone() + self.receive.clone() + self.issue.clone();
   }
 
-  fn apply_aggregation(&mut self, agr: Option<&AgregationStoreGoods>) {
+  fn apply_aggregation(&mut self, _agr: Option<&AgregationStoreGoods>) {
     todo!()
   }
 
@@ -292,18 +278,15 @@ impl Agregation for AgregationStoreGoods {
   fn is_applyable_for(&self, op: &OpMutation) -> bool {
     if self.store.is_none() || self.goods.is_none() {
       false
-    } else if op.store == self.store.expect("option in is_applyable_for")
-      && op.goods == self.goods.expect("option in is_applyable_for")
-    {
-      true
     } else {
-      false
+      op.store == self.store.expect("option in is_applicable_for")
+        && op.goods == self.goods.expect("option in is_applicable_for")
     }
   }
 }
 
 impl KeyValueStore for AgregationStoreGoods {
-  fn key(&self, s: &String) -> Result<Vec<u8>, WHError> {
+  fn key(&self, _s: &String) -> Result<Vec<u8>, WHError> {
     todo!()
   }
 
@@ -343,12 +326,12 @@ pub(crate) fn get_aggregations_for_one_goods(
     cost: balance.number.cost.to_json(),
   });
 
-  let mut open_balance = balance.number.clone();
+  let mut open_balance = balance.number;
   let mut close_balance = open_balance.clone();
 
-  let mut op_iter = operations.iter();
+  let op_iter = operations.iter();
 
-  while let Some(op) = op_iter.next() {
+  for op in op_iter {
     // only "none-virtual" operations
     if op.dependant.is_empty() {
       if op.date < start_date {
@@ -385,7 +368,7 @@ pub(crate) fn new_get_aggregations(
       .chain(goods.as_bytes().iter())
       .chain((batch.date.timestamp() as u64).to_be_bytes().iter())
       .chain(batch.id.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect()
   };
 

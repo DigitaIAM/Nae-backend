@@ -26,9 +26,9 @@ impl Price {
   }
 }
 
-impl Into<Decimal> for Price {
-  fn into(self) -> Decimal {
-    self.0
+impl From<Price> for Decimal {
+  fn from(val: Price) -> Self {
+    val.0
   }
 }
 
@@ -63,9 +63,9 @@ impl ToJson for Cost {
   }
 }
 
-impl Into<Decimal> for Cost {
-  fn into(self) -> Decimal {
-    self.0
+impl From<Cost> for Decimal {
+  fn from(val: Cost) -> Self {
+    val.0
   }
 }
 
@@ -171,7 +171,7 @@ impl BalanceForGoods {
         self.qty += qty;
         self.cost += cost;
       },
-      InternalOperation::Issue(qty, cost, mode) => {
+      InternalOperation::Issue(qty, cost, _mode) => {
         self.qty -= qty;
         self.cost -= cost;
       },
@@ -339,7 +339,7 @@ impl Balance {
       .iter()
       .chain(dt.to_be_bytes().iter())
       .chain(self.batch.id.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect()
   }
 }

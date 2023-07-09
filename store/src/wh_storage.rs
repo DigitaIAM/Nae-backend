@@ -1,5 +1,5 @@
 use crate::checkpoints::CheckpointTopology;
-use crate::operations::{Op, OpMutation};
+use crate::operations::OpMutation;
 use crate::ordered_topology::OrderedTopology;
 use crate::topologies::store_batch_date_type_id::StoreBatchDateTypeId;
 use crate::topologies::store_goods_date_type_id_batch::StoreGoodsDateTypeIdBatch;
@@ -18,11 +18,12 @@ pub struct WHStorage {
 
 impl WHStorage {
   pub fn mutate(&self, ops: &Vec<OpMutation>) -> Result<(), WHError> {
-    Ok(self.database.record_ops(ops)?)
+    self.database.record_ops(ops)
   }
 
   pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, WHError> {
-    std::fs::create_dir_all(&path).map_err(|e| WHError::new("Can't create folder for WHStorage"))?;
+    std::fs::create_dir_all(&path)
+      .map_err(|_e| WHError::new("Can't create folder for WHStorage"))?;
 
     let mut opts = Options::default();
     let mut cfs = Vec::new();

@@ -1,19 +1,17 @@
 use crate::{
   balance::BalanceForGoods,
   db::Db,
-  elements::{first_day_current_month, Report, Store},
+  elements::{Report, Store},
   error::WHError,
 };
 
-use crate::aggregations::{get_aggregations_for_one_goods, new_get_aggregations};
-use crate::balance::Balance;
 use crate::batch::Batch;
-use crate::elements::{dt, Goods, Qty};
-use crate::elements::{UUID_MAX, UUID_NIL};
+use crate::elements::Goods;
+use crate::elements::UUID_NIL;
 use crate::operations::Op;
 use crate::ordered_topology::OrderedTopology;
 use chrono::{DateTime, Utc};
-use json::JsonValue;
+
 use log::debug;
 use rocksdb::{
   BoundColumnFamily, ColumnFamilyDescriptor, Direction, IteratorMode, Options, ReadOptions, DB,
@@ -47,10 +45,8 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     op: &Op,
     balance: &BalanceForGoods,
   ) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
-    if op.is_receive() {
-      if !op.is_dependent {
-        debug_assert!(!op.batch.is_empty(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
-      }
+    if op.is_receive() && !op.is_dependent {
+      debug_assert!(!op.batch.is_empty(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
     }
     debug_assert!(!op.op.is_zero(), "{} | {:#?} | {:#?}", op.batch.is_empty(), op, balance);
 
@@ -70,7 +66,7 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
   }
 
   fn get(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
-    if let Some(bytes) = self.db.get_cf(&self.cf()?, self.key(&op))? {
+    if let Some(bytes) = self.db.get_cf(&self.cf()?, self.key(op))? {
       Ok(Some(self.from_bytes(&bytes)?))
     } else {
       Ok(None)
@@ -84,19 +80,19 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     Ok(self.db.delete_cf(&self.cf()?, key)?)
   }
 
-  fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
+  fn balance_before(&self, _op: &Op) -> Result<BalanceForGoods, WHError> {
     Err(WHError::new("not implemented"))
   }
 
-  fn balance_on_op_or_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
+  fn balance_on_op_or_before(&self, _op: &Op) -> Result<BalanceForGoods, WHError> {
     Err(WHError::new("not implemented"))
   }
 
-  fn operation_after(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+  fn operation_after(&self, _op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
     Err(WHError::new("Not supported"))
   }
 
-  fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
+  fn operations_after(&self, _op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
@@ -106,27 +102,27 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
 
   fn get_ops_for_storage(
     &self,
-    storage: Store,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _storage: Store,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
   fn get_ops_for_all(
     &self,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
   fn get_ops_for_one_goods(
     &self,
-    store: Store,
-    goods: Goods,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _store: Store,
+    _goods: Goods,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
@@ -202,30 +198,30 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
 
   fn ops_for_store_goods_and_batch(
     &self,
-    store: Store,
-    goods: Goods,
-    batch: &Batch,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _store: Store,
+    _goods: Goods,
+    _batch: &Batch,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
   fn get_ops_for_many_goods(
     &self,
-    goods: &Vec<Goods>,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _goods: &Vec<Goods>,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
 
   fn get_report_for_storage(
     &self,
-    db: &Db,
-    storage: Store,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
+    _db: &Db,
+    _storage: Store,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
     Err(WHError::new("not implemented"))
   }
@@ -252,8 +248,8 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
       .chain(op_order.to_be_bytes().iter()) // op order
       .chain(op_id.as_bytes().iter()) // op id
       .chain(op_dependant.to_be_bytes().iter()) // op dependant
-      .chain(batch.to_bytes(&goods).iter()) // TODO bytes without goods part
-      .map(|b| *b)
+      .chain(batch.to_bytes(&goods).iter())
+      .copied()
       .collect()
   }
 }

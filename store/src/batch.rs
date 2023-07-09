@@ -58,14 +58,14 @@ impl Batch {
       .iter()
       .chain(dt.to_be_bytes().iter())
       .chain(self.id.as_bytes().iter())
-      .map(|b| *b)
+      .copied()
       .collect()
   }
 
   pub(crate) fn bytes(&self) -> Vec<u8> {
     let dt = self.date.timestamp() as u64;
 
-    dt.to_be_bytes().iter().chain(self.id.as_bytes().iter()).map(|b| *b).collect()
+    dt.to_be_bytes().iter().chain(self.id.as_bytes().iter()).copied().collect()
   }
 }
 
@@ -86,7 +86,7 @@ pub(crate) fn min_batch() -> Vec<u8> {
     .iter()
     .chain(u64::MIN.to_be_bytes().iter())
     .chain(UUID_NIL.as_bytes().iter())
-    .map(|b| *b)
+    .copied()
     .collect()
 }
 
@@ -96,6 +96,6 @@ pub(crate) fn max_batch() -> Vec<u8> {
     .iter()
     .chain(u64::MAX.to_be_bytes().iter())
     .chain(UUID_MAX.as_bytes().iter())
-    .map(|b| *b)
+    .copied()
     .collect()
 }

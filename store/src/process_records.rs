@@ -20,7 +20,7 @@ const CURRENCY: [&str; 1] = ["currency"];
 
 pub fn report(
   app: &(impl GetWarehouse + Services),
-  company: &str,
+  _company: &str,
   storage: &str,
   from_date: &str,
   till_date: &str,
@@ -67,7 +67,7 @@ pub fn memories_find(
   let params = object! {oid: oid, ctx: ctx, filter: filter, "$limit": 100};
   let result = app.service("memories").find(Context::local(), params)?;
 
-  Ok(result["data"].members().map(|o| o.clone()).collect())
+  Ok(result["data"].members().cloned().collect())
 }
 
 pub fn memories_create(
@@ -131,7 +131,7 @@ pub fn process_record(
   } else {
     COUNTERPARTY.to_vec()
   };
-  let from_name = &record[8].replace("\\", "").replace("\"", "").replace(",,", ",");
+  let from_name = &record[8].replace(['\\', '\"'], "").replace(",,", ",");
   let from = if from_name.is_empty() {
     JsonValue::String("".to_string())
   } else {
@@ -151,7 +151,7 @@ pub fn process_record(
   } else {
     COUNTERPARTY.to_vec()
   };
-  let into_name = &record[9].replace("\\", "").replace("\"", "").replace(",,", ",");
+  let into_name = &record[9].replace(['\\', '\"'], "").replace(",,", ",");
   let into_name = match into_name.as_str() {
     "Гагарина 36" => "снабжение Бегбудиев Носир",
     "Склад" => "склад",
@@ -228,7 +228,7 @@ pub fn process_record(
   };
   let uom = json(app, object! {name: unit}, UOM.to_vec(), &|| object! { name: unit })?;
 
-  let goods_name = record[2].replace("\\", "").replace("\"", "");
+  let goods_name = record[2].replace(['\\', '\"'], "");
   let vendor_code = &record[3];
 
   let goods_category =
@@ -274,7 +274,7 @@ pub fn process_record(
     None
   };
 
-  let float_qty_str = &record[5].replace(",", ".");
+  let float_qty_str = &record[5].replace(',', ".");
 
   let qty = float_qty_str.parse::<Decimal>().unwrap();
 
@@ -284,7 +284,7 @@ pub fn process_record(
     object! {name: "uzd"}
   })?;
 
-  let comment = match &record[11] {
+  let _comment = match &record[11] {
     "" => None,
     s => Some(s),
   };
