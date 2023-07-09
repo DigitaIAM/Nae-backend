@@ -1,6 +1,5 @@
 mod auth;
 pub mod commutator;
-mod file;
 pub mod inventory;
 pub mod services;
 pub mod settings;
@@ -16,5 +15,3 @@ pub mod memories;
 mod text_search;
 pub mod use_cases;
 pub mod warehouse;
-
-mod hik;

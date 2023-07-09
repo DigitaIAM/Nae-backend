@@ -1,11 +1,9 @@
 mod authentication;
-mod people;
 pub(crate) mod persistent;
 mod users;
 
 pub use authentication::Authentication;
 use json::JsonValue;
-pub use people::People;
 use service::error::Error;
 pub use users::Users;
 use values::ID;

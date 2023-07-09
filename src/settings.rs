@@ -4,38 +4,26 @@ use std::env;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct Database {
+pub struct Database {
   pub memory: PathBuf,
   pub inventory: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct JWTConfig {
-  pub(crate) audience: String,
-  pub(crate) issuer: String,
-  pub(crate) secret: String,
+  pub audience: String,
+  pub issuer: String,
+  pub secret: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
-  pub(crate) debug: bool,
-  pub(crate) jwt_config: JWTConfig,
-  pub(crate) database: Database,
+  pub debug: bool,
+  pub jwt_config: JWTConfig,
+  pub database: Database,
 }
 
 impl Settings {
-  pub fn test(folder: PathBuf) -> Settings {
-    Settings {
-      debug: false,
-      jwt_config: JWTConfig {
-        audience: "http://localhost".into(),
-        issuer: "Nae".into(),
-        secret: "1234567890".into(),
-      },
-      database: Database { memory: folder.join("memory"), inventory: folder.join("inventory") },
-    }
-  }
-
   pub fn new() -> Result<Self, ConfigError> {
     let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| "development".into());
 

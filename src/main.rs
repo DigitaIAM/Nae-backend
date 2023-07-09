@@ -24,7 +24,6 @@ use uuid::Uuid;
 
 mod auth;
 mod commutator;
-mod file;
 mod inventory;
 mod services;
 mod settings;
@@ -41,20 +40,11 @@ mod text_search;
 mod use_cases;
 pub mod warehouse;
 
-mod hik;
-
 use crate::animo::memory::*;
 use crate::animo::shared::*;
 use crate::animo::{Animo, Time, Topology};
-use crate::hik::error::Error;
-use crate::hik::services::actions::Actions;
-use crate::hik::services::{Cameras, Events};
-use crate::hr::services::attendance_report::AttendanceReport;
 use crate::hr::services::companies::Companies;
-use crate::hr::services::departments::Departments;
-use crate::hr::services::shifts::Shifts;
 use crate::memories::MemoriesInFiles;
-use crate::services::People;
 use crate::settings::Settings;
 use crate::storage::organizations::Workspace;
 use crate::storage::Workspaces;
@@ -164,8 +154,6 @@ async fn server(settings: Arc<Settings>, app: Application, com: Addr<Commutator>
       .service(
         web::scope("/v1")
           // .service(websocket::start_connection_route)
-          .service(file::get_file)
-          .service(file::post_file)
           .service(api::memory_query)
           .service(api::memory_modify),
       )
@@ -203,7 +191,6 @@ async fn startup() -> std::io::Result<()> {
   app.register(services::Users::new(app.clone(), "users"));
 
   app.register(Companies::new(app.clone()));
-  app.register(People::new(app.clone()));
 
   app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(Inventory::new(app.clone()));
