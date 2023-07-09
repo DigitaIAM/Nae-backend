@@ -137,7 +137,7 @@ impl Memory for AnimoDB {
 
     let rf = Arc::new(db);
     let mut db = AnimoDB {
-      db: rf.clone(),
+      db: rf,
       dispatchers: Arc::new(Mutex::new(vec![])),
       ops_manager: Arc::new(OpsManager()),
       text_search,
@@ -150,7 +150,7 @@ impl Memory for AnimoDB {
 
     animo.register_topology(Topology::WarehouseStore(wh_store.clone()));
     animo.register_topology(Topology::WarehouseStoreAggregation(Arc::new(
-      WHStoreAggregationTopology(wh_store.clone()),
+      WHStoreAggregationTopology(wh_store),
     )));
 
     db.register_dispatcher(Arc::new(animo)).unwrap();

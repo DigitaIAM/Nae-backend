@@ -34,7 +34,7 @@ impl IntervalPosition {
       [1] => Ok(IntervalPosition::Start),
       [2] => Ok(IntervalPosition::End),
       [b] => Err(format!("wrong byte {}", b).into()),
-      [] => Err(format!("no byte").into()),
+      [] => Err("no byte".to_string().into()),
       [_, _, ..] => unreachable!("internal errors"),
     }
   }
@@ -78,7 +78,7 @@ impl TimeAccuracy {
       [5] => Ok(TimeAccuracy::Minute),
       [6] => Ok(TimeAccuracy::Second),
       [b] => Err(format!("wrong byte {}", b).into()),
-      [] => Err(format!("no byte").into()),
+      [] => Err("no byte".to_string().into()),
       [_, _, ..] => unreachable!("internal errors"),
     }
   }
@@ -237,10 +237,8 @@ impl Time {
 
 impl PartialEq<Self> for Time {
   fn eq(&self, other: &Self) -> bool {
-    if self.2 == other.2 {
-      if self.1 == other.1 {
-        return self.0 == other.0;
-      }
+    if self.2 == other.2 && self.1 == other.1 {
+      return self.0 == other.0;
     }
     unimplemented!("{:?} vs {:?}", self, other)
   }
@@ -252,10 +250,8 @@ impl PartialEq<Self> for Time {
 
 impl PartialOrd<Self> for Time {
   fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    if self.2 == other.2 {
-      if self.1 == other.1 {
-        return self.0.partial_cmp(&other.0);
-      }
+    if self.2 == other.2 && self.1 == other.1 {
+      return self.0.partial_cmp(&other.0);
     }
     unimplemented!()
   }

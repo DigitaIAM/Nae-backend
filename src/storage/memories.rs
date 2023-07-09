@@ -120,7 +120,7 @@ pub(crate) fn index_uuid(top_folder: &PathBuf, folder: &PathBuf, uuid: &str) -> 
 
   if let Some(folder) = pathdiff::diff_paths(folder.canonicalize()?, path_folder.canonicalize()?) {
     if !path_uuid.exists() {
-      symlink::symlink_dir(&folder, &path_uuid)?;
+      symlink::symlink_dir(folder, &path_uuid)?;
     }
   } else {
     todo!("raise error")
@@ -155,7 +155,7 @@ pub(crate) fn build_folder_path(id: &String, folder: &PathBuf) -> Option<PathBuf
   let mut folder = folder.clone();
   folder.push(year);
   folder.push(month);
-  folder.push(&id);
+  folder.push(id);
 
   Some(folder)
 }
@@ -194,7 +194,7 @@ impl Memories {
         path_current.push(&file_name);
 
         if path_current.exists() {
-          time = time + chrono::Duration::milliseconds(1);
+          time += chrono::Duration::milliseconds(1);
           continue;
         }
 
@@ -237,7 +237,7 @@ impl Memories {
 
   // TODO move to ???
   pub(crate) fn get(&self, id: &String) -> Option<Document> {
-    if id.contains("/") {
+    if id.contains('/') {
       self.ws.resolve_id(id)
     } else {
       match Uuid::parse_str(id) {

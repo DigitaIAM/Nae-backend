@@ -15,7 +15,7 @@ impl WsMessage {
   pub(crate) fn open(sid: &Uuid) -> Self {
     let data = format!(
       "{{\"sid\":\"{}\",\"upgrades\":[\"websocket\"],\"pingInterval\":{},\"pingTimeout\":{}}}",
-      sid.to_string(),
+      sid,
       crate::websocket::PING_INTERVAL,
       crate::websocket::PING_TIMEOUT
     );
@@ -23,7 +23,7 @@ impl WsMessage {
   }
 
   pub(crate) fn connect(sid: &Uuid) -> Self {
-    let data = format!("{{\"sid\":\"{}\"}}", sid.to_string());
+    let data = format!("{{\"sid\":\"{}\"}}", sid);
     println!("connect {data}");
     WsMessage {
       data,
@@ -43,7 +43,7 @@ impl WsMessage {
 
   pub(crate) fn ack<S: Convertable>(event_id: String, response: S) -> Self {
     let response = response.data();
-    let data = if response.starts_with("[") {
+    let data = if response.starts_with('[') {
       format!("{}{}", event_id, response)
     } else {
       format!("{}[{}]", event_id, response)

@@ -478,12 +478,12 @@ impl<'a> Txn<'a> {
       }
     }
 
-    let memory = self.s.load_by(context, &what)?;
+    let memory = self.s.load_by(context, what)?;
     if memory != Value::Nothing {
       return Ok(Some(ChangeTransformation {
         zone,
         context: context.clone(),
-        what: what.clone(),
+        what: *what,
         into_before: memory.clone(),
         into_after: memory,
       }));

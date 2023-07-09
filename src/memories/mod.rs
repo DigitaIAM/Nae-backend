@@ -73,8 +73,7 @@ pub trait Resolve {
 impl Resolve for uuid::Uuid {
   fn resolve_to_json_object(&self, ws: &Workspace) -> JsonValue {
     ws.resolve_uuid(self)
-      .and_then(|s| s.json().ok())
-      .and_then(|data| Some(data.enrich(ws)))
+      .and_then(|s| s.json().ok()).map(|data| data.enrich(ws))
       .unwrap_or_else(|| {
         json::object! {
           "_uuid": self.to_string(),

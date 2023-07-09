@@ -46,7 +46,7 @@ pub fn import(app: &Application) {
       let field = record.get(name).unwrap();
       match field {
         FieldValue::Numeric(data) => match data {
-          Some(number) => number.clone(),
+          Some(number) => *number,
           None => unreachable!("internal errors"),
         },
         _ => unreachable!("internal errors"),
@@ -287,7 +287,7 @@ pub fn report(db: &AnimoDB) {
 
   let ts = std::time::Instant::now();
 
-  let stores = WHStoreAggregationTopology::stores_turnover(&db, interval.clone()).expect("Ok");
+  let stores = WHStoreAggregationTopology::stores_turnover(db, interval).expect("Ok");
 
   println!("done in {:?}", ts.elapsed());
 

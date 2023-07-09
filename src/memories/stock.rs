@@ -23,11 +23,11 @@ pub(crate) fn find_items(
 
   log::debug!("fn_find_items: {items:?}");
 
-  return Ok(json::object! {
+  Ok(json::object! {
       data: items,
       total: total,
       "$skip": skip,
-  });
+  })
 }
 
 fn process(
@@ -65,9 +65,9 @@ fn process(
         let store_uuid = before.unwrap_or(store_top);
 
         // category
-        let goods_obj = goods.resolve_to_json_object(&ws);
+        let goods_obj = goods.resolve_to_json_object(ws);
         let category_id = goods_obj["category"].string();
-        let category_obj = category_id.resolve_to_json_object(&ws);
+        let category_obj = category_id.resolve_to_json_object(ws);
         if let Some("") = filters["category"].as_str() {
           if !category_id.is_empty() {
             continue;
@@ -133,14 +133,12 @@ fn process(
         println!("return - storages + goods");
         [storages_items, goods_items].concat()
       }
+    } else if categories_items.len() > 1 {
+      println!("return - categories");
+      [categories_items].concat()
     } else {
-      if categories_items.len() > 1 {
-        println!("return - categories");
-        [categories_items].concat()
-      } else {
-        println!("return - goods");
-        [goods_items].concat()
-      }
+      println!("return - goods");
+      [goods_items].concat()
     }
   } else {
     println!("return - storages + goods");
@@ -200,11 +198,10 @@ where
   V: ToJson + Default,
 {
   let mut items: Vec<JsonValue> = map
-    .keys()
-    .map(|id| id.clone())
+    .keys().cloned()
     .collect::<Vec<_>>()
     .into_iter()
-    .map(|id| (id.resolve_to_json_object(&ws), id))
+    .map(|id| (id.resolve_to_json_object(ws), id))
     .map(|(mut o, id)| {
       let cost = map.remove(&id).unwrap_or_default();
       o[name] = cost.to_json();
@@ -228,8 +225,8 @@ impl Resolve for (Store, Goods, Batch) {
     let bytes: Vec<u8> = self
       .0
       .as_bytes()
-      .into_iter()
-      .zip(self.1.as_bytes().into_iter().zip(self.2.id.as_bytes().into_iter()))
+      .iter()
+      .zip(self.1.as_bytes().iter().zip(self.2.id.as_bytes().iter()))
       .map(|(a, (b, c))| a ^ b ^ c)
       .collect();
 

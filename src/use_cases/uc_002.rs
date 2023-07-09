@@ -33,8 +33,8 @@ pub fn import(db: &AnimoDB) {
     if rf.is_empty() {
       continue;
     }
-    let price = record[2].replace(",", "");
-    let min_order = record[4].replace(",", "");
+    let price = record[2].replace(',', "");
+    let min_order = record[4].replace(',', "");
 
     let label = &record[1];
     let price = price.parse::<Decimal>().unwrap();

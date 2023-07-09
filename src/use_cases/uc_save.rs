@@ -67,7 +67,7 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
         // println!("_product {product:?}");
 
         if product["name"].as_str() == Some("Рулон полипропилен") {
-          let material = order["material"].string().replace(",", ".");
+          let material = order["material"].string().replace(',', ".");
           let file = OpenOptions::new()
             .write(true)
             .create(true)
@@ -362,7 +362,7 @@ pub fn save_transfer_from_file(app: &Application) -> Result<(), Error> {
     let date = &record[7];
     let date = format!("{}-{}-{}", &date[6..=9], &date[3..=4], &date[0..=1]);
 
-    let from_name = &record[8].replace("\\", "").replace("\"", "").replace(",,", ",");
+    let from_name = &record[8].replace(['\\', '\"'], "").replace(",,", ",");
 
     let from = if let Ok(items) =
       memories_find(app, object! { name: from_name.to_string() }, storage_ctx.clone())
@@ -377,7 +377,7 @@ pub fn save_transfer_from_file(app: &Application) -> Result<(), Error> {
     }
     .unwrap();
 
-    let into_name = &record[9].replace("\\", "").replace("\"", "").replace(",,", ",");
+    let into_name = &record[9].replace(['\\', '\"'], "").replace(",,", ",");
     let into = if let Ok(items) =
       memories_find(app, object! { name: into_name.to_string() }, storage_ctx.clone())
     {
@@ -421,9 +421,9 @@ pub fn save_transfer_from_file(app: &Application) -> Result<(), Error> {
       let uom = op["qty"]["uom"]["name"].string();
       let qty = op["qty"]["number"].string();
 
-      if goods_name != record[2].to_string().replace("\"", "")
-        || uom != record[4].to_string()
-        || qty != record[5].to_string()
+      if goods_name != record[2].to_string().replace('\"', "")
+        || uom != record[4]
+        || qty != record[5]
       {
         continue;
       }

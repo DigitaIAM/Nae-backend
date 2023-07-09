@@ -100,8 +100,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
               socket_io::EVENT => {
                 println!("data: {:?}", data);
                 // "16[\"create\",\"authentication\",{\"strategy\":\"local\",\"email\":\"admin\",\"password\":\"111\"},{}]"
-                if let Some(i) = data.find("[") {
-                  if data.ends_with("]") {
+                if let Some(i) = data.find('[') {
+                  if data.ends_with(']') {
                     let event_id = data[..i].to_string();
                     let data = &data[i..];
 

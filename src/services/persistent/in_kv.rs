@@ -40,8 +40,8 @@ impl InKV {
       })
       .filter(|(_n, v)| v.is_string())
       .map(|(name, value)| {
-        result.insert(&name, value.as_string().unwrap_or_default().into());
-        ChangeTransformation::create(self.zone, id, &name, value)
+        result.insert(name, value.as_string().unwrap_or_default().into());
+        ChangeTransformation::create(self.zone, id, name, value)
       })
       .collect();
 
@@ -96,7 +96,7 @@ impl Service for InKV {
           .filter(|(_n, v)| v.into != Value::Nothing)
           .for_each(|(n, v)| obj.insert(n, v.into.to_json()));
 
-        if obj.len() == 0 {
+        if obj.is_empty() {
           Err(Error::NotFound(id.to_base64()))
         } else {
           obj.insert("_id", id.to_base64().into());

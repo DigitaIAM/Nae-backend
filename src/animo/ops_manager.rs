@@ -39,7 +39,7 @@ impl<'a,O: FromBytes<O> + Debug> Iterator for LightIterator<'a,O> {
             Some(Ok((k, v))) => {
                 // log::debug!("next {:?}", k);
                 if self.1.len() <= k.len() && self.1 == &k[0..self.1.len()] {
-                    let record = O::from_bytes(&*v).unwrap();
+                    let record = O::from_bytes(&v).unwrap();
                     Some((k.to_vec(), record))
                 } else {
                     None
@@ -67,12 +67,12 @@ impl<'a,O: FromKVBytes<O>> Iterator for HeavyIterator<'a,O> {
                 Some(Ok((k, v))) => {
                     // log::debug!("next {:?}", k);
                     if self.prefix.len() <= k.len() && self.prefix == &k[0..self.prefix.len()] {
-                        if self.suffix.1.len() == 0
+                        if self.suffix.1.is_empty()
                             || (
                             self.suffix.0 + self.suffix.1.len() <= k.len()
                             && self.suffix.1 == &k[self.suffix.0..(self.suffix.0+self.suffix.1.len())]
                         ) {
-                            let record = O::from_kv_bytes(&*k, &*v).unwrap();
+                            let record = O::from_kv_bytes(&k, &v).unwrap();
                             break Some((k.to_vec(), record));
                         } else {
                             continue;
@@ -215,9 +215,9 @@ impl OpsManager {
 
             // store
             if let Some(after) = ops.after.as_ref() {
-                tx.put_operation::<BV,BO,TV,TO>(&after)?;
+                tx.put_operation::<BV,BO,TV,TO>(after)?;
             } else if let Some(before) = ops.before.as_ref() {
-                tx.del_operation::<BV,BO,TV,TO>(&before)?;
+                tx.del_operation::<BV,BO,TV,TO>(before)?;
             }
 
             let mut count = 0;

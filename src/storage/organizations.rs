@@ -47,7 +47,7 @@ impl Workspaces {
     let mut path = folder.clone();
     path.push("organization.json");
 
-    Workspace { id: id.clone(), folder, path }
+    Workspace { id: *id, folder, path }
   }
 
   pub fn list(&self) -> Result<Vec<Workspace>, Error> {
@@ -144,7 +144,7 @@ impl Workspace {
     path.push(format!("{}/latest.json", id));
 
     // let ctx = vec![];
-    let mut ctx: Vec<_> = id.split("/").map(|s| s.to_string()).collect();
+    let mut ctx: Vec<_> = id.split('/').map(|s| s.to_string()).collect();
     ctx.pop();
 
     // println!("path {path:?} ctx {ctx:?}");
@@ -161,7 +161,7 @@ impl Workspace {
     let mut top_folder = self.folder.clone();
     top_folder.push("memories");
 
-    let mut ctx: Vec<_> = id.split("/").map(|s| s.to_string()).collect();
+    let mut ctx: Vec<_> = id.split('/').map(|s| s.to_string()).collect();
     let ctx_id = ctx.pop().unwrap_or_default();
 
     let mut path = top_folder.clone();
@@ -250,7 +250,7 @@ impl Iterator for Documents {
         .unwrap()
         .to_string_lossy()
         .to_string()
-        .split("/")
+        .split('/')
         .map(|s| s.to_string())
         .collect();
       let ctx_folder = context.into();

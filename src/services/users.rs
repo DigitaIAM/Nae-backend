@@ -30,17 +30,15 @@ impl Users {
     for entry in std::fs::read_dir(PATH).unwrap() {
       let entry = entry.unwrap();
       let path = entry.path();
-      if path.is_file() {
-        if entry.file_name().to_string_lossy().ends_with(".json") {
-          let contents = std::fs::read_to_string(path).unwrap();
+      if path.is_file() && entry.file_name().to_string_lossy().ends_with(".json") {
+        let contents = std::fs::read_to_string(path).unwrap();
 
-          let obj = json::parse(contents.as_str()).unwrap();
+        let obj = json::parse(contents.as_str()).unwrap();
 
-          let id = obj["_id"].as_str().unwrap_or("").to_string();
-          let id = string_to_id(id).unwrap();
+        let id = obj["_id"].as_str().unwrap_or("").to_string();
+        let id = string_to_id(id).unwrap();
 
-          data.entry(id).or_insert(obj);
-        }
+        data.entry(id).or_insert(obj);
       }
     }
 
@@ -59,7 +57,7 @@ impl Users {
       .create(true)
       .write(true)
       .truncate(true)
-      .open(path.clone())
+      .open(path)
       .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
 
     let data = obj.dump();
@@ -74,7 +72,7 @@ impl Users {
     obj.remove("password");
 
     let mut objs = self.objs.write().unwrap();
-    objs.insert(id.clone(), obj);
+    objs.insert(*id, obj);
     Ok(())
   }
 }
@@ -152,7 +150,7 @@ impl Service for Users {
 
     // let id = ID::random();
     let id = ID::from(email.as_str());
-    let mut obj = data.clone();
+    let mut obj = data;
 
     obj["_id"] = JsonValue::String(id.to_base64());
 
@@ -185,7 +183,7 @@ impl Service for Users {
     } else {
       let id = crate::services::string_to_id(id)?;
 
-      let mut obj = data.clone();
+      let mut obj = data;
       obj["_id"] = id.to_base64().into();
 
       // TODO update password

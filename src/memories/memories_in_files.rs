@@ -113,7 +113,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| show_deleted(&ctx) || o["status"].string() != "deleted".to_string())
+        .filter(|o| show_deleted(&ctx) || o["status"].string() != *"deleted")
         .filter(|o| {
           for (_name, v) in o.entries() {
             if let Some(str) = v.as_str() {
@@ -122,7 +122,7 @@ impl Service for MemoriesInFiles {
               }
             }
           }
-          return false;
+          false
         })
         .map(|o| {
           total += 1;
@@ -143,7 +143,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| show_deleted(&ctx) || o["status"].string() != "deleted".to_string())
+        .filter(|o| show_deleted(&ctx) || o["status"].string() != *"deleted")
         .filter(|o| filters.entries().all(|(n, v)| &o[n] == v))
         .map(|o| {
           total += 1;
@@ -201,7 +201,7 @@ impl Service for MemoriesInFiles {
           .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
           .filter(|o| o.is_object())
           .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
-          .filter(|o| o["status"].string() != "deleted".to_string())
+          .filter(|o| o["status"].string() != *"deleted")
           .map(|o| o["qty"].number())
           .map(|o| {
             boxes += 1;
@@ -324,10 +324,10 @@ impl Service for MemoriesInFiles {
     } else {
       let doc = memories
         .get(&id)
-        .ok_or(Error::GeneralError(format!("id '{id}' not found").into()))?;
+        .ok_or(Error::GeneralError(format!("id '{id}' not found")))?;
       let mut obj = doc.json()?;
 
-      let mut patch = data.clone();
+      let mut patch = data;
       patch.remove("_id"); // TODO check id?
 
       obj = obj.merge(&patch);

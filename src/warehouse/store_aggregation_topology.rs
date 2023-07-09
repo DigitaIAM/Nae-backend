@@ -145,7 +145,7 @@ impl AggregationTopology for WHStoreAggregationTopology {
         dates.push(checkpoint.date);
       }
 
-      if dates.len() == 0 {
+      if dates.is_empty() {
         let checkpoint = WHStoreAggregationTopology::next_checkpoint(&delta.date);
         let position = WHStoreAggregationTopology::position(
           delta.store.into(),
@@ -289,7 +289,7 @@ impl WHStoreAggregationTopology {
     // subtract operations between [checkpoint_from, from)
     if checkpoint_from.ts() < interval.from.ts() {
       for (store_id, named) in stores.iter_mut() {
-        let store_id = store_id.clone();
+        let store_id = *store_id;
 
         let ops_from = WHQueryStoreOperation::start(store_id, &checkpoint_from);
         let ops_till = WHQueryStoreOperation::end_exclude(store_id, &interval.from);
@@ -320,7 +320,7 @@ impl WHStoreAggregationTopology {
     // subtract operations between (till, checkpoint_till]
     if checkpoint_till.ts() > interval.till.ts() {
       for (store_id, named) in stores.iter_mut() {
-        let store_id = store_id.clone();
+        let store_id = *store_id;
 
         let ops_from = WHQueryStoreOperation::start_exclude(store_id, &interval.till);
         let ops_till = WHQueryStoreOperation::end_exclude(store_id, &checkpoint_till);
@@ -347,7 +347,7 @@ impl WHStoreAggregationTopology {
 
     log::debug!("aggregation: {:?}", stores);
 
-    let items = stores.values().cloned().map(|item| Memo::new(item)).collect();
+    let items = stores.values().cloned().map(Memo::new).collect();
     Ok(MemoOfList::new(items))
   }
 
@@ -451,8 +451,8 @@ impl WHStoreAggregationTopology {
             .into(),
         )
       } else {
-        let date = Time::from_bytes(bs, 1 * ID_BYTES)?;
-        let store = bs[(1 * ID_BYTES + 10)..(2 * ID_BYTES + 10)].try_into()?;
+        let date = Time::from_bytes(bs, ID_BYTES)?;
+        let store = bs[(ID_BYTES + 10)..(2 * ID_BYTES + 10)].try_into()?;
         let goods = bs[(2 * ID_BYTES + 10)..(3 * ID_BYTES + 10)].try_into()?;
 
         Ok((store, goods, date))

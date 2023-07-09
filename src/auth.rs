@@ -187,7 +187,7 @@ pub(crate) async fn logout(
   let account =
     Account::jwt(app.get_ref(), auth.token()).map_err(actix_web::error::ErrorUnauthorized)?;
 
-  logout_procedure(&app, account).map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+  logout_procedure(&app, account).map_err(actix_web::error::ErrorInternalServerError)?;
 
   Ok(HttpResponse::Ok().json("logged out"))
 }
@@ -286,7 +286,7 @@ pub(crate) fn login_procedure(
     let claims = Claims {
       aud: app.settings.jwt_config.audience.clone(),
       iss: app.settings.jwt_config.issuer.clone(),
-      sub: data.email.clone(),
+      sub: data.email,
       iat: now,
       nbf: now,
       exp,

@@ -49,7 +49,7 @@ pub async fn docs_create(
 ) -> Result<HttpResponse, Error> {
   let data = json::parse(&data.0.to_string()).unwrap();
 
-  let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
+  let ctx: Vec<String> = params["ctx"].split(',').map(|s| s.to_string()).collect();
   let oid = params["oid"].clone();
 
   let params: JsonValue = object! {"ctx": ctx, "oid": oid};
@@ -81,7 +81,7 @@ pub async fn docs_update(
 
   let id = params["id"].clone();
 
-  let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
+  let ctx: Vec<String> = params["ctx"].split(',').map(|s| s.to_string()).collect();
   let oid = params["oid"].clone();
 
   let params: JsonValue = object! {"ctx": ctx, "oid": oid};
@@ -103,7 +103,7 @@ pub async fn docs_find(
   app: web::Data<Application>,
   params: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
-  let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
+  let ctx: Vec<String> = params["ctx"].split(',').map(|s| s.to_string()).collect();
 
   let oid = params["oid"].clone();
 
@@ -128,7 +128,7 @@ pub async fn inventory_find(
   app: web::Data<Application>,
   params: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
-  let ctx: Vec<String> = params["ctx"].split(",").map(|s| s.to_string()).collect();
+  let ctx: Vec<String> = params["ctx"].split(',').map(|s| s.to_string()).collect();
   let oid = params["oid"].clone();
 
   let from_date = params["from_date"].clone();

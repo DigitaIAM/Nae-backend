@@ -45,12 +45,10 @@ pub fn uuid(name: &str, params: &Params) -> std::result::Result<uuid::Uuid, Erro
     } else {
       Err(Error::GeneralError(format!("uuid `{name}` not found")))
     }
+  } else if let Some(id) = params[name].as_str() {
+    uuid::Uuid::parse_str(id).map_err(|e| Error::GeneralError(e.to_string()))
   } else {
-    if let Some(id) = params[name].as_str() {
-      uuid::Uuid::parse_str(id).map_err(|e| Error::GeneralError(e.to_string()))
-    } else {
-      Err(Error::GeneralError(format!("uuid `{name}` not found")))
-    }
+    Err(Error::GeneralError(format!("uuid `{name}` not found")))
   }
 }
 

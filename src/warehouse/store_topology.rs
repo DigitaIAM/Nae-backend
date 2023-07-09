@@ -197,7 +197,7 @@ impl WHStoreTopology {
       }
 
       // store memo
-      tx.update_value(&query.position(), &balance)?;
+      tx.update_value(query.position(), &balance)?;
 
       balance.1
     };
@@ -223,7 +223,7 @@ impl WHStoreTopology {
       } else {
         let _convert =
           |bs: &[u8]| -> [u8; 8] { bs.try_into().expect("slice with incorrect length") };
-        let store: ID = bs[1 * ID_BYTES..2 * ID_BYTES].try_into()?;
+        let store: ID = bs[ID_BYTES..2 * ID_BYTES].try_into()?;
         let date = Time::from_bytes(bs, 2 * ID_BYTES)?;
         let goods: ID = bs[(2 * ID_BYTES + 10)..(3 * ID_BYTES + 10)].try_into()?;
 

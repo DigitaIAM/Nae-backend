@@ -67,13 +67,11 @@ impl TextSearch {
     let mut to_index = HashSet::with_capacity(changes.len());
 
     for change in changes {
-      if change.zone == *CAN_BUY_FROM {
-        if change.context.0.len() > 2 {
-          let _supplier = change.context.0[0];
-          let goods = change.context.0[1];
+      if change.zone == *CAN_BUY_FROM && change.context.0.len() > 2 {
+        let _supplier = change.context.0[0];
+        let goods = change.context.0[1];
 
-          to_index.insert(goods);
-        }
+        to_index.insert(goods);
       }
     }
 

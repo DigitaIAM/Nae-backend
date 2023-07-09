@@ -78,8 +78,8 @@ impl Application {
     };
 
     thread::spawn({
-      let should_stop = stop.clone();
-      let r = receiver.clone();
+      let should_stop = stop;
+      let r = receiver;
       let a = app.clone();
       move || {
         while !should_stop.load(Ordering::SeqCst) {
@@ -197,7 +197,7 @@ impl Commutator {
     };
 
     thread::spawn({
-      let should_stop = stop.clone();
+      let should_stop = stop;
       let c = com.clone();
       move || {
         while !should_stop.load(Ordering::SeqCst) {
@@ -232,7 +232,7 @@ impl Commutator {
 
       // version 4: "0{\"sid\":\"...\"}"
       socket.do_send(WsMessage {
-        data: format!("{{\"sid\":\"{}\"}}", sid.to_string()),
+        data: format!("{{\"sid\":\"{}\"}}", sid),
         engine_code: engine_io::MESSAGE.to_string(),
         socket_code: Some(socket_io::CONNECT.to_string()),
       });

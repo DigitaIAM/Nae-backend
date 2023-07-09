@@ -55,7 +55,7 @@ impl InFiles {
       .create(true)
       .write(true)
       .truncate(true)
-      .open(path.clone())
+      .open(path)
       .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
 
     let data = obj.dump();
@@ -66,7 +66,7 @@ impl InFiles {
       .map_err(|e| Error::IOError(format!("fail to write file: {}", e)))?;
 
     let mut objs = self.objs.write().unwrap();
-    objs.insert(id.clone(), obj.clone());
+    objs.insert(*id, obj.clone());
     Ok(())
   }
 }

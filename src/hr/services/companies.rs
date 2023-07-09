@@ -50,7 +50,7 @@ impl Service for Companies {
     } else {
       let id = ID::random();
 
-      let mut obj = data.clone();
+      let mut obj = data;
       obj["_id"] = JsonValue::String(id.to_base64());
 
       self.app.wss.create(id)?.save(obj.dump())?;
@@ -71,7 +71,7 @@ impl Service for Companies {
     } else {
       let id = crate::services::string_to_id(id)?;
 
-      let mut obj = data.clone();
+      let mut obj = data;
       obj["_id"] = id.to_base64().into();
 
       self.app.wss.get(&id).save(obj.dump())?;
