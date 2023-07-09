@@ -4,7 +4,7 @@ pub mod check_date_store_batch;
 use crate::balance::{Balance, BalanceForGoods};
 use crate::batch::Batch;
 use crate::elements::{first_day_next_month, Goods, Store, WHError};
-use crate::operations::{Op, OpMutation};
+use crate::operations::OpMutation;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use uuid::Uuid;

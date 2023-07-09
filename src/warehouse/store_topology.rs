@@ -61,7 +61,7 @@ impl QueryValue<WHBalance> for WHQueryStoreBalance {
   }
 }
 
-pub(crate) struct WHQueryStoreOperation {
+pub struct WHQueryStoreOperation {
   prefix: usize,
   position: Vec<u8>,
 }
@@ -125,17 +125,14 @@ impl PositionInTopology for WHQueryStoreOperation {
 pub struct WHStoreTopology();
 
 impl WHStoreTopology {
-  pub(crate) fn get_ops_till(
-    store: Store,
-    till: Time,
-  ) -> (WHQueryStoreOperation, WHQueryStoreOperation) {
+  pub fn get_ops_till(store: Store, till: Time) -> (WHQueryStoreOperation, WHQueryStoreOperation) {
     let from = WHQueryStoreOperation::zero(store);
     let till = WHQueryStoreOperation::end(store, &till);
 
     (from, till)
   }
 
-  pub(crate) fn get_ops(
+  pub fn get_ops(
     store: Store,
     from: &Time,
     till: &Time,
@@ -146,7 +143,7 @@ impl WHStoreTopology {
     (from, till)
   }
 
-  pub(crate) fn balance(
+  pub fn balance(
     db: &AnimoDB,
     store: Store,
     date: Time,
@@ -162,7 +159,7 @@ impl WHStoreTopology {
     Ok(memo)
   }
 
-  pub(crate) fn balance_tx(
+  pub fn balance_tx(
     tx: &mut Txn,
     store: Store,
     date: Time,

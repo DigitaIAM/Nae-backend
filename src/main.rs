@@ -1,7 +1,6 @@
 use crate::commutator::{Application, Commutator};
 use actix::{Actor, Addr};
 use actix_cors::Cors;
-// use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
 use actix_web::dev::ServiceRequest;
 use actix_web::http::header;
 use actix_web::{http, middleware, web, App, HttpServer};
@@ -139,11 +138,6 @@ async fn server(settings: Arc<Settings>, app: Application, com: Addr<Commutator>
       .max_age(3600);
 
     App::new()
-      // .wrap(
-      //   RateLimiter::new(MemoryStoreActor::from(store.clone()).start())
-      //     .with_interval(Duration::from_secs(60))
-      //     .with_max_requests(100),
-      // )
       .wrap(cors)
       .app_data(web::Data::new(app.clone()))
       .app_data(web::Data::new(com.clone()))

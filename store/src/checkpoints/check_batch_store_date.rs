@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::balance::Balance;
 use crate::batch::Batch;
 use crate::checkpoints::CheckpointTopology;
-use crate::operations::Op;
 use crate::{
   balance::BalanceForGoods,
   elements::{dt, Goods, Store, UUID_NIL},
@@ -98,9 +97,9 @@ impl CheckpointTopology for CheckBatchStoreDate {
 
   fn balances_for_store_goods(
     &self,
-    date: DateTime<Utc>,
-    store: Store,
-    goods: Goods,
+    _date: DateTime<Utc>,
+    _store: Store,
+    _goods: Goods,
   ) -> Result<(DateTime<Utc>, HashMap<Batch, BalanceForGoods>), WHError> {
     unimplemented!()
   }
@@ -116,9 +115,9 @@ impl CheckpointTopology for CheckBatchStoreDate {
 
   fn get_checkpoints_for_one_goods_with_date(
     &self,
-    store: Store,
-    goods: Goods,
-    date: DateTime<Utc>,
+    _store: Store,
+    _goods: Goods,
+    _date: DateTime<Utc>,
   ) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError> {
     unimplemented!()
   }
@@ -161,7 +160,7 @@ impl CheckpointTopology for CheckBatchStoreDate {
 
   fn get_checkpoints_for_all_storages_before_date(
     &self,
-    date: DateTime<Utc>,
+    _date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError> {
     unimplemented!()
   }

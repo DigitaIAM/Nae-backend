@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::balance::Balance;
 use crate::batch::{max_batch, min_batch, Batch};
 use crate::checkpoints::CheckpointTopology;
-use crate::operations::Op;
 use crate::{
   balance::BalanceForGoods,
   elements::{dt, first_day_current_month, Goods, Store, UUID_MAX, UUID_NIL},

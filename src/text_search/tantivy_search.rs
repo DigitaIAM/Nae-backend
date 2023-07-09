@@ -50,14 +50,6 @@ impl TextSearch {
     Ok(TextSearch { index, writer, reader, field_key, field_text, field_string })
   }
 
-  fn depends_on(&self) -> Vec<ID> {
-    todo!()
-  }
-
-  fn on_mutation(&self, _tx: &mut Txn, _changes: Vec<ChangeTransformation>) -> Result<(), DBError> {
-    todo!()
-  }
-
   pub(crate) fn modification(
     &self,
     _s: &Snapshot,

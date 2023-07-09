@@ -35,16 +35,16 @@ pub struct Goods(ID);
 // #[archive(compare(PartialEq))]
 // To use the safe API, you have to derive CheckBytes for the archived type
 // #[archive_attr(derive(CheckBytes, Debug))]
-pub(crate) struct Turnover<V, O> {
-  pub(crate) open: V,
-  pub(crate) ops: O,
-  pub(crate) close: V,
+pub struct Turnover<V, O> {
+  pub open: V,
+  pub ops: O,
+  pub close: V,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct NamedValue<N, V> {
-  pub(crate) value: V,
-  pub(crate) name: N,
+pub struct NamedValue<N, V> {
+  pub value: V,
+  pub name: N,
 }
 
 impl<N, V> NamedValue<N, V> {

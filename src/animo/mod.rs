@@ -255,7 +255,7 @@ pub(crate) trait AggregationTopology {
   ) -> Result<(), DBError>;
 }
 
-pub(crate) struct Memo<V> {
+pub struct Memo<V> {
   object: V,
 }
 
@@ -269,7 +269,7 @@ impl<V> Memo<V> {
   }
 }
 
-pub(crate) struct MemoOfList<V> {
+pub struct MemoOfList<V> {
   list: Vec<Memo<V>>,
 }
 
@@ -295,7 +295,7 @@ impl<V> MemoOfList<V> {
   }
 }
 
-pub(crate) struct Txn<'a> {
+pub struct Txn<'a> {
   pub(crate) s: &'a Snapshot<'a>,
   batch: WriteBatch,
   changes: Option<HashMap<Zone, HashMap<&'a Context, HashMap<&'a ID, &'a ChangeTransformation>>>>,

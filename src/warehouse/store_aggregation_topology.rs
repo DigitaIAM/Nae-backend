@@ -218,7 +218,7 @@ impl AggregationTopology for WHStoreAggregationTopology {
 }
 
 impl WHStoreAggregationTopology {
-  pub(crate) fn stores_turnover(
+  pub fn stores_turnover(
     db: &AnimoDB,
     interval: TimeInterval,
   ) -> Result<MemoOfList<NamedValue<Store, Turnover<Money, MoneyOps>>>, DBError> {
@@ -380,15 +380,15 @@ impl WHStoreAggregationTopology {
     WHStoreAggregationTopology::position(ID_MAX, ID_MAX, checkpoint)
   }
 
-  fn position_goods_at_prev_checkpoint(store: Store, time: &Time) -> Vec<u8> {
-    let checkpoint = WHStoreAggregationTopology::prev_checkpoint(time);
-    WHStoreAggregationTopology::position(store.into(), ID_MIN, checkpoint)
-  }
+  // fn position_goods_at_prev_checkpoint(store: Store, time: &Time) -> Vec<u8> {
+  //   let checkpoint = WHStoreAggregationTopology::prev_checkpoint(time);
+  //   WHStoreAggregationTopology::position(store.into(), ID_MIN, checkpoint)
+  // }
 
-  fn position_goods_exclude(store: Store, time: &Time) -> Vec<u8> {
-    let time = time.sub_quantum();
-    WHStoreAggregationTopology::position(store.into(), ID_MAX, time)
-  }
+  // fn position_goods_exclude(store: Store, time: &Time) -> Vec<u8> {
+  //   let time = time.sub_quantum();
+  //   WHStoreAggregationTopology::position(store.into(), ID_MAX, time)
+  // }
 
   fn position_prefix() -> usize {
     ID_BYTES

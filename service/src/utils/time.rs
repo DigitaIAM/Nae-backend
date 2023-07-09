@@ -1,32 +1,32 @@
 use crate::error::Error;
-use chrono::{DateTime, Datelike, Duration, NaiveDateTime, SecondsFormat, Utc};
-use std::mem;
+use chrono::{DateTime, Datelike, NaiveDateTime, SecondsFormat, Utc};
+// use std::mem;
 use std::time::SystemTime;
 
 pub struct DateRange(pub DateTime<Utc>, pub DateTime<Utc>);
 
-impl DateRange {
-  fn iter(&self) -> DateRangeIter {
-    DateRangeIter { till: self.1, next: self.0 }
-  }
-}
-
-pub struct DateRangeIter {
-  till: DateTime<Utc>,
-  next: DateTime<Utc>,
-}
-
-impl Iterator for DateRangeIter {
-  type Item = DateTime<Utc>;
-  fn next(&mut self) -> Option<Self::Item> {
-    if self.next <= self.till {
-      let next = self.next + Duration::days(1);
-      Some(mem::replace(&mut self.next, next))
-    } else {
-      None
-    }
-  }
-}
+// impl DateRange {
+//   fn iter(&self) -> DateRangeIter {
+//     DateRangeIter { till: self.1, next: self.0 }
+//   }
+// }
+//
+// pub struct DateRangeIter {
+//   till: DateTime<Utc>,
+//   next: DateTime<Utc>,
+// }
+//
+// impl Iterator for DateRangeIter {
+//   type Item = DateTime<Utc>;
+//   fn next(&mut self) -> Option<Self::Item> {
+//     if self.next <= self.till {
+//       let next = self.next + Duration::days(1);
+//       Some(mem::replace(&mut self.next, next))
+//     } else {
+//       None
+//     }
+//   }
+// }
 
 pub fn timestamp_to_time(ts: u64) -> Result<DateTime<Utc>, Error> {
   if let Some(t) = NaiveDateTime::from_timestamp_opt(ts as i64, 0) {
