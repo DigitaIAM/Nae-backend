@@ -14,7 +14,6 @@ use crate::operations::Op;
 use chrono::{DateTime, Utc};
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, ReadOptions, DB};
 use std::convert::TryFrom;
-use std::io::Read;
 use std::sync::Arc;
 use uuid::Uuid;
 

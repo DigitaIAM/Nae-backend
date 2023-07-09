@@ -134,7 +134,7 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     let bytes_from: Vec<u8> = self.key_build(
       till.store,
       till.goods,
-      Batch::MIN(),
+      Batch::min(),
       from.timestamp(),
       u8::MIN,
       UUID_NIL,
@@ -143,7 +143,7 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     let bytes_till: Vec<u8> = self.key_build(
       till.store,
       till.goods,
-      Batch::MAX(),
+      Batch::max(),
       till.date.timestamp(),
       till.op.order(),
       till.id,

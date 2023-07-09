@@ -21,11 +21,11 @@ impl Batch {
     Batch { id: UUID_NIL, date: dt("1970-01-01").unwrap() }
   }
 
-  pub(crate) fn MIN() -> Self {
+  pub(crate) fn min() -> Self {
     Batch { id: UUID_NIL, date: dt("1970-01-01").unwrap() }
   }
 
-  pub(crate) fn MAX() -> Self {
+  pub(crate) fn max() -> Self {
     Batch { id: UUID_MAX, date: DateTime::<Utc>::MAX_UTC }
   }
 

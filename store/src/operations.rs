@@ -505,9 +505,9 @@ impl OpMutation {
 
 const ORDER_INVENTORY: u8 = 1_u8;
 const ORDER_RECEIVE: u8 = 2_u8;
-const ORDER_RECEIVE_DEPENDANT: u8 = 3_u8;
+// const ORDER_RECEIVE_DEPENDANT: u8 = 3_u8;
 const ORDER_ISSUE: u8 = 4_u8;
-const ORDER_ISSUE_DEPENDANT: u8 = 5_u8;
+// const ORDER_ISSUE_DEPENDANT: u8 = 5_u8;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InternalOperation {
