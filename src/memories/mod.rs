@@ -4,7 +4,7 @@ pub(crate) mod stock;
 use crate::storage::organizations::Workspace;
 use json::JsonValue;
 pub use memories_in_files::MemoriesInFiles;
-use uuid::{Error, Uuid};
+use uuid::Uuid;
 
 pub trait Enrich {
   fn enrich(&self, ws: &crate::storage::organizations::Workspace) -> JsonValue;

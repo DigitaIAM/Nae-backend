@@ -24,7 +24,7 @@ impl Service for Inventory {
     &self.path
   }
 
-  fn find(&self, ctx: Context, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     let _oid = crate::services::oid(&params)?;
 
     // let limit = self.limit(&params);

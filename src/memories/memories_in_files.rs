@@ -38,7 +38,7 @@ impl Service for MemoriesInFiles {
     &self.name
   }
 
-  fn find(&self, ctx: Context, params: Params) -> crate::services::Result {
+  fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     // println!("find account {:?}", ctx.account.read().unwrap());
 
     let wsid = crate::services::oid(&params)?;

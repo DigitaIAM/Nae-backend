@@ -40,7 +40,7 @@ fn process(
   let mut goods_aggregation = HashMap::new();
   let mut batches_aggregation = HashMap::new();
 
-  let mut cache = Cache::new(ws);
+  let cache = Cache::new(ws);
 
   let store_filter = filters["storage"].uuid_or_none();
   let cat_filter = filters["category"].uuid_or_none();
@@ -90,18 +90,18 @@ fn process(
         }
 
         // aggregate
-        let mut cost = storages_aggregation.entry(store_uuid).or_insert(Cost::ZERO);
+        let cost = storages_aggregation.entry(store_uuid).or_insert(Cost::ZERO);
         *cost += bb.cost;
 
-        let mut cost = categories_aggregation.entry(category_id).or_insert(Cost::ZERO);
+        let cost = categories_aggregation.entry(category_id).or_insert(Cost::ZERO);
         *cost += bb.cost;
 
-        let mut balance = goods_aggregation.entry(*goods).or_insert(BalanceForGoods::default());
+        let balance = goods_aggregation.entry(*goods).or_insert(BalanceForGoods::default());
         balance.qty += bb.qty;
         balance.cost += bb.cost;
 
         if goods_filter.is_some() {
-          let mut balance = batches_aggregation
+          let balance = batches_aggregation
             .entry((*store, *goods, batch.clone()))
             .or_insert(BalanceForGoods::default());
           balance.qty += bb.qty;
@@ -116,10 +116,10 @@ fn process(
     storages_aggregation.remove(store);
   }
 
-  let mut storages_items = process_and_sort(ws, storages_aggregation, "storage", "_cost");
-  let mut categories_items = process_and_sort(ws, categories_aggregation, "category", "_cost");
-  let mut goods_items = process_and_sort(ws, goods_aggregation, "goods", "_balance");
-  let mut batch_items = process_and_sort(ws, batches_aggregation, "batch", "_balance");
+  let storages_items = process_and_sort(ws, storages_aggregation, "storage", "_cost");
+  let categories_items = process_and_sort(ws, categories_aggregation, "category", "_cost");
+  let goods_items = process_and_sort(ws, goods_aggregation, "goods", "_balance");
+  let batch_items = process_and_sort(ws, batches_aggregation, "batch", "_balance");
 
   if goods_filter.is_some() {
     println!("return - batches");
@@ -155,7 +155,7 @@ fn top_and_before(cache: &Cache, store: Store, filter: Option<Uuid>) -> (Uuid, O
 
   let mut prev_uuid = Some(store);
 
-  let mut storage = cache.resolve_uuid(store);
+  let storage = cache.resolve_uuid(store);
   if let Some(id) = storage["location"].as_str() {
     let mut current_id = id.to_owned();
 

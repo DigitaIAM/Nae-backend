@@ -429,12 +429,12 @@ impl Iterator for Documents {
       top_folder.push("memories");
       println!("top_ {top_folder:?}");
 
-      let mut path = e.into_path().canonicalize().unwrap();
+      let path = e.into_path().canonicalize().unwrap();
       println!("path {path:?}");
 
       let record = path.parent().unwrap();
 
-      let mut name = record.file_name().unwrap().to_string_lossy().to_string();
+      let name = record.file_name().unwrap().to_string_lossy().to_string();
       let id = name.replace(".json", "");
 
       let context = record.parent().unwrap().parent().unwrap().parent().unwrap();

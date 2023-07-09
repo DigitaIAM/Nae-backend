@@ -1,7 +1,6 @@
-use actix_web::{http, post, web, Error, FromRequest, HttpMessage, HttpRequest, HttpResponse};
+use actix_web::{post, web, Error, HttpResponse};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use chrono::Duration;
-use json::JsonValue;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use pbkdf2::{
   password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
@@ -10,10 +9,9 @@ use pbkdf2::{
 
 use crate::animo::error::DBError;
 use crate::animo::memory::{ChangeTransformation, TransformationKey, Value};
-use crate::warehouse::primitive_types;
 use crate::{animo::memory::Memory, animo::shared::DESC, commutator::Application};
 use service::utils::time::now_in_millis;
-use service::{Account, Context, Services};
+use service::Account;
 use values::ID;
 
 const ALGORITHM: Algorithm = Algorithm::HS256;
