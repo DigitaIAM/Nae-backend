@@ -228,7 +228,11 @@ async fn startup() -> std::io::Result<()> {
       }
       Ok(())
     },
-    "delete" => use_cases::uc_delete::delete(&app),
+    "delete" => match opt.case.as_str() {
+      "produce" => use_cases::uc_delete::delete_produce(&app),
+      "transfer" => use_cases::uc_delete::delete_transfers_for_one_goods(&app),
+      _ => unreachable!(),
+    },
     "save" => match opt.case.as_str() {
       "roll" => use_cases::uc_save::save_roll(&app),
       "cups" => use_cases::uc_save::save_half_stuff_cups(&app),

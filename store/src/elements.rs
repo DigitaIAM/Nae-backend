@@ -443,37 +443,48 @@ fn storages(
     };
 
     Ok((store_from, Some(store_into)))
-  } else if ctx.get(0) == Some(&"production".to_string()) {
-    let store_from = if ctx.get(1) == Some(&"material".to_string()) {
-      match resolve_store(app, wid, data, "storage_into") {
-        Ok(uuid) => uuid,
-        Err(_) => return Err(WHError::new("no storage for production/material")), // TODO handle errors better, allow to catch only 'not found'
-      }
-    } else if ctx.get(1) == Some(&"produce".to_string()) {
-      //*********["production", "produce"]***********
-      let area = match app.service("memories").get(
-        Context::local(),
-        document["area"].clone().string(),
-        params,
-      ) {
-        Ok(d) => d,
-        Err(_) => return Err(WHError::new("no area in production")), // TODO handle IO error differently!!!!
-      };
-      match resolve_store(app, wid, &area, "storage") {
-        Ok(uuid) => uuid,
-        Err(_) => return Err(WHError::new("no storage in production")), // TODO handle errors better, allow to catch only 'not found'
-      }
-    } else {
-      return Err(WHError::new("unknown context in production"));
-    };
-
-    Ok((store_from, None))
   } else {
-    let store_from = match resolve_store(app, wid, document, "storage") {
-      Ok(uuid) => uuid,
-      Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
+    let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+
+    return match ctx_str[..] {
+      ["production", "produce"] => {
+        let area = match app.service("memories").get(
+          Context::local(),
+          document["area"].clone().string(),
+          params,
+        ) {
+          Ok(d) => d,
+          Err(_) => return Err(WHError::new("no area in production")), // TODO handle IO error differently!!!!
+        };
+        let store_from = match resolve_store(app, wid, &area, "storage") {
+          Ok(uuid) => uuid,
+          Err(_) => return Err(WHError::new("no storage in production")), // TODO handle errors better, allow to catch only 'not found'
+        };
+        Ok((store_from, None))
+      },
+      ["production", "material", "produced"] => {
+        // "store_from" stands for "store" in operation, and this context has only "storage_into"
+        let store_from = match resolve_store(app, wid, data, "storage_into") {
+          Ok(uuid) => uuid,
+          Err(_) => return Err(WHError::new("no storage for production/material/produced")), // TODO handle errors better, allow to catch only 'not found'
+        };
+        Ok((store_from, None))
+      },
+      ["production", "material", "used"] => {
+        let store_from = match resolve_store(app, wid, data, "storage_from") {
+          Ok(uuid) => uuid,
+          Err(_) => return Err(WHError::new("no storage for production/material/used")), // TODO handle errors better, allow to catch only 'not found'
+        };
+        Ok((store_from, None))
+      },
+      _ => {
+        let store_from = match resolve_store(app, wid, document, "storage") {
+          Ok(uuid) => uuid,
+          Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
+        };
+        Ok((store_from, None))
+      },
     };
-    Ok((store_from, None))
   };
 }
 

@@ -1,7 +1,7 @@
 use super::*;
 
 use chrono::Utc;
-use json::JsonValue;
+use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
@@ -108,6 +108,7 @@ impl Service for MemoriesInFiles {
     let search = &self.params(&params)["search"];
     let filters = &self.params(&params)["filter"];
     let (total, mut list): (isize, Vec<JsonValue>) = if let Some(search) = search.as_str() {
+      let search = search.to_lowercase();
       let mut total = 0;
       let list: Vec<JsonValue> = list
         .into_iter()
@@ -117,7 +118,7 @@ impl Service for MemoriesInFiles {
         .filter(|o| {
           for (_name, v) in o.entries() {
             if let Some(str) = v.as_str() {
-              if str.contains(search) {
+              if str.to_lowercase().contains(&search) {
                 return true;
               }
             }
@@ -186,12 +187,18 @@ impl Service for MemoriesInFiles {
 
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
-      let produced = self
-        .app
-        .wss
-        .get(&wsid)
-        .memories(vec!["production".into(), "produce".into()])
+      let produced = ws.memories(vec!["production".into(), "produce".into()]).list(None)?;
+
+      let mut materials_produced = ws
+        .memories(vec!["production".into(), "material".into(), "produced".into()])
         .list(None)?;
+
+      println!("materials_produced_len {:?}", materials_produced.len());
+
+      let materials_used = ws
+        .memories(vec!["production".into(), "material".into(), "used".into()])
+        .list(None)?;
+
       for order in &mut list {
         let filters = vec![("order", &order["_id"])];
 
@@ -201,7 +208,7 @@ impl Service for MemoriesInFiles {
           .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
           .filter(|o| o.is_object())
           .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
-          .filter(|o| o["status"].string() != *"deleted")
+          .filter(|o| o["_status"].string() != *"deleted")
           .map(|o| o["qty"].number())
           .map(|o| {
             boxes += 1;
@@ -211,6 +218,83 @@ impl Service for MemoriesInFiles {
 
         // TODO rolls - kg, caps - piece
         order["produced"] = json::object! { "piece": sum.to_json(), "box": boxes.to_string() };
+
+        // workaround: ignore all areas except "экструдер"
+        let area = order["area"].string().resolve_to_json_object(&ws);
+
+        if area["name"].string() != "экструдер".to_string() {
+          continue;
+        }
+
+        let filters = vec![("document", &order["_id"])];
+
+        let mut sum_used_materials: HashMap<String, Decimal> = HashMap::new();
+
+        let materials_used: Vec<JsonValue> = materials_used
+          .iter()
+          .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+          .filter(|o| o.is_object())
+          .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
+          .filter(|o| o["_status"].string() != *"deleted")
+          .collect();
+
+        let mut sum_used = Decimal::ZERO;
+
+        for material_used in materials_used {
+          let qty = material_used["qty"]["number"].number();
+
+          let goods = material_used["goods"].string().resolve_to_json_object(&ws);
+
+          *sum_used_materials.entry(goods["name"].string()).or_insert(Decimal::ZERO) += qty;
+
+          sum_used += qty;
+        }
+
+        let used: Vec<JsonValue> = sum_used_materials
+          .into_iter()
+          .map(|(k, v)| {
+            let mut o = json::object!();
+            o[k] = v.to_json();
+            o
+          })
+          .collect();
+
+        let mut sum_produced_materials: HashMap<String, Decimal> = HashMap::new();
+
+        let materials_produced: Vec<JsonValue> = materials_produced
+          .iter()
+          .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+          .filter(|o| o.is_object())
+          .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
+          .filter(|o| o["_status"].string() != *"deleted")
+          .collect();
+
+        let mut sum_produced = Decimal::ZERO;
+
+        for material_produced in materials_produced {
+          let qty = material_produced["qty"]["number"].number();
+
+          let goods = material_produced["goods"].string().resolve_to_json_object(&ws);
+
+          *sum_produced_materials.entry(goods["name"].string()).or_insert(Decimal::ZERO) += qty;
+
+          sum_produced += qty;
+        }
+
+        let produced: Vec<JsonValue> = sum_produced_materials
+          .into_iter()
+          .map(|(k, v)| {
+            let mut o = json::object!();
+            o[k] = v.to_json();
+            o
+          })
+          .collect();
+
+        order["_material"] = json::object! { "used": used, "produced": produced };
+
+        let delta = sum_produced - sum_used;
+
+        order["_delta"] = json::object! { "delta": delta.to_json() };
       }
     }
 
@@ -322,9 +406,7 @@ impl Service for MemoriesInFiles {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
-      let doc = memories
-        .get(&id)
-        .ok_or(Error::GeneralError(format!("id '{id}' not found")))?;
+      let doc = memories.get(&id).ok_or(Error::GeneralError(format!("id '{id}' not found")))?;
       let mut obj = doc.json()?;
 
       let mut patch = data;

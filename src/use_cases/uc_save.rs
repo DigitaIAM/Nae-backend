@@ -83,6 +83,7 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
               order["thickness"].string(),
               material,
               produce["qty"].string(),
+              produce["_id"].string(),
             ])
             .unwrap();
 
@@ -325,6 +326,7 @@ pub fn save_produced(app: &Application) -> Result<(), Error> {
             goods["name"].string(),
             produced["qty"]["number"].string(),
             qty_str,
+            produced["_id"].string(),
           ])
           .unwrap();
 
