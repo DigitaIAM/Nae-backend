@@ -8,6 +8,7 @@ use service::utils::json::{JsonMerge, JsonParams};
 use service::{Context, Service};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use store::balance::BalanceForGoods;
 use store::elements::ToJson;
 use store::GetWarehouse;
@@ -40,6 +41,8 @@ impl Service for MemoriesInFiles {
 
   fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
     // println!("find account {:?}", ctx.account.read().unwrap());
+
+    let start = Instant::now();
 
     let wsid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
@@ -114,7 +117,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| show_deleted(&ctx) || o["status"].string() != *"deleted")
+        .filter(|o| show_deleted(&ctx) || o["_status"].string() != *"deleted")
         .filter(|o| {
           for (_name, v) in o.entries() {
             if let Some(str) = v.as_str() {
@@ -144,7 +147,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| show_deleted(&ctx) || o["status"].string() != *"deleted")
+        .filter(|o| show_deleted(&ctx) || o["_status"].string() != *"deleted")
         .filter(|o| filters.entries().all(|(n, v)| &o[n] == v))
         .map(|o| {
           total += 1;
@@ -169,7 +172,7 @@ impl Service for MemoriesInFiles {
           .take(limit)
           .map(|o| o.json())
           // there shouldn't be status filter because we want to show all objects in relevant menu section (but not in pop up list)
-          // .filter(|o| o.as_ref().unwrap()["status"].string() != "deleted".to_string())
+          // .filter(|o| o.as_ref().unwrap()["_status"].string() != "deleted".to_string())
           .collect::<Result<_, _>>()?,
       )
     };
@@ -187,13 +190,16 @@ impl Service for MemoriesInFiles {
 
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
+      let start = Instant::now();
+
       let produced = ws.memories(vec!["production".into(), "produce".into()]).list(None)?;
+
+      println!("produced: {:?}", start.elapsed().as_millis());
+      let start = Instant::now();
 
       let mut materials_produced = ws
         .memories(vec!["production".into(), "material".into(), "produced".into()])
         .list(None)?;
-
-      println!("materials_produced_len {:?}", materials_produced.len());
 
       let materials_used = ws
         .memories(vec!["production".into(), "material".into(), "used".into()])
@@ -325,6 +331,8 @@ impl Service for MemoriesInFiles {
         }
       }
     }
+
+    println!("_time: {:?}", start.elapsed().as_millis());
 
     Ok(json::object! {
       data: JsonValue::Array(list),

@@ -97,6 +97,12 @@ async fn reindex(
         )?;
       }
 
+      // replace "status" for "_status"
+      if !after["status"].is_null() {
+        after["_status"] = after["status"].clone();
+        after.remove("status");
+      }
+
       // delete batch from document if it exists
       after.remove("batch");
 
@@ -159,13 +165,13 @@ async fn server(settings: Arc<Settings>, app: Application, com: Addr<Commutator>
   .await
 }
 
-async fn startup() -> std::io::Result<()> {
+async fn startup() -> io::Result<()> {
   // std::env::set_var("RUST_LOG", "debug,actix_web=debug,actix_server=debug");
   env_logger::init();
 
   let opt = Opt::from_args();
 
-  let settings = std::sync::Arc::new(Settings::new().unwrap());
+  let settings = Arc::new(Settings::new().unwrap());
   println!("db starting up");
   let db: AnimoDB = Memory::init(settings.database.memory.clone()).unwrap();
   println!("db started up");
@@ -230,7 +236,11 @@ async fn startup() -> std::io::Result<()> {
     },
     "delete" => match opt.case.as_str() {
       "produce" => use_cases::uc_delete::delete_produce(&app),
-      "transfer" => use_cases::uc_delete::delete_transfers_for_one_goods(&app),
+      "transfer" => use_cases::uc_delete::delete_transfers_for_one_goods(
+        &app,
+        Some("склад"),
+        "Полипропилен (дроб)",
+      ),
       _ => unreachable!(),
     },
     "save" => match opt.case.as_str() {
@@ -239,6 +249,12 @@ async fn startup() -> std::io::Result<()> {
       "produced" => use_cases::uc_save::save_produced(&app),
       "file_transfer" => use_cases::uc_save::save_transfer_from_file(&app),
       "goods_transfer" => use_cases::uc_save::save_transfer_for_goods(&app),
+      _ => unreachable!(),
+    },
+    "replace" => match opt.case.as_str() {
+      "goods" => {
+        use_cases::uc_replace::replace_goods(&app, "Полипропилен дробленный", "Полипропилен (дроб)")
+      },
       _ => unreachable!(),
     },
     _ => unreachable!(),
@@ -261,7 +277,7 @@ async fn startup() -> std::io::Result<()> {
 // }
 
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> io::Result<()> {
   startup().await
 }
 

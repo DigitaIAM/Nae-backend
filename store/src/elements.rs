@@ -241,7 +241,7 @@ fn json_to_ops(
     return Ok(ops);
   }
 
-  if data["status"].string() == *"deleted" {
+  if data["_status"].string() == *"deleted" {
     return Ok(ops);
   }
 

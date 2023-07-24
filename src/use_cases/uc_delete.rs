@@ -1,5 +1,6 @@
 use crate::commutator::Application;
-use json::object;
+use actix_web::App;
+use json::{object, JsonValue};
 use service::utils::json::JsonParams;
 use service::{Context, Services};
 use std::fs::File;
@@ -71,7 +72,11 @@ pub fn delete_produce(app: &Application) -> Result<(), Error> {
   Ok(())
 }
 
-pub fn delete_transfers_for_one_goods(app: &Application) -> Result<(), Error> {
+pub fn delete_transfers_for_one_goods(
+  app: &Application,
+  storage_name: Option<&str>,
+  goods_name: &str,
+) -> Result<(), Error> {
   let mut count = 0;
 
   let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
@@ -83,18 +88,23 @@ pub fn delete_transfers_for_one_goods(app: &Application) -> Result<(), Error> {
 
   println!("transfer_ops {:?}", transfer_ops.len());
 
-  let goods_id = if let Ok(goods) =
-    memories_find(app, object! { name: "Скотч односторонний бесцветный" }, ["goods"].to_vec())
-  {
-    match goods.len() {
-      0 => Err(WHError::new("not found")),
-      1 => Ok(goods[0]["_id"].string()),
-      _ => Err(WHError::new("too many docs found")),
-    }
+  let storage_id = if let Some(storage_name) = storage_name {
+    find_object_field(
+      app,
+      object! { name: storage_name.to_string() },
+      ["warehouse", "storage"].to_vec(),
+      "_id",
+    )
+    .unwrap()
   } else {
-    Err(WHError::new("not found"))
-  }
-  .unwrap();
+    "".to_string()
+  };
+
+  println!("storage_id {storage_id}");
+
+  let goods_id =
+    find_object_field(app, object! { name: goods_name.to_string() }, ["goods"].to_vec(), "_id")
+      .unwrap();
 
   println!("_goods {goods_id:?}");
 
@@ -103,11 +113,40 @@ pub fn delete_transfers_for_one_goods(app: &Application) -> Result<(), Error> {
 
     let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
 
+    let op_id = op.id.clone();
+
+    let op = op.json()?;
+
+    println!("_operationn {op:?}");
+
     match ctx_str[..] {
       ["warehouse", "transfer"] => {
-        let op_id = op.id.clone();
+        if !storage_id.is_empty() {
+          let document = if let Ok(docs) = memories_find(
+            app,
+            object! { _id: op["document"].string() },
+            ["warehouse", "transfer", "document"].to_vec(),
+          ) {
+            match docs.len() {
+              0 => Err(WHError::new("zero found")),
+              1 => Ok(docs[0].clone()),
+              _ => Err(WHError::new("too many docs found")),
+            }
+          } else {
+            Err(WHError::new("not found"))
+          }
+          .unwrap();
 
-        if op.json()?["goods"].string() == goods_id {
+          println!("_doc {document:?}");
+
+          if document["from"]["_id"].string() != storage_id
+            && document["into"]["_id"].string() != storage_id
+          {
+            continue;
+          }
+        }
+
+        if op["goods"].string() == goods_id {
           let params = object! {oid: ws.id.to_string(), ctx: [], enrich: false };
           let mut operation = match app.service("memories").get(
             Context::local(),
@@ -117,7 +156,7 @@ pub fn delete_transfers_for_one_goods(app: &Application) -> Result<(), Error> {
             Ok(d) => d,
             Err(e) => return Err(Error::from(e)), // TODO handle IO error differently!!!!
           };
-          operation["status"] = "".into();
+          operation["_status"] = "deleted".into();
 
           let params = object! {oid: ws.id.to_string(), ctx: vec!["warehouse", "transfer"] };
           let _op = app.service("memories").patch(
@@ -137,4 +176,21 @@ pub fn delete_transfers_for_one_goods(app: &Application) -> Result<(), Error> {
   println!("count {count}");
 
   Ok(())
+}
+
+fn find_object_field(
+  app: &Application,
+  filter: JsonValue,
+  ctx: Vec<&str>,
+  field_name: &str,
+) -> Option<String> {
+  if let Ok(items) = memories_find(app, filter, ctx) {
+    match items.len() {
+      0 => None,
+      1 => Some(items[0][field_name].string()),
+      _ => None,
+    }
+  } else {
+    None
+  }
 }
