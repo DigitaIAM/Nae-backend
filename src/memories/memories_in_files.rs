@@ -19,6 +19,7 @@ use crate::services::{Data, Params};
 use crate::commutator::Application;
 
 use stock::find_items;
+use values::constants::{_ID, _STATUS, _UUID};
 
 // warehouse: { receiving, Put-away, transfer,  }
 // production: { manufacturing }
@@ -117,7 +118,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| show_deleted(&ctx) || o["_status"].string() != *"deleted")
+        .filter(|o| show_deleted(&ctx) || o[_STATUS].string() != *"deleted")
         .filter(|o| {
           for (_name, v) in o.entries() {
             if let Some(str) = v.as_str() {
@@ -147,7 +148,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| show_deleted(&ctx) || o["_status"].string() != *"deleted")
+        .filter(|o| show_deleted(&ctx) || o[_STATUS].string() != *"deleted")
         .filter(|o| filters.entries().all(|(n, v)| &o[n] == v))
         .map(|o| {
           total += 1;
@@ -172,7 +173,7 @@ impl Service for MemoriesInFiles {
           .take(limit)
           .map(|o| o.json())
           // there shouldn't be status filter because we want to show all objects in relevant menu section (but not in pop up list)
-          // .filter(|o| o.as_ref().unwrap()["_status"].string() != "deleted".to_string())
+          // .filter(|o| o.as_ref().unwrap()[STATUS].string() != "deleted".to_string())
           .collect::<Result<_, _>>()?,
       )
     };
@@ -206,7 +207,7 @@ impl Service for MemoriesInFiles {
         .list(None)?;
 
       for order in &mut list {
-        let filters = vec![("order", &order["_id"])];
+        let filters = vec![("order", &order[_ID])];
 
         let mut boxes = 0_u32;
         let sum: Decimal = produced
@@ -214,7 +215,7 @@ impl Service for MemoriesInFiles {
           .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
           .filter(|o| o.is_object())
           .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
-          .filter(|o| o["_status"].string() != *"deleted")
+          .filter(|o| o[_STATUS].string() != *"deleted")
           .map(|o| o["qty"].number())
           .map(|o| {
             boxes += 1;
@@ -232,7 +233,7 @@ impl Service for MemoriesInFiles {
           continue;
         }
 
-        let filters = vec![("document", &order["_id"])];
+        let filters = vec![("document", &order[_ID])];
 
         let mut sum_used_materials: HashMap<String, Decimal> = HashMap::new();
 
@@ -241,7 +242,7 @@ impl Service for MemoriesInFiles {
           .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
           .filter(|o| o.is_object())
           .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
-          .filter(|o| o["_status"].string() != *"deleted")
+          .filter(|o| o[_STATUS].string() != *"deleted")
           .collect();
 
         let mut sum_used = Decimal::ZERO;
@@ -272,7 +273,7 @@ impl Service for MemoriesInFiles {
           .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
           .filter(|o| o.is_object())
           .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
-          .filter(|o| o["_status"].string() != *"deleted")
+          .filter(|o| o[_STATUS].string() != *"deleted")
           .collect();
 
         let mut sum_produced = Decimal::ZERO;
@@ -310,11 +311,11 @@ impl Service for MemoriesInFiles {
 
       let today = Utc::now();
 
-      // let list_of_goods = list.iter().map(|goods| goods["_uuid"].uuid_or_none()).filter(|id| id.is_some()).map(|id| id.unwrap()).collect();
+      // let list_of_goods = list.iter().map(|goods| goods[_UUID].uuid_or_none()).filter(|id| id.is_some()).map(|id| id.unwrap()).collect();
 
       let mut list_of_goods: Vec<Uuid> = Vec::new();
       for goods in &list {
-        if let Some(uuid) = goods["_uuid"].uuid_or_none() {
+        if let Some(uuid) = goods[_UUID].uuid_or_none() {
           list_of_goods.push(uuid);
         }
       }
@@ -324,7 +325,7 @@ impl Service for MemoriesInFiles {
         .map_err(|e| Error::GeneralError(e.message()))?;
 
       for goods in &mut list {
-        if let Some(uuid) = goods["_uuid"].uuid_or_none() {
+        if let Some(uuid) = goods[_UUID].uuid_or_none() {
           if let Some(balance) = balances.get(&uuid) {
             goods["_balance"] = balance.to_json();
           }
@@ -418,12 +419,12 @@ impl Service for MemoriesInFiles {
       let mut obj = doc.json()?;
 
       let mut patch = data;
-      patch.remove("_id"); // TODO check id?
+      patch.remove(_ID); // TODO check id?
 
       obj = obj.merge(&patch);
 
       // for (n, v) in data.entries() {
-      //   if n != "_id" {
+      //   if n != _ID {
       //     obj[n] = v.clone();
       //   }
       // }

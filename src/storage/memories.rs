@@ -15,6 +15,7 @@ use crate::utils::substring::StringUtils;
 use std::sync::Mutex;
 use store::elements::receive_data;
 use uuid::Uuid;
+use values::constants::{_ID, _UUID};
 
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
@@ -45,8 +46,8 @@ fn save_data(
 ) -> Result<JsonValue, Error> {
   let _lock = LOCK.lock().unwrap();
 
-  // if data["_id"] != id {
-  //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data["_id"])));
+  // if data[_ID] != id {
+  //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data[_ID])));
   // }
 
   let time_str = time_to_string(time);
@@ -71,11 +72,11 @@ fn save_data(
   let before = match load(&path_latest) {
     Ok(b) => {
       //WORKAROUND: make sure that id & uuid stay same
-      if !b["_id"].is_null() {
-        data["_id"] = b["_id"].clone();
+      if !b[_ID].is_null() {
+        data[_ID] = b[_ID].clone();
       }
-      if !b["_uuid"].is_null() {
-        data["_uuid"] = b["_uuid"].clone();
+      if !b[_UUID].is_null() {
+        data[_UUID] = b[_UUID].clone();
       }
       b
     },
@@ -90,7 +91,7 @@ fn save_data(
   let data = receive_data(app, ws.id.to_string().as_str(), data, ctx, before)
     .map_err(|e| Error::GeneralError(e.message()))?;
 
-  let uuid = data["_uuid"].as_str();
+  let uuid = data[_UUID].as_str();
 
   save(&path_current, data.dump())?;
 
@@ -207,8 +208,8 @@ impl Memories {
 
     let uuid = Uuid::new_v4();
 
-    data["_id"] = id.clone().into();
-    data["_uuid"] = uuid.to_string().into();
+    data[_ID] = id.clone().into();
+    data[_UUID] = uuid.to_string().into();
 
     let data =
       save_data(app, &self.ws, &self.top_folder, &folder, &self.ctx, &id, Some(uuid), time, data)?;
