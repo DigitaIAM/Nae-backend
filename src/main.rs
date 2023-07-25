@@ -53,6 +53,7 @@ use animo::db::AnimoDB;
 use animo::memory::Memory;
 use inventory::service::Inventory;
 use service::Services;
+use values::constants::{_STATUS, _UUID};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "basic")]
@@ -86,9 +87,9 @@ async fn reindex(
       let mut after = doc.json().unwrap();
 
       // inject uuid if missing
-      if after["_uuid"].is_null() {
+      if after[_UUID].is_null() {
         let uuid = Uuid::new_v4().to_string();
-        after["_uuid"] = uuid.clone().into();
+        after[_UUID] = uuid.clone().into();
 
         storage::memories::index_uuid(
           &doc.mem.top_folder,
@@ -99,7 +100,7 @@ async fn reindex(
 
       // replace "status" for "_status"
       if !after["status"].is_null() {
-        after["_status"] = after["status"].clone();
+        after[_STATUS] = after["status"].clone();
         after.remove("status");
       }
 

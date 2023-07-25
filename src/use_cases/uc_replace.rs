@@ -8,6 +8,7 @@ use std::io::{Error, ErrorKind};
 use store::elements::ToJson;
 use store::error::WHError;
 use store::process_records::memories_find;
+use values::constants::_ID;
 use values::ID;
 
 pub fn replace_goods(app: &Application, old_name: &str, new_name: &str) -> Result<(), Error> {
@@ -24,7 +25,7 @@ pub fn replace_goods(app: &Application, old_name: &str, new_name: &str) -> Resul
   {
     match items.len() {
       0 => Err(WHError::new("not found")),
-      1 => Ok(items[0]["_id"].string()),
+      1 => Ok(items[0][_ID].string()),
       _ => Err(WHError::new("too many goods found")),
     }
   } else {
@@ -38,7 +39,7 @@ pub fn replace_goods(app: &Application, old_name: &str, new_name: &str) -> Resul
   {
     match items.len() {
       0 => Err(WHError::new("not found")),
-      1 => Ok(items[0]["_id"].string()),
+      1 => Ok(items[0][_ID].string()),
       _ => Err(WHError::new("too many goods found")),
     }
   } else {
@@ -58,10 +59,10 @@ pub fn replace_goods(app: &Application, old_name: &str, new_name: &str) -> Resul
     match ctx_str[..] {
       ["goods"] => continue,
       _ => {
-        if after["_id"].string() == old {
-          println!("_ids {} vs {}", after["_id"].string(), old);
+        if after[_ID].string() == old {
+          println!("_ids {} vs {}", after[_ID].string(), old);
 
-          after["_id"] = new.to_json();
+          after[_ID] = new.to_json();
 
           patch(app, &ws, after, ctx)?;
           count += 1;
@@ -85,7 +86,7 @@ pub fn replace_goods(app: &Application, old_name: &str, new_name: &str) -> Resul
       let _rec =
         app
           .service("memories")
-          .patch(Context::local(), item["_id"].string(), item, params)?;
+          .patch(Context::local(), item[_ID].string(), item, params)?;
       log::debug!("__rec {:#?}", _rec.dump());
 
       Ok(())

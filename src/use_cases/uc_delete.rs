@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind};
 use store::error::WHError;
 use store::process_records::memories_find;
+use values::constants::_STATUS;
 use values::ID;
 
 pub fn delete_produce(app: &Application) -> Result<(), Error> {
@@ -156,7 +157,7 @@ pub fn delete_transfers_for_one_goods(
             Ok(d) => d,
             Err(e) => return Err(Error::from(e)), // TODO handle IO error differently!!!!
           };
-          operation["_status"] = "deleted".into();
+          operation[_STATUS] = "deleted".into();
 
           let params = object! {oid: ws.id.to_string(), ctx: vec!["warehouse", "transfer"] };
           let _op = app.service("memories").patch(

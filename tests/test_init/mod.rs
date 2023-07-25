@@ -20,6 +20,7 @@ use store::error::WHError;
 use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
 use store::GetWarehouse;
+use values::constants::_UUID;
 
 const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
@@ -86,7 +87,7 @@ fn create(app: &Application, name: &str, ctx: Vec<&str>) -> Uuid {
     )
     .unwrap();
 
-  data["_uuid"].uuid().unwrap()
+  data[_UUID].uuid().unwrap()
 }
 
 pub fn store(app: &Application, name: &str) -> Uuid {

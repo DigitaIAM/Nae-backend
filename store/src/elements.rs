@@ -18,6 +18,7 @@ use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
 use service::utils::json::JsonParams;
+use values::constants::{_STATUS, _UUID};
 
 pub type Goods = Uuid;
 pub type Store = Uuid;
@@ -241,7 +242,7 @@ fn json_to_ops(
     return Ok(ops);
   }
 
-  if data["_status"].string() == *"deleted" {
+  if data[_STATUS].string() == *"deleted" {
     return Ok(ops);
   }
 
@@ -307,7 +308,7 @@ fn json_to_ops(
     Err(_) => return Ok(ops),
   };
 
-  let goods_uuid = match goods["_uuid"].uuid_or_none() {
+  let goods_uuid = match goods[_UUID].uuid_or_none() {
     Some(uuid) => uuid,
     None => return Ok(ops),
   };
@@ -359,7 +360,7 @@ fn json_to_ops(
 
   log::debug!("after op {op:?}");
 
-  let tid = if let Some(tid) = data["_uuid"].uuid_or_none() {
+  let tid = if let Some(tid) = data[_UUID].uuid_or_none() {
     tid
   } else {
     return Ok(ops);
@@ -367,7 +368,7 @@ fn json_to_ops(
 
   let batch = if type_of_operation == OpType::Receive {
     if ctx == &vec!["production".to_owned(), "produce".to_owned()] {
-      match document["_uuid"].uuid_or_none() {
+      match document[_UUID].uuid_or_none() {
         Some(id) => Batch { id, date },
         None => return Ok(ops), // TODO: assert!(false)
       }
@@ -376,15 +377,15 @@ fn json_to_ops(
     }
   } else if type_of_operation == OpType::Inventory {
     match &data["batch"] {
-      JsonValue::Object(d) => Batch { id: d["_uuid"].uuid()?, date: d["date"].date_with_check()? },
+      JsonValue::Object(d) => Batch { id: d[_UUID].uuid()?, date: d["date"].date_with_check()? },
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? }, // TODO is it ok?
     }
   } else {
     match &data["batch"] {
       JsonValue::Object(_d) => {
-        // let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["warehouse", "receive", "document"] };
-        // let doc_from = app.service("memories").get(d["_id"].string(), params)?;
-        Batch { id: data["batch"]["_uuid"].uuid()?, date: data["batch"]["date"].date_with_check()? }
+        // let params = object! {oid: oid["data"][0][_ID].as_str(), ctx: vec!["warehouse", "receive", "document"] };
+        // let doc_from = app.service("memories").get(d["_ID].string(), params)?;
+        Batch { id: data["batch"][_UUID].uuid()?, date: data["batch"]["date"].date_with_check()? }
       },
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
     }
@@ -536,5 +537,5 @@ fn resolve_store(
   let params = object! {oid: wid, ctx: vec!["warehouse", "storage"] };
   let storage = app.service("memories").get(Context::local(), store_id, params)?;
   log::debug!("storage {:?}", storage.dump());
-  storage["_uuid"].uuid()
+  storage[_UUID].uuid()
 }

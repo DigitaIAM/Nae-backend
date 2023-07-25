@@ -12,6 +12,7 @@ use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
 use service::{Context, Services};
 use store::process_records::process_record;
+use values::constants::_UUID;
 
 #[actix_web::test]
 async fn adding_ops_before() {
@@ -51,7 +52,7 @@ async fn adding_ops_before() {
   assert_eq!(1.0, from_str::<f64>(qty).unwrap());
 
   // list of batches with balances
-  let goods = data["_uuid"].as_str().unwrap();
+  let goods = data[_UUID].as_str().unwrap();
 
   filter["goods"] = goods.into();
 
@@ -62,7 +63,7 @@ async fn adding_ops_before() {
   // println!("batches: {:#?}", batches);
 
   // operations
-  let storage = batches["data"][0]["storage"]["_uuid"].as_str().unwrap();
+  let storage = batches["data"][0]["storage"][_UUID].as_str().unwrap();
   let batch_id = batches["data"][0]["batch"]["id"].as_str().unwrap();
   let batch_date = batches["data"][0]["batch"]["date"].as_str().unwrap();
   // println!("storage: {:#?}", storage);

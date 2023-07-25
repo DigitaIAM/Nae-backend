@@ -3,6 +3,7 @@ use super::*;
 use json::JsonValue;
 use simsearch::SimSearch;
 use uuid::Uuid;
+use values::constants::_UUID;
 
 use crate::{
   commutator::Application, storage::Workspaces, text_search::engine_tantivy::TantivyEngine,
@@ -51,7 +52,7 @@ impl SearchEngine {
       for mem in memories.list(None)? {
         let jdoc = mem.json()?;
         let name = jdoc["name"].as_str().unwrap();
-        let uuid = jdoc["_uuid"].as_str().unwrap();
+        let uuid = jdoc[_UUID].as_str().unwrap();
         let uuid = Uuid::parse_str(uuid).unwrap();
 
         self.sim.insert(uuid, name);
@@ -119,8 +120,7 @@ impl SearchEngine {
 
     if page_number < full_page {
       let offset = page_number * half_page;
-      let mut result: Vec<Uuid> =
-        result_tan.iter().skip(offset).take(half_page).copied().collect();
+      let mut result: Vec<Uuid> = result_tan.iter().skip(offset).take(half_page).copied().collect();
       result.extend(result_sim.into_iter().skip(offset).take(half_page));
 
       (total, result)
@@ -129,8 +129,7 @@ impl SearchEngine {
         // println!("min - tan");
         let offset = page_number * half_page;
         let take_tan = result_tan.len() - offset;
-        let mut result: Vec<Uuid> =
-          result_tan.iter().skip(offset).take(take_tan).copied().collect();
+        let mut result: Vec<Uuid> = result_tan.iter().skip(offset).take(take_tan).copied().collect();
 
         let take_sim = page_size - take_tan;
         result.extend(result_sim.into_iter().skip(offset).take(take_sim));
@@ -158,8 +157,7 @@ impl SearchEngine {
 
       // println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
 
-      let result: Vec<Uuid> =
-        result_sim.iter().skip(offset_full).take(page_size).copied().collect();
+      let result: Vec<Uuid> = result_sim.iter().skip(offset_full).take(page_size).copied().collect();
 
       return (total, result);
     } else {
@@ -170,8 +168,7 @@ impl SearchEngine {
 
       // println!("offset_a = {offset_a}, offset_b = {offset_b}, offset_c = {offset_c}");
 
-      let result: Vec<Uuid> =
-        result_tan.iter().skip(offset_full).take(page_size).copied().collect();
+      let result: Vec<Uuid> = result_tan.iter().skip(offset_full).take(page_size).copied().collect();
 
       return (total, result);
     }
@@ -195,7 +192,7 @@ pub fn handle_mutation(
   data: &JsonValue,
 ) -> Result<(), Error> {
   if ctx == &vec!["drugs"] {
-    let id = data["_uuid"]
+    let id = data[_UUID]
       .as_str()
       .map(|data| Uuid::parse_str(data).unwrap_or(UUID_NIL))
       .unwrap_or(UUID_NIL);

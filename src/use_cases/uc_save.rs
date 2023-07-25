@@ -7,6 +7,7 @@ use std::fs::OpenOptions;
 use std::io::{Error, ErrorKind};
 use store::error::WHError;
 use store::process_records::memories_find;
+use values::constants::_ID;
 use values::ID;
 
 pub fn save_roll(app: &Application) -> Result<(), Error> {
@@ -33,7 +34,7 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
 
         let produce = match app.service("memories").get(
           Context::local(),
-          doc.json()?["_id"].string(),
+          doc.json()?[_ID].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -83,7 +84,7 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
               order["thickness"].string(),
               material,
               produce["qty"].string(),
-              produce["_id"].string(),
+              produce[_ID].string(),
             ])
             .unwrap();
 
@@ -123,7 +124,7 @@ pub fn save_half_stuff_cups(app: &Application) -> Result<(), Error> {
 
         let produce = match app.service("memories").get(
           Context::local(),
-          doc.json()?["_id"].string(),
+          doc.json()?[_ID].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -221,7 +222,7 @@ pub fn save_produced(app: &Application) -> Result<(), Error> {
 
         let produced = match app.service("memories").get(
           Context::local(),
-          doc.json()?["_id"].string(),
+          doc.json()?[_ID].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -326,7 +327,7 @@ pub fn save_produced(app: &Application) -> Result<(), Error> {
             goods["name"].string(),
             produced["qty"]["number"].string(),
             qty_str,
-            produced["_id"].string(),
+            produced[_ID].string(),
           ])
           .unwrap();
 
@@ -393,7 +394,8 @@ pub fn save_transfer_from_file(app: &Application) -> Result<(), Error> {
     }
     .unwrap();
 
-    let filter = object! {number: number, from: from["_id"].clone(), into: into["_id"].clone(), date: date.clone()};
+    let filter =
+      object! {number: number, from: from[_ID].clone(), into: into[_ID].clone(), date: date.clone()};
 
     let doc = if let Ok(items) = memories_find(app, filter, doc_ctx.clone()) {
       match items.len() {
@@ -406,7 +408,7 @@ pub fn save_transfer_from_file(app: &Application) -> Result<(), Error> {
     }
     .unwrap();
 
-    let operations = memories_find(app, object! { document: doc["_id"].string() }, op_ctx.clone())?;
+    let operations = memories_find(app, object! { document: doc[_ID].string() }, op_ctx.clone())?;
 
     // println!("_OPERS {operations:?}");
 
@@ -475,7 +477,7 @@ pub fn save_transfer_for_goods(app: &Application) -> Result<(), Error> {
 
   println!("_goods: {:?}", goods);
 
-  let filter = object! {goods: goods["_id"].string()};
+  let filter = object! {goods: goods[_ID].string()};
 
   let transfer_ops =
     if let Ok(items) = memories_find(app, filter, ["warehouse", "receive"].to_vec()) {
