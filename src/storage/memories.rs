@@ -88,8 +88,10 @@ fn save_data(
   let _ = crate::text_search::handle_mutation(app, ctx, &before, &data);
   // TODO .map_err(|e| IOError(e.to_string()))?;
 
-  let data = receive_data(app, ws.id.to_string().as_str(), data, ctx, before)
+  let data = receive_data(app, ws.id.to_string().as_str(), data, ctx, before.clone())
     .map_err(|e| Error::GeneralError(e.message()))?;
+
+  app.links.save_links(ws, ctx, &data, &before)?;
 
   let uuid = data[_UUID].as_str();
 

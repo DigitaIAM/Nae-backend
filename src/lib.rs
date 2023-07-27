@@ -11,6 +11,7 @@ mod ws;
 pub mod animo;
 pub mod api;
 mod hr;
+pub mod links;
 pub mod memories;
 mod text_search;
 pub mod use_cases;

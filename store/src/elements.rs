@@ -18,14 +18,14 @@ use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
 use service::utils::json::JsonParams;
-use values::constants::{_STATUS, _UUID};
+use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
 pub type Goods = Uuid;
 pub type Store = Uuid;
 pub type Qty = Decimal;
 
-pub(crate) const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
-pub(crate) const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
+pub const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
+pub const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
 pub trait ToJson {
   fn to_json(&self) -> JsonValue;
@@ -262,20 +262,11 @@ fn json_to_ops(
   };
 
   let params = object! {oid: wid, ctx: [], enrich: false };
-  let document = match ctx_str[..] {
-    ["production", "produce"] => {
-      match app.service("memories").get(Context::local(), data["order"].string(), params) {
-        Ok(d) => d,
-        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-      }
-    },
-    _ => {
-      match app.service("memories").get(Context::local(), data["document"].string(), params) {
-        Ok(d) => d,
-        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-      }
-    },
-  };
+  let document =
+    match app.service("memories").get(Context::local(), data[_DOCUMENT].string(), params) {
+      Ok(d) => d,
+      Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+    };
 
   log::debug!("DOCUMENT: {:?}", document.dump());
 

@@ -7,7 +7,7 @@ use std::fs::OpenOptions;
 use std::io::{Error, ErrorKind};
 use store::error::WHError;
 use store::process_records::memories_find;
-use values::constants::_ID;
+use values::constants::{_DOCUMENT, _ID};
 use values::ID;
 
 pub fn save_roll(app: &Application) -> Result<(), Error> {
@@ -47,7 +47,7 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
 
         let order = match app.service("memories").get(
           Context::local(),
-          doc.json()?["order"].string(),
+          doc.json()?[_DOCUMENT].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -137,7 +137,7 @@ pub fn save_half_stuff_cups(app: &Application) -> Result<(), Error> {
 
         let order = match app.service("memories").get(
           Context::local(),
-          doc.json()?["order"].string(),
+          doc.json()?[_DOCUMENT].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -235,7 +235,7 @@ pub fn save_produced(app: &Application) -> Result<(), Error> {
 
         let order = match app.service("memories").get(
           Context::local(),
-          doc.json()?["document"].string(),
+          doc.json()?[_DOCUMENT].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -496,7 +496,7 @@ pub fn save_transfer_for_goods(app: &Application) -> Result<(), Error> {
   for transfer in transfer_ops {
     let document = match app.service("memories").get(
       Context::local(),
-      transfer["document"].string(),
+      transfer[_DOCUMENT].string(),
       params.clone(),
     ) {
       Ok(p) => p,

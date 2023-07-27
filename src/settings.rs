@@ -7,6 +7,7 @@ use std::path::PathBuf;
 pub struct Database {
   pub memory: PathBuf,
   pub inventory: PathBuf,
+  pub links: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,5 +42,22 @@ impl Settings {
     println!("inventory: {:?}", config.get::<String>("database.inventory"));
 
     config.try_deserialize()
+  }
+
+  #[cfg(test)]
+  pub fn test(folder: PathBuf) -> Settings {
+    Settings {
+      debug: false,
+      jwt_config: JWTConfig {
+        audience: "http://localhost".into(),
+        issuer: "Nae".into(),
+        secret: "1234567890".into(),
+      },
+      database: Database {
+        memory: folder.join("memory"),
+        inventory: folder.join("inventory"),
+        links: folder.join("links"),
+      },
+    }
   }
 }

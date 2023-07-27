@@ -329,6 +329,7 @@ mod tests {
   use super::*;
   use crate::animo::memory::{ChangeTransformation, Transformation, TransformationKey, Value};
   use crate::api;
+  use crate::storage::Workspaces;
   use crate::warehouse::test_util::init;
   use actix_web::http::{header, StatusCode};
   use actix_web::web::Bytes;
@@ -341,7 +342,9 @@ mod tests {
   async fn test_register_and_login() {
     let (tmp_dir, settings, db) = init();
 
-    let app = Application::new(Arc::new(settings), Arc::new(db));
+    let wss = Workspaces::new(tmp_dir.path().join("companies"));
+
+    let app = Application::new(Arc::new(settings), Arc::new(db), wss);
 
     let server = test::init_service(
       App::new()

@@ -34,6 +34,7 @@ mod ws;
 mod animo;
 mod api;
 mod hr;
+pub mod links;
 mod memories;
 mod text_search;
 mod use_cases;
@@ -41,19 +42,15 @@ pub mod warehouse;
 
 use crate::animo::memory::*;
 use crate::animo::shared::*;
-use crate::animo::{Animo, Time, Topology};
 use crate::hr::services::companies::Companies;
 use crate::memories::MemoriesInFiles;
 use crate::settings::Settings;
-use crate::storage::organizations::Workspace;
 use crate::storage::Workspaces;
-use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
-use crate::warehouse::store_topology::WHStoreTopology;
 use animo::db::AnimoDB;
 use animo::memory::Memory;
 use inventory::service::Inventory;
 use service::Services;
-use values::constants::{_STATUS, _UUID};
+use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "basic")]
@@ -102,6 +99,12 @@ async fn reindex(
       if !after["status"].is_null() {
         after[_STATUS] = after["status"].clone();
         after.remove("status");
+      }
+
+      // replace "order" for "document"
+      if !after["order"].is_null() {
+        after[_DOCUMENT] = after["order"].clone();
+        after.remove("order");
       }
 
       // delete batch from document if it exists

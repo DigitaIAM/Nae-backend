@@ -3,6 +3,7 @@ debug = false
 [database]
 memory = "./data/memory"
 inventory = "./data/inventory"
+links = "./data/links"
 
 [jwt_config]
 audience = "https://yourdomain.com"
