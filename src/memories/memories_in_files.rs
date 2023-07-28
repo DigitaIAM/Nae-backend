@@ -1,14 +1,13 @@
 use super::*;
 
 use chrono::Utc;
-use json::{object, JsonValue};
+use json::JsonValue;
 use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
 use service::{Context, Service};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use store::balance::BalanceForGoods;
 use store::elements::ToJson;
 use store::GetWarehouse;
@@ -18,6 +17,7 @@ use crate::services::{Data, Params};
 
 use crate::commutator::Application;
 
+use crate::links::GetLinks;
 use stock::find_items;
 use values::constants::{_ID, _STATUS, _UUID};
 
@@ -41,10 +41,6 @@ impl Service for MemoriesInFiles {
   }
 
   fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
-    // println!("find account {:?}", ctx.account.read().unwrap());
-
-    let start = Instant::now();
-
     let wsid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
@@ -191,13 +187,6 @@ impl Service for MemoriesInFiles {
 
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
-      let start = Instant::now();
-
-      let produced = ws.memories(vec!["production".into(), "produce".into()]).list(None)?;
-
-      println!("produced: {:?}", start.elapsed().as_millis());
-      let start = Instant::now();
-
       let mut materials_produced = ws
         .memories(vec!["production".into(), "material".into(), "produced".into()])
         .list(None)?;
@@ -207,14 +196,17 @@ impl Service for MemoriesInFiles {
         .list(None)?;
 
       for order in &mut list {
-        let filters = vec![("order", &order[_ID])];
+        let order_uuid = order[_UUID].uuid()?;
+        let produced = self
+          .app
+          .links()
+          .get_source_links(order_uuid, &vec!["production".into(), "produce".into()])?;
 
         let mut boxes = 0_u32;
         let sum: Decimal = produced
           .iter()
-          .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+          .map(|uuid| uuid.resolve_to_json_object(&ws))
           .filter(|o| o.is_object())
-          .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
           .filter(|o| o[_STATUS].string() != *"deleted")
           .map(|o| o["qty"].number())
           .map(|o| {
@@ -332,8 +324,6 @@ impl Service for MemoriesInFiles {
         }
       }
     }
-
-    println!("_time: {:?}", start.elapsed().as_millis());
 
     Ok(json::object! {
       data: JsonValue::Array(list),

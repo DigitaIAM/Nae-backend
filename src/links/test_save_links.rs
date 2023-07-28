@@ -28,9 +28,18 @@ async fn links_cud() {
 
   let ctx: Vec<String> = vec!["production".into(), "produce".into()];
 
-  let d0 = Uuid::new_v4();
-  let d1 = Uuid::new_v4();
-  let d2 = Uuid::new_v4();
+  // // 7 failed, 5 success attempts on prefix_iterator_cf
+  // // 12 of 12 attempts success on iterator_cf_opt
+  // let d0 = Uuid::new_v4();
+  // let d1 = Uuid::new_v4();
+  // let d2 = Uuid::new_v4();
+
+  // 12 of 12 attempts failed on prefix_iterator_cf
+  // 12 of 12 attempts success on iterator_cf_opt
+  let d0 = Uuid::from_str("00000000-0000-0000-0000-000000000000").unwrap();
+  let d1 = Uuid::from_str("00000000-0000-0000-0000-000000000001").unwrap();
+  let d2 = Uuid::from_str("00000000-0000-0000-0000-000000000002").unwrap();
+  let d3 = Uuid::from_str("00000000-0000-0000-0000-000000000003").unwrap();
 
   // create
   let v1 = object! {
@@ -41,6 +50,8 @@ async fn links_cud() {
   app.links().save_links(&ws, &ctx, &v1, &JsonValue::Null).unwrap();
 
   let uuids = app.links().get_source_links(d1, &ctx).unwrap();
+
+  // println!("uuids1 {uuids:?}");
 
   assert_eq!(uuids.len(), 1);
   assert_eq!(uuids[0], d0);
@@ -53,11 +64,21 @@ async fn links_cud() {
 
   app.links().save_links(&ws, &ctx, &v2, &v1).unwrap();
 
+  let v3 = object! {
+      "_uuid": d0.to_json(),
+      "document": d3.to_json(),
+  };
+  app.links().save_links(&ws, &ctx, &v3, &JsonValue::Null).unwrap();
+
   let uuids = app.links().get_source_links(d1, &ctx).unwrap();
+
+  // println!("uuids2 {uuids:?}");
 
   assert_eq!(uuids.len(), 0);
 
   let uuids = app.links().get_source_links(d2, &ctx).unwrap();
+
+  // println!("uuids3 {uuids:?}");
 
   assert_eq!(uuids.len(), 1);
   assert_eq!(uuids[0], d0);

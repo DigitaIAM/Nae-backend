@@ -10,6 +10,7 @@ use service::utils::time::time_to_string;
 
 use std::path::PathBuf;
 
+use crate::links::GetLinks;
 use crate::memories::Enrich;
 use crate::utils::substring::StringUtils;
 use std::sync::Mutex;
@@ -91,7 +92,7 @@ fn save_data(
   let data = receive_data(app, ws.id.to_string().as_str(), data, ctx, before.clone())
     .map_err(|e| Error::GeneralError(e.message()))?;
 
-  app.links.save_links(ws, ctx, &data, &before)?;
+  app.links().save_links(ws, ctx, &data, &before)?;
 
   let uuid = data[_UUID].as_str();
 

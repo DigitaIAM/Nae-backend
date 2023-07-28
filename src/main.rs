@@ -43,6 +43,7 @@ pub mod warehouse;
 use crate::animo::memory::*;
 use crate::animo::shared::*;
 use crate::hr::services::companies::Companies;
+use crate::links::GetLinks;
 use crate::memories::MemoriesInFiles;
 use crate::settings::Settings;
 use crate::storage::Workspaces;
@@ -113,7 +114,10 @@ async fn reindex(
       text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
 
       let after =
-        store::elements::receive_data(&app, ws.id.to_string().as_str(), after, ctx, before).unwrap();
+        store::elements::receive_data(&app, ws.id.to_string().as_str(), after, ctx, before.clone())
+          .unwrap();
+
+      app.links().save_links(&ws, &ctx, &after, &before).unwrap();
 
       storage::save(&doc.path, after.dump())?;
     }

@@ -32,7 +32,7 @@ pub struct Application {
 
   pub wss: Workspaces,
   pub(crate) warehouse: WHStorage,
-  pub(crate) links: LinksIndex,
+  links: LinksIndex,
 
   // background dispatcher
   stop: Arc<AtomicBool>,

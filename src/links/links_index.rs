@@ -123,7 +123,7 @@ impl LinksIndex {
     before: &JsonValue,
     after: &JsonValue,
   ) -> Result<(), Error> {
-    if before[_DOCUMENT] == after[_DOCUMENT] {
+    if before[_DOCUMENT].string() == after[_DOCUMENT].string() {
       // do nothing
     } else {
       self.delete(ws, ctx, before)?;
@@ -166,7 +166,6 @@ impl LinksIndex {
     let mut hasher = Blake2b80::new();
     hasher.update(ctx);
     hasher.finalize()
-    // println!("ctx_bytes {:?}", ctx_bytes.as_slice());
   }
 
   pub fn get_source_links(&self, target: Uuid, ctx: &Vec<String>) -> Result<Vec<Uuid>, Error> {
@@ -176,14 +175,17 @@ impl LinksIndex {
 
     let mut result: Vec<Uuid> = Vec::new();
 
-    for item in self.database.prefix_iterator_cf(&self.cf()?, prefix) {
+    for item in self.database.prefix_iterator_cf(&self.cf()?, &prefix) {
       let (k, _) = item.map_err(|e| Error::GeneralError(e.to_string()))?;
 
-      let uuid = Uuid::from_slice(&k[32..=47])?;
+      if k[0..prefix.len()] != prefix[0..] {
+        break;
+      }
 
-      result.push(uuid);
+      let source_uuid = Uuid::from_slice(&k[32..=47])?;
+
+      result.push(source_uuid);
     }
-
     Ok(result)
   }
 }
