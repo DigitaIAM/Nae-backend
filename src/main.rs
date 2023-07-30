@@ -34,6 +34,7 @@ mod ws;
 mod animo;
 mod api;
 mod hr;
+pub mod links;
 mod memories;
 mod text_search;
 mod use_cases;
@@ -41,18 +42,16 @@ pub mod warehouse;
 
 use crate::animo::memory::*;
 use crate::animo::shared::*;
-use crate::animo::{Animo, Time, Topology};
 use crate::hr::services::companies::Companies;
+use crate::links::GetLinks;
 use crate::memories::MemoriesInFiles;
 use crate::settings::Settings;
-use crate::storage::organizations::Workspace;
 use crate::storage::Workspaces;
-use crate::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
-use crate::warehouse::store_topology::WHStoreTopology;
 use animo::db::AnimoDB;
 use animo::memory::Memory;
 use inventory::service::Inventory;
 use service::Services;
+use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "basic")]
@@ -86,9 +85,9 @@ async fn reindex(
       let mut after = doc.json().unwrap();
 
       // inject uuid if missing
-      if after["_uuid"].is_null() {
+      if after[_UUID].is_null() {
         let uuid = Uuid::new_v4().to_string();
-        after["_uuid"] = uuid.clone().into();
+        after[_UUID] = uuid.clone().into();
 
         storage::memories::index_uuid(
           &doc.mem.top_folder,
@@ -97,13 +96,28 @@ async fn reindex(
         )?;
       }
 
+      // replace "status" for "_status"
+      if !after["status"].is_null() {
+        after[_STATUS] = after["status"].clone();
+        after.remove("status");
+      }
+
+      // replace "order" for "document"
+      if !after["order"].is_null() {
+        after[_DOCUMENT] = after["order"].clone();
+        after.remove("order");
+      }
+
       // delete batch from document if it exists
       after.remove("batch");
 
       text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
 
       let after =
-        store::elements::receive_data(&app, ws.id.to_string().as_str(), after, ctx, before).unwrap();
+        store::elements::receive_data(&app, ws.id.to_string().as_str(), after, ctx, before.clone())
+          .unwrap();
+
+      app.links().save_links(&ws, &ctx, &after, &before).unwrap();
 
       storage::save(&doc.path, after.dump())?;
     }
@@ -159,13 +173,13 @@ async fn server(settings: Arc<Settings>, app: Application, com: Addr<Commutator>
   .await
 }
 
-async fn startup() -> std::io::Result<()> {
+async fn startup() -> io::Result<()> {
   // std::env::set_var("RUST_LOG", "debug,actix_web=debug,actix_server=debug");
   env_logger::init();
 
   let opt = Opt::from_args();
 
-  let settings = std::sync::Arc::new(Settings::new().unwrap());
+  let settings = Arc::new(Settings::new().unwrap());
   println!("db starting up");
   let db: AnimoDB = Memory::init(settings.database.memory.clone()).unwrap();
   println!("db started up");
@@ -228,13 +242,27 @@ async fn startup() -> std::io::Result<()> {
       }
       Ok(())
     },
-    "delete" => use_cases::uc_delete::delete(&app),
+    "delete" => match opt.case.as_str() {
+      "produce" => use_cases::uc_delete::delete_produce(&app),
+      "transfer" => use_cases::uc_delete::delete_transfers_for_one_goods(
+        &app,
+        Some("склад"),
+        "Полипропилен (дроб)",
+      ),
+      _ => unreachable!(),
+    },
     "save" => match opt.case.as_str() {
       "roll" => use_cases::uc_save::save_roll(&app),
       "cups" => use_cases::uc_save::save_half_stuff_cups(&app),
       "produced" => use_cases::uc_save::save_produced(&app),
       "file_transfer" => use_cases::uc_save::save_transfer_from_file(&app),
       "goods_transfer" => use_cases::uc_save::save_transfer_for_goods(&app),
+      _ => unreachable!(),
+    },
+    "replace" => match opt.case.as_str() {
+      "goods" => {
+        use_cases::uc_replace::replace_goods(&app, "Полипропилен дробленный", "Полипропилен (дроб)")
+      },
       _ => unreachable!(),
     },
     _ => unreachable!(),
@@ -257,7 +285,7 @@ async fn startup() -> std::io::Result<()> {
 // }
 
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> io::Result<()> {
   startup().await
 }
 

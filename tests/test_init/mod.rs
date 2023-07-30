@@ -8,7 +8,7 @@ use nae_backend::animo::Animo;
 use nae_backend::animo::Topology;
 use nae_backend::animo::{db::AnimoDB, memory::Memory};
 use nae_backend::commutator::Application;
-use nae_backend::settings::{JWTConfig, Settings};
+use nae_backend::settings::{Database, JWTConfig, Settings};
 use nae_backend::warehouse::store_aggregation_topology::WHStoreAggregationTopology;
 use nae_backend::warehouse::store_topology::WHStoreTopology;
 use service::utils::json::JsonParams;
@@ -20,20 +20,9 @@ use store::error::WHError;
 use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
 use store::GetWarehouse;
+use values::constants::_UUID;
 
 const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-
-pub fn test(folder: PathBuf) -> Settings {
-  Settings {
-    debug: false,
-    jwt_config: JWTConfig {
-      audience: "http://localhost".into(),
-      issuer: "Nae".into(),
-      secret: "1234567890".into(),
-    },
-    database: Database { memory: folder.join("memory"), inventory: folder.join("inventory") },
-  }
-}
 
 pub fn init() -> (TempDir, Settings, AnimoDB) {
   std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
@@ -86,7 +75,7 @@ fn create(app: &Application, name: &str, ctx: Vec<&str>) -> Uuid {
     )
     .unwrap();
 
-  data["_uuid"].uuid().unwrap()
+  data[_UUID].uuid().unwrap()
 }
 
 pub fn store(app: &Application, name: &str) -> Uuid {

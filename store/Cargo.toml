@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 service = { path = "../service" }
+values = { path = "../values" }
 
 log = "0.4.17"
 env_logger = "0.10"
@@ -37,6 +38,8 @@ json = "0.12.4" # replacement for serde_json ?
 
 base64 = "0.21"
 csv = "1.1.6"
+
+blake2 = "0.10.4"
 
 rocksdb = { version = "0.21", default-features = false, features = ["lz4", "multi-threaded-cf"] }
 

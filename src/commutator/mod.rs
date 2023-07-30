@@ -9,6 +9,8 @@ use json::{array, JsonValue};
 use tokio_cron_scheduler::JobScheduler;
 use uuid::Uuid;
 
+use crate::links::links_index::LinksIndex;
+use crate::links::GetLinks;
 use crate::services::{Event, Mutation};
 use crate::text_search::SearchEngine;
 use crate::ws::{engine_io, socket_io, Connect, Disconnect, WsMessage};
@@ -30,6 +32,7 @@ pub struct Application {
 
   pub wss: Workspaces,
   pub(crate) warehouse: WHStorage,
+  links: LinksIndex,
 
   // background dispatcher
   stop: Arc<AtomicBool>,
@@ -42,6 +45,12 @@ pub struct Application {
 impl GetWarehouse for Application {
   fn warehouse(&self) -> WHStorage {
     self.warehouse.clone()
+  }
+}
+
+impl GetLinks for Application {
+  fn links(&self) -> LinksIndex {
+    self.links.clone()
   }
 }
 
@@ -70,6 +79,7 @@ impl Application {
       wss,
       warehouse: WHStorage::open(&settings.database.inventory)
         .map_err(|e| Error::GeneralError(e.message()))?,
+      links: LinksIndex::open(&settings.database.links)?,
       // channels: Arc::new(HashMap::new()),
       stop: stop.clone(),
       events: events_sender,

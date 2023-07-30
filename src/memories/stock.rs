@@ -9,6 +9,7 @@ use store::balance::{BalanceForGoods, Cost};
 use store::batch::Batch;
 use store::elements::{Goods, Store, ToJson};
 use uuid::Uuid;
+use values::constants::_UUID;
 
 pub(crate) fn find_items(
   ws: &Workspace,
@@ -73,7 +74,7 @@ fn process(
             continue;
           }
         } else if let Some(filter) = cat_filter {
-          if let Some(uuid) = category_obj["_uuid"].uuid_or_none() {
+          if let Some(uuid) = category_obj[_UUID].uuid_or_none() {
             if uuid != filter {
               continue;
             }
@@ -163,7 +164,7 @@ fn top_and_before(cache: &Cache, store: Store, filter: Option<Uuid>) -> (Uuid, O
         let current_storage = cache.resolve_str(current_id.as_str());
 
         // TODO review it, bad unwrap_or code
-        let uuid = current_storage["_uuid"].uuid_or_none().unwrap_or(store);
+        let uuid = current_storage[_UUID].uuid_or_none().unwrap_or(store);
         if filter.is_some() && Some(uuid) == filter {
           return (uuid, prev_uuid, true);
         }
@@ -198,7 +199,8 @@ where
   V: ToJson + Default,
 {
   let mut items: Vec<JsonValue> = map
-    .keys().cloned()
+    .keys()
+    .cloned()
     .collect::<Vec<_>>()
     .into_iter()
     .map(|id| (id.resolve_to_json_object(ws), id))

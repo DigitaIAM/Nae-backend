@@ -18,13 +18,14 @@ use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
 use service::utils::json::JsonParams;
+use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
 pub type Goods = Uuid;
 pub type Store = Uuid;
 pub type Qty = Decimal;
 
-pub(crate) const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
-pub(crate) const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
+pub const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
+pub const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
 pub trait ToJson {
   fn to_json(&self) -> JsonValue;
@@ -241,7 +242,7 @@ fn json_to_ops(
     return Ok(ops);
   }
 
-  if data["status"].string() == *"deleted" {
+  if data[_STATUS].string() == *"deleted" {
     return Ok(ops);
   }
 
@@ -261,20 +262,11 @@ fn json_to_ops(
   };
 
   let params = object! {oid: wid, ctx: [], enrich: false };
-  let document = match ctx_str[..] {
-    ["production", "produce"] => {
-      match app.service("memories").get(Context::local(), data["order"].string(), params) {
-        Ok(d) => d,
-        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-      }
-    },
-    _ => {
-      match app.service("memories").get(Context::local(), data["document"].string(), params) {
-        Ok(d) => d,
-        Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-      }
-    },
-  };
+  let document =
+    match app.service("memories").get(Context::local(), data[_DOCUMENT].string(), params) {
+      Ok(d) => d,
+      Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+    };
 
   log::debug!("DOCUMENT: {:?}", document.dump());
 
@@ -307,7 +299,7 @@ fn json_to_ops(
     Err(_) => return Ok(ops),
   };
 
-  let goods_uuid = match goods["_uuid"].uuid_or_none() {
+  let goods_uuid = match goods[_UUID].uuid_or_none() {
     Some(uuid) => uuid,
     None => return Ok(ops),
   };
@@ -359,7 +351,7 @@ fn json_to_ops(
 
   log::debug!("after op {op:?}");
 
-  let tid = if let Some(tid) = data["_uuid"].uuid_or_none() {
+  let tid = if let Some(tid) = data[_UUID].uuid_or_none() {
     tid
   } else {
     return Ok(ops);
@@ -367,7 +359,7 @@ fn json_to_ops(
 
   let batch = if type_of_operation == OpType::Receive {
     if ctx == &vec!["production".to_owned(), "produce".to_owned()] {
-      match document["_uuid"].uuid_or_none() {
+      match document[_UUID].uuid_or_none() {
         Some(id) => Batch { id, date },
         None => return Ok(ops), // TODO: assert!(false)
       }
@@ -376,15 +368,15 @@ fn json_to_ops(
     }
   } else if type_of_operation == OpType::Inventory {
     match &data["batch"] {
-      JsonValue::Object(d) => Batch { id: d["_uuid"].uuid()?, date: d["date"].date_with_check()? },
+      JsonValue::Object(d) => Batch { id: d[_UUID].uuid()?, date: d["date"].date_with_check()? },
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? }, // TODO is it ok?
     }
   } else {
     match &data["batch"] {
       JsonValue::Object(_d) => {
-        // let params = object! {oid: oid["data"][0]["_id"].as_str(), ctx: vec!["warehouse", "receive", "document"] };
-        // let doc_from = app.service("memories").get(d["_id"].string(), params)?;
-        Batch { id: data["batch"]["_uuid"].uuid()?, date: data["batch"]["date"].date_with_check()? }
+        // let params = object! {oid: oid["data"][0][_ID].as_str(), ctx: vec!["warehouse", "receive", "document"] };
+        // let doc_from = app.service("memories").get(d["_ID].string(), params)?;
+        Batch { id: data["batch"][_UUID].uuid()?, date: data["batch"]["date"].date_with_check()? }
       },
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
     }
@@ -443,37 +435,48 @@ fn storages(
     };
 
     Ok((store_from, Some(store_into)))
-  } else if ctx.get(0) == Some(&"production".to_string()) {
-    let store_from = if ctx.get(1) == Some(&"material".to_string()) {
-      match resolve_store(app, wid, data, "storage_into") {
-        Ok(uuid) => uuid,
-        Err(_) => return Err(WHError::new("no storage for production/material")), // TODO handle errors better, allow to catch only 'not found'
-      }
-    } else if ctx.get(1) == Some(&"produce".to_string()) {
-      //*********["production", "produce"]***********
-      let area = match app.service("memories").get(
-        Context::local(),
-        document["area"].clone().string(),
-        params,
-      ) {
-        Ok(d) => d,
-        Err(_) => return Err(WHError::new("no area in production")), // TODO handle IO error differently!!!!
-      };
-      match resolve_store(app, wid, &area, "storage") {
-        Ok(uuid) => uuid,
-        Err(_) => return Err(WHError::new("no storage in production")), // TODO handle errors better, allow to catch only 'not found'
-      }
-    } else {
-      return Err(WHError::new("unknown context in production"));
-    };
-
-    Ok((store_from, None))
   } else {
-    let store_from = match resolve_store(app, wid, document, "storage") {
-      Ok(uuid) => uuid,
-      Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
+    let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+
+    return match ctx_str[..] {
+      ["production", "produce"] => {
+        let area = match app.service("memories").get(
+          Context::local(),
+          document["area"].clone().string(),
+          params,
+        ) {
+          Ok(d) => d,
+          Err(_) => return Err(WHError::new("no area in production")), // TODO handle IO error differently!!!!
+        };
+        let store_from = match resolve_store(app, wid, &area, "storage") {
+          Ok(uuid) => uuid,
+          Err(_) => return Err(WHError::new("no storage in production")), // TODO handle errors better, allow to catch only 'not found'
+        };
+        Ok((store_from, None))
+      },
+      ["production", "material", "produced"] => {
+        // "store_from" stands for "store" in operation, and this context has only "storage_into"
+        let store_from = match resolve_store(app, wid, data, "storage_into") {
+          Ok(uuid) => uuid,
+          Err(_) => return Err(WHError::new("no storage for production/material/produced")), // TODO handle errors better, allow to catch only 'not found'
+        };
+        Ok((store_from, None))
+      },
+      ["production", "material", "used"] => {
+        let store_from = match resolve_store(app, wid, data, "storage_from") {
+          Ok(uuid) => uuid,
+          Err(_) => return Err(WHError::new("no storage for production/material/used")), // TODO handle errors better, allow to catch only 'not found'
+        };
+        Ok((store_from, None))
+      },
+      _ => {
+        let store_from = match resolve_store(app, wid, document, "storage") {
+          Ok(uuid) => uuid,
+          Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
+        };
+        Ok((store_from, None))
+      },
     };
-    Ok((store_from, None))
   };
 }
 
@@ -525,5 +528,5 @@ fn resolve_store(
   let params = object! {oid: wid, ctx: vec!["warehouse", "storage"] };
   let storage = app.service("memories").get(Context::local(), store_id, params)?;
   log::debug!("storage {:?}", storage.dump());
-  storage["_uuid"].uuid()
+  storage[_UUID].uuid()
 }

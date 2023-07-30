@@ -6,6 +6,7 @@ use rust_decimal::Decimal;
 use crate::elements::ToJson;
 use service::error::Error;
 use service::{Context, Services};
+use values::constants::_UUID;
 
 const COUNTERPARTY: [&str; 1] = ["counterparty"];
 const STORAGE: [&str; 2] = ["warehouse", "storage"];
@@ -33,9 +34,9 @@ pub fn report(
   let storage =
     json(app, object! { name: storage }, STORAGE.to_vec(), &|| object! { name: storage }).unwrap();
 
-  println!("STORAGE: {:?}", storage["_uuid"]);
+  println!("STORAGE: {:?}", storage[_UUID]);
 
-  let params: JsonValue = object! {ctx: ctx, oid: oid, storage: storage["_uuid"].clone(), dates: {"from": from_date, "till": till_date}};
+  let params: JsonValue = object! {ctx: ctx, oid: oid, storage: storage[_UUID].clone(), dates: {"from": from_date, "till": till_date}};
 
   let result = app.service("inventory").find(Context::local(), params).unwrap();
 

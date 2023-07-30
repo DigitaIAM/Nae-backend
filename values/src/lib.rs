@@ -5,6 +5,8 @@ use rkyv::{Archive, Deserialize, Serialize};
 use std::array::TryFromSliceError;
 use std::fmt::{Display, Formatter};
 
+pub mod constants;
+
 type Hasher = blake2::Blake2s256;
 
 pub const ID_BYTES: usize = 32;
@@ -108,7 +110,7 @@ impl TryFrom<&[u8]> for ID {
   }
 }
 
-impl std::fmt::Display for ID {
+impl Display for ID {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}", self.to_base64())
   }

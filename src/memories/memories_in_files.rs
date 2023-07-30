@@ -17,7 +17,9 @@ use crate::services::{Data, Params};
 
 use crate::commutator::Application;
 
+use crate::links::GetLinks;
 use stock::find_items;
+use values::constants::{_ID, _STATUS, _UUID};
 
 // warehouse: { receiving, Put-away, transfer,  }
 // production: { manufacturing }
@@ -39,8 +41,6 @@ impl Service for MemoriesInFiles {
   }
 
   fn find(&self, _ctx: Context, params: Params) -> crate::services::Result {
-    // println!("find account {:?}", ctx.account.read().unwrap());
-
     let wsid = crate::services::oid(&params)?;
     let ctx = self.ctx(&params);
 
@@ -108,16 +108,17 @@ impl Service for MemoriesInFiles {
     let search = &self.params(&params)["search"];
     let filters = &self.params(&params)["filter"];
     let (total, mut list): (isize, Vec<JsonValue>) = if let Some(search) = search.as_str() {
+      let search = search.to_lowercase();
       let mut total = 0;
       let list: Vec<JsonValue> = list
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| show_deleted(&ctx) || o["status"].string() != *"deleted")
+        .filter(|o| show_deleted(&ctx) || o[_STATUS].string() != *"deleted")
         .filter(|o| {
           for (_name, v) in o.entries() {
             if let Some(str) = v.as_str() {
-              if str.contains(search) {
+              if str.to_lowercase().contains(&search) {
                 return true;
               }
             }
@@ -143,7 +144,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| show_deleted(&ctx) || o["status"].string() != *"deleted")
+        .filter(|o| show_deleted(&ctx) || o[_STATUS].string() != *"deleted")
         .filter(|o| filters.entries().all(|(n, v)| &o[n] == v))
         .map(|o| {
           total += 1;
@@ -168,7 +169,7 @@ impl Service for MemoriesInFiles {
           .take(limit)
           .map(|o| o.json())
           // there shouldn't be status filter because we want to show all objects in relevant menu section (but not in pop up list)
-          // .filter(|o| o.as_ref().unwrap()["status"].string() != "deleted".to_string())
+          // .filter(|o| o.as_ref().unwrap()[STATUS].string() != "deleted".to_string())
           .collect::<Result<_, _>>()?,
       )
     };
@@ -186,22 +187,27 @@ impl Service for MemoriesInFiles {
 
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
-      let produced = self
-        .app
-        .wss
-        .get(&wsid)
-        .memories(vec!["production".into(), "produce".into()])
+      let mut materials_produced = ws
+        .memories(vec!["production".into(), "material".into(), "produced".into()])
         .list(None)?;
+
+      let materials_used = ws
+        .memories(vec!["production".into(), "material".into(), "used".into()])
+        .list(None)?;
+
       for order in &mut list {
-        let filters = vec![("order", &order["_id"])];
+        let order_uuid = order[_UUID].uuid()?;
+        let produced = self
+          .app
+          .links()
+          .get_source_links(order_uuid, &vec!["production".into(), "produce".into()])?;
 
         let mut boxes = 0_u32;
         let sum: Decimal = produced
           .iter()
-          .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+          .map(|uuid| uuid.resolve_to_json_object(&ws))
           .filter(|o| o.is_object())
-          .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
-          .filter(|o| o["status"].string() != *"deleted")
+          .filter(|o| o[_STATUS].string() != *"deleted")
           .map(|o| o["qty"].number())
           .map(|o| {
             boxes += 1;
@@ -211,6 +217,83 @@ impl Service for MemoriesInFiles {
 
         // TODO rolls - kg, caps - piece
         order["produced"] = json::object! { "piece": sum.to_json(), "box": boxes.to_string() };
+
+        // workaround: ignore all areas except "экструдер"
+        let area = order["area"].string().resolve_to_json_object(&ws);
+
+        if area["name"].string() != "экструдер".to_string() {
+          continue;
+        }
+
+        let filters = vec![("document", &order[_ID])];
+
+        let mut sum_used_materials: HashMap<String, Decimal> = HashMap::new();
+
+        let materials_used: Vec<JsonValue> = materials_used
+          .iter()
+          .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+          .filter(|o| o.is_object())
+          .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
+          .filter(|o| o[_STATUS].string() != *"deleted")
+          .collect();
+
+        let mut sum_used = Decimal::ZERO;
+
+        for material_used in materials_used {
+          let qty = material_used["qty"]["number"].number();
+
+          let goods = material_used["goods"].string().resolve_to_json_object(&ws);
+
+          *sum_used_materials.entry(goods["name"].string()).or_insert(Decimal::ZERO) += qty;
+
+          sum_used += qty;
+        }
+
+        let used: Vec<JsonValue> = sum_used_materials
+          .into_iter()
+          .map(|(k, v)| {
+            let mut o = json::object!();
+            o[k] = v.to_json();
+            o
+          })
+          .collect();
+
+        let mut sum_produced_materials: HashMap<String, Decimal> = HashMap::new();
+
+        let materials_produced: Vec<JsonValue> = materials_produced
+          .iter()
+          .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+          .filter(|o| o.is_object())
+          .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
+          .filter(|o| o[_STATUS].string() != *"deleted")
+          .collect();
+
+        let mut sum_produced = Decimal::ZERO;
+
+        for material_produced in materials_produced {
+          let qty = material_produced["qty"]["number"].number();
+
+          let goods = material_produced["goods"].string().resolve_to_json_object(&ws);
+
+          *sum_produced_materials.entry(goods["name"].string()).or_insert(Decimal::ZERO) += qty;
+
+          sum_produced += qty;
+        }
+
+        let produced: Vec<JsonValue> = sum_produced_materials
+          .into_iter()
+          .map(|(k, v)| {
+            let mut o = json::object!();
+            o[k] = v.to_json();
+            o
+          })
+          .collect();
+
+        order["_material"] = json::object! { "used": used, "produced": produced };
+
+        let delta = sum_produced - sum_used;
+
+        order["_delta"] = json::object! { "delta": delta.to_json() };
       }
     }
 
@@ -220,11 +303,11 @@ impl Service for MemoriesInFiles {
 
       let today = Utc::now();
 
-      // let list_of_goods = list.iter().map(|goods| goods["_uuid"].uuid_or_none()).filter(|id| id.is_some()).map(|id| id.unwrap()).collect();
+      // let list_of_goods = list.iter().map(|goods| goods[_UUID].uuid_or_none()).filter(|id| id.is_some()).map(|id| id.unwrap()).collect();
 
       let mut list_of_goods: Vec<Uuid> = Vec::new();
       for goods in &list {
-        if let Some(uuid) = goods["_uuid"].uuid_or_none() {
+        if let Some(uuid) = goods[_UUID].uuid_or_none() {
           list_of_goods.push(uuid);
         }
       }
@@ -234,7 +317,7 @@ impl Service for MemoriesInFiles {
         .map_err(|e| Error::GeneralError(e.message()))?;
 
       for goods in &mut list {
-        if let Some(uuid) = goods["_uuid"].uuid_or_none() {
+        if let Some(uuid) = goods[_UUID].uuid_or_none() {
           if let Some(balance) = balances.get(&uuid) {
             goods["_balance"] = balance.to_json();
           }
@@ -322,18 +405,16 @@ impl Service for MemoriesInFiles {
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
-      let doc = memories
-        .get(&id)
-        .ok_or(Error::GeneralError(format!("id '{id}' not found")))?;
+      let doc = memories.get(&id).ok_or(Error::GeneralError(format!("id '{id}' not found")))?;
       let mut obj = doc.json()?;
 
       let mut patch = data;
-      patch.remove("_id"); // TODO check id?
+      patch.remove(_ID); // TODO check id?
 
       obj = obj.merge(&patch);
 
       // for (n, v) in data.entries() {
-      //   if n != "_id" {
+      //   if n != _ID {
       //     obj[n] = v.clone();
       //   }
       // }

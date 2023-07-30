@@ -5,6 +5,7 @@ use crate::commutator::Application;
 use crate::services::{Data, Params};
 use service::error::Error;
 use service::{Context, Service};
+use values::constants::_ID;
 use values::ID;
 
 pub struct Companies {
@@ -51,7 +52,7 @@ impl Service for Companies {
       let id = ID::random();
 
       let mut obj = data;
-      obj["_id"] = JsonValue::String(id.to_base64());
+      obj[_ID] = JsonValue::String(id.to_base64());
 
       self.app.wss.create(id)?.save(obj.dump())?;
 
@@ -72,7 +73,7 @@ impl Service for Companies {
       let id = crate::services::string_to_id(id)?;
 
       let mut obj = data;
-      obj["_id"] = id.to_base64().into();
+      obj[_ID] = id.to_base64().into();
 
       self.app.wss.get(&id).save(obj.dump())?;
 
@@ -96,7 +97,7 @@ impl Service for Companies {
 
       let mut obj = storage.load()?;
       for (n, v) in data.entries() {
-        if n != "_id" {
+        if n != _ID {
           obj[n] = v.clone();
         }
       }
