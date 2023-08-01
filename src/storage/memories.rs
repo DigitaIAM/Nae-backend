@@ -11,8 +11,10 @@ use service::utils::time::time_to_string;
 use std::path::PathBuf;
 
 use crate::links::GetLinks;
-use crate::memories::Enrich;
+use crate::memories::{Enrich, Resolve};
 use crate::utils::substring::StringUtils;
+use service::utils::json::JsonParams;
+use service::Services;
 use std::sync::Mutex;
 use store::elements::receive_data;
 use uuid::Uuid;
@@ -43,6 +45,7 @@ fn save_data(
   _id: &String,
   _uuid: Option<Uuid>,
   time: DateTime<Utc>,
+  stack: Vec<(String, JsonValue)>,
   mut data: JsonValue,
 ) -> Result<JsonValue, Error> {
   let _lock = LOCK.lock().unwrap();
@@ -89,7 +92,7 @@ fn save_data(
   let _ = crate::text_search::handle_mutation(app, ctx, &before, &data);
   // TODO .map_err(|e| IOError(e.to_string()))?;
 
-  let data = receive_data(app, ws.id.to_string().as_str(), data, ctx, before.clone())
+  let data = receive_data(app, ws.id.to_string().as_str(), before.clone(), data, ctx, stack)
     .map_err(|e| Error::GeneralError(e.message()))?;
 
   app.links().save_links(ws, ctx, &data, &before)?;
@@ -214,8 +217,18 @@ impl Memories {
     data[_ID] = id.clone().into();
     data[_UUID] = uuid.to_string().into();
 
-    let data =
-      save_data(app, &self.ws, &self.top_folder, &folder, &self.ctx, &id, Some(uuid), time, data)?;
+    let data = save_data(
+      app,
+      &self.ws,
+      &self.top_folder,
+      &folder,
+      &self.ctx,
+      &id,
+      Some(uuid),
+      time,
+      Vec::new(),
+      data,
+    )?;
 
     Ok(data.enrich(&self.ws))
   }
@@ -225,6 +238,7 @@ impl Memories {
     app: &Application,
     id: String,
     data: Data,
+    stack: Vec<(String, JsonValue)>,
   ) -> Result<JsonValue, Error> {
     let time = Utc::now();
 
@@ -234,7 +248,7 @@ impl Memories {
     };
 
     let data =
-      save_data(app, &self.ws, &self.top_folder, &folder, &self.ctx, &id, None, time, data)?;
+      save_data(app, &self.ws, &self.top_folder, &folder, &self.ctx, &id, None, time, stack, data)?;
 
     Ok(data.enrich(&self.ws))
   }

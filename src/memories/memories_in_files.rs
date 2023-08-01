@@ -200,7 +200,7 @@ impl Service for MemoriesInFiles {
         let produced = self
           .app
           .links()
-          .get_source_links(order_uuid, &vec!["production".into(), "produce".into()])?;
+          .get_source_links_for_ctx(order_uuid, &vec!["production".into(), "produce".into()])?;
 
         let mut boxes = 0_u32;
         let sum: Decimal = produced
@@ -385,7 +385,7 @@ impl Service for MemoriesInFiles {
       let ws = self.app.wss.get(&oid);
       let memories = ws.memories(ctx);
 
-      let data = memories.update(&self.app, id, data)?;
+      let data = memories.update(&self.app, id, data, Vec::new())?;
 
       Ok(data.enrich(&ws))
     }
@@ -400,18 +400,22 @@ impl Service for MemoriesInFiles {
     }
 
     let ws = self.app.wss.get(&oid);
-    let memories = ws.memories(ctx);
+    let memories = ws.memories(ctx.clone());
 
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
       let doc = memories.get(&id).ok_or(Error::GeneralError(format!("id '{id}' not found")))?;
-      let mut obj = doc.json()?;
+      let mut old_obj = doc.json()?;
+
+      // println!("_doc before changes {:?}", old_obj.clone());
 
       let mut patch = data;
       patch.remove(_ID); // TODO check id?
 
-      obj = obj.merge(&patch);
+      let obj = old_obj.merge(&patch);
+
+      // println!("_doc after changes {:?}", obj.clone());
 
       // for (n, v) in data.entries() {
       //   if n != _ID {
@@ -419,7 +423,34 @@ impl Service for MemoriesInFiles {
       //   }
       // }
 
-      let data = memories.update(&self.app, id, obj)?;
+      // TODO: create a stack with "before" and "after" states (if there is a difference). Pass this stack to memories.update()
+
+      let mut stack: Vec<(String, JsonValue)> = Vec::new();
+
+      let data = memories.update(&self.app, id, obj.clone(), stack.clone())?;
+
+      if old_obj.dump() != obj.dump() {
+        stack.push((old_obj[_ID].string(), obj));
+        stack.push((old_obj[_ID].string(), old_obj));
+      }
+
+      let ctx = if ctx.len() >= 3 { ctx[0..2].to_vec() } else { ctx };
+
+      println!("_CTX {ctx:?}");
+
+      let memories = ws.memories(ctx.clone());
+
+      let sources = self.app.links().get_source_links_for_ctx(data[_UUID].uuid()?, &ctx)?;
+
+      println!("_sources {sources:?}");
+
+      let _ops: Vec<JsonValue> = sources
+        .iter()
+        .map(|uuid| uuid.resolve_to_json_object(&ws))
+        .filter(|o| o.is_object())
+        .filter(|o| o[_STATUS].string() != *"deleted")
+        .map(|o| memories.update(&self.app, o[_ID].string(), o, stack.clone()).unwrap())
+        .collect();
 
       Ok(data.enrich(&ws))
     }
