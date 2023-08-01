@@ -162,7 +162,7 @@ pub fn receive_data(
   let new_data = after.clone();
   let new_before = before;
 
-  let before = match json_to_ops(app, wid, &new_before, ctx, &mut stack) {
+  let _before = match json_to_ops(app, wid, &new_before, ctx, &mut stack) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ BEFORE: {}", e.message());
@@ -180,14 +180,14 @@ pub fn receive_data(
     },
   };
 
-  log::debug!("OPS BEFOR: {before:#?}");
+  log::debug!("OPS BEFOR: {_before:#?}");
   log::debug!("OPS AFTER: {_after:#?}");
 
-  let before = before.into_iter();
+  let _before = _before.into_iter();
 
   let mut ops: Vec<OpMutation> = Vec::new();
 
-  for ref b in before {
+  for ref b in _before {
     if let Some(a) = _after.remove_entry(&b.0) {
       if a.1.store == b.1.store
         && a.1.goods == b.1.goods
@@ -389,24 +389,25 @@ fn json_to_ops(
     } else {
       Batch { id: tid, date }
     }
-  } else {
-    Batch { id: UUID_NIL, date: dt("1970-01-01")? }
-  };
-  // else if type_of_operation == OpType::Inventory {
-  //   match &data["batch"] {
-  //     JsonValue::Object(d) => Batch { id: d[_UUID].uuid()?, date: d["date"].date_with_check()? },
-  //     _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? }, // TODO is it ok?
-  //   }
-  // } else {
-  //   match &data["batch"] {
-  //     JsonValue::Object(_d) => {
-  //       // let params = object! {oid: oid["data"][0][_ID].as_str(), ctx: vec!["warehouse", "receive", "document"] };
-  //       // let doc_from = app.service("memories").get(d["_ID].string(), params)?;
-  //       Batch { id: data["batch"][_UUID].uuid()?, date: data["batch"]["date"].date_with_check()? }
-  //     },
-  //     _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
-  //   }
+  }
+  // else {
+  //   Batch { id: UUID_NIL, date: dt("1970-01-01")? }
   // };
+  else if type_of_operation == OpType::Inventory {
+    match &data["batch"] {
+      JsonValue::Object(d) => Batch { id: d[_UUID].uuid()?, date: d["date"].date_with_check()? },
+      _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? }, // TODO is it ok?
+    }
+  } else {
+    match &data["batch"] {
+      JsonValue::Object(_d) => {
+        // let params = object! {oid: oid["data"][0][_ID].as_str(), ctx: vec!["warehouse", "receive", "document"] };
+        // let doc_from = app.service("memories").get(d["_ID].string(), params)?;
+        Batch { id: data["batch"][_UUID].uuid()?, date: data["batch"]["date"].date_with_check()? }
+      },
+      _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
+    }
+  };
 
   let op = Op {
     id: tid,

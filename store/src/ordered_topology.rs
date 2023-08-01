@@ -294,17 +294,23 @@ pub trait OrderedTopology {
     pf: &mut PropagationFront,
     op: &Op,
   ) -> Result<(BalanceForGoods, BalanceForGoods), WHError> {
+    log::debug!("fn_remove_op");
     let balance_before: BalanceForGoods = self.balance_before(op)?;
 
+    // TODO: before_op somehow is None when op is dependent. That's why receive op not deleting for transfer? Qty of goods get x2
     let (before_op, balance_after) = if op.dependant.is_empty() {
       if let Some((o, b)) = self.get(op)? {
+        log::debug!("before__op is Some");
         (Some(o.op), b)
       } else {
+        log::debug!("before__op is not find in db");
         (None, BalanceForGoods::default())
       }
     } else {
+      log::debug!("before__op is None because of dependant");
       (None, BalanceForGoods::default())
     };
+    log::debug!("{before_op:?}");
 
     self.del(op)?;
     pf.remove(op);

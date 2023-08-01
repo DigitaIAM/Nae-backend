@@ -40,7 +40,7 @@ impl Workspaces {
     Ok(Workspace { id, folder, path })
   }
 
-  pub(crate) fn get(&self, id: &ID) -> Workspace {
+  pub fn get(&self, id: &ID) -> Workspace {
     let mut folder = self.folder.clone();
     folder.push(id.to_base64());
 

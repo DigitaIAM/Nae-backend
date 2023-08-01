@@ -15,7 +15,7 @@ use store::elements::dt;
 use store::GetWarehouse;
 
 #[actix_web::test]
-async fn update_document() {
+async fn update_document_with_receive() {
   std::env::set_var("RUST_LOG", "debug,tantivy=off");
   env_logger::init();
 
