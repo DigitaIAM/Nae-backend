@@ -49,7 +49,7 @@ async fn links_cud() {
 
   app.links().save_links(&ws, &ctx, &v1, &JsonValue::Null).unwrap();
 
-  let uuids = app.links().get_source_links(d1, &ctx).unwrap();
+  let uuids = app.links().get_source_links_for_ctx(d1, &ctx).unwrap();
 
   // println!("uuids1 {uuids:?}");
 
@@ -70,13 +70,13 @@ async fn links_cud() {
   };
   app.links().save_links(&ws, &ctx, &v3, &JsonValue::Null).unwrap();
 
-  let uuids = app.links().get_source_links(d1, &ctx).unwrap();
+  let uuids = app.links().get_source_links_for_ctx(d1, &ctx).unwrap();
 
   // println!("uuids2 {uuids:?}");
 
   assert_eq!(uuids.len(), 0);
 
-  let uuids = app.links().get_source_links(d2, &ctx).unwrap();
+  let uuids = app.links().get_source_links_for_ctx(d2, &ctx).unwrap();
 
   // println!("uuids3 {uuids:?}");
 
@@ -86,10 +86,10 @@ async fn links_cud() {
   // delete
   app.links().save_links(&ws, &ctx, &JsonValue::Null, &v2).unwrap();
 
-  let uuids = app.links().get_source_links(d1, &ctx).unwrap();
+  let uuids = app.links().get_source_links_for_ctx(d1, &ctx).unwrap();
   assert_eq!(uuids.len(), 0);
 
-  let uuids = app.links().get_source_links(d2, &ctx).unwrap();
+  let uuids = app.links().get_source_links_for_ctx(d2, &ctx).unwrap();
   assert_eq!(uuids.len(), 0);
 }
 

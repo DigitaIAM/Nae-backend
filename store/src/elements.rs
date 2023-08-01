@@ -147,47 +147,48 @@ pub(crate) fn time_to_naive_string(time: DateTime<Utc>) -> String {
 pub fn receive_data(
   app: &(impl GetWarehouse + Services),
   wid: &str,
-  data: JsonValue,
-  ctx: &Vec<String>,
   before: JsonValue,
+  after: JsonValue,
+  ctx: &Vec<String>,
+  mut stack: Vec<(String, JsonValue)>,
 ) -> Result<JsonValue, WHError> {
   // TODO if structure of input Json is invalid, should return it without changes and save it to memories anyway
   // If my data was corrupted, should rewrite it and do the operations
   // TODO tests with invalid structure of incoming JsonValue
   log::debug!("BEFOR: {:?}", before.dump());
-  log::debug!("AFTER: {:?}", data.dump());
+  log::debug!("AFTER: {:?}", after.dump());
 
-  let old_data = data.clone();
-  let new_data = data.clone();
+  let old_data = after.clone();
+  let new_data = after.clone();
   let new_before = before;
 
-  let before = match json_to_ops(app, wid, &new_before, ctx) {
+  let before = match json_to_ops(app, wid, &new_before, ctx, &mut stack) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ BEFORE: {}", e.message());
-      println!("{}", data.dump());
+      println!("{}", after.dump());
       return Ok(old_data);
     },
   };
 
-  let mut after = match json_to_ops(app, wid, &new_data, ctx) {
+  let mut _after = match json_to_ops(app, wid, &new_data, ctx, &mut stack) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ AFTER: {}", e.message());
-      println!("{}", data.dump());
+      println!("{}", after.dump());
       return Ok(old_data);
     },
   };
 
   log::debug!("OPS BEFOR: {before:#?}");
-  log::debug!("OPS AFTER: {after:#?}");
+  log::debug!("OPS AFTER: {_after:#?}");
 
   let before = before.into_iter();
 
   let mut ops: Vec<OpMutation> = Vec::new();
 
   for ref b in before {
-    if let Some(a) = after.remove_entry(&b.0) {
+    if let Some(a) = _after.remove_entry(&b.0) {
       if a.1.store == b.1.store
         && a.1.goods == b.1.goods
         && a.1.batch == b.1.batch
@@ -204,9 +205,9 @@ pub fn receive_data(
     }
   }
 
-  let after = after.into_iter();
+  let _after = _after.into_iter();
 
-  for ref a in after {
+  for ref a in _after {
     ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
   }
 
@@ -233,6 +234,7 @@ fn json_to_ops(
   wid: &str,
   data: &JsonValue,
   ctx: &Vec<String>,
+  stack: &mut Vec<(String, JsonValue)>,
 ) -> Result<HashMap<String, Op>, WHError> {
   // log::debug!("json_to_ops {data:?}");
 
@@ -262,13 +264,30 @@ fn json_to_ops(
   };
 
   let params = object! {oid: wid, ctx: [], enrich: false };
-  let document =
-    match app.service("memories").get(Context::local(), data[_DOCUMENT].string(), params) {
+
+  let doc_id = data[_DOCUMENT].string();
+
+  let (last_key, last_value) = if let Some((k, v)) = stack.pop() {
+    (k, v)
+  } else {
+    ("none".to_string(), JsonValue::Null) // if key will be "", document could be JsonValue::Null - this is wrong
+  };
+
+  let document = if last_key == doc_id {
+    last_value
+  } else {
+    match app.service("memories").get(Context::local(), doc_id, params) {
       Ok(d) => d,
       Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-    };
+    }
+  };
 
-  log::debug!("DOCUMENT: {:?}", document.dump());
+  // let document = match app.service("memories").get(Context::local(), doc_id, params) {
+  //   Ok(d) => d,
+  //   Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
+  // };
+
+  println!("DOCUMENT: {:?}", document.dump());
 
   // let date = match document["date"].date_with_check() {
   //   Ok(d) => d,
@@ -294,9 +313,13 @@ fn json_to_ops(
 
   println!("store from: {store_from:?} into: {store_into:?}");
 
-  let goods = match goods(app, wid, data, &document, ctx_str.clone()) {
-    Ok(g) => g,
-    Err(_) => return Ok(ops),
+  let goods = if data["goods"].is_object() {
+    data["goods"].clone()
+  } else {
+    match goods(app, wid, data, &document, ctx_str.clone()) {
+      Ok(g) => g,
+      Err(_) => return Ok(ops),
+    }
   };
 
   let goods_uuid = match goods[_UUID].uuid_or_none() {
@@ -366,21 +389,24 @@ fn json_to_ops(
     } else {
       Batch { id: tid, date }
     }
-  } else if type_of_operation == OpType::Inventory {
-    match &data["batch"] {
-      JsonValue::Object(d) => Batch { id: d[_UUID].uuid()?, date: d["date"].date_with_check()? },
-      _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? }, // TODO is it ok?
-    }
   } else {
-    match &data["batch"] {
-      JsonValue::Object(_d) => {
-        // let params = object! {oid: oid["data"][0][_ID].as_str(), ctx: vec!["warehouse", "receive", "document"] };
-        // let doc_from = app.service("memories").get(d["_ID].string(), params)?;
-        Batch { id: data["batch"][_UUID].uuid()?, date: data["batch"]["date"].date_with_check()? }
-      },
-      _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
-    }
+    Batch { id: UUID_NIL, date: dt("1970-01-01")? }
   };
+  // else if type_of_operation == OpType::Inventory {
+  //   match &data["batch"] {
+  //     JsonValue::Object(d) => Batch { id: d[_UUID].uuid()?, date: d["date"].date_with_check()? },
+  //     _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? }, // TODO is it ok?
+  //   }
+  // } else {
+  //   match &data["batch"] {
+  //     JsonValue::Object(_d) => {
+  //       // let params = object! {oid: oid["data"][0][_ID].as_str(), ctx: vec!["warehouse", "receive", "document"] };
+  //       // let doc_from = app.service("memories").get(d["_ID].string(), params)?;
+  //       Batch { id: data["batch"][_UUID].uuid()?, date: data["batch"]["date"].date_with_check()? }
+  //     },
+  //     _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
+  //   }
+  // };
 
   let op = Op {
     id: tid,

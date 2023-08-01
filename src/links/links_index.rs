@@ -168,7 +168,11 @@ impl LinksIndex {
     hasher.finalize()
   }
 
-  pub fn get_source_links(&self, target: Uuid, ctx: &Vec<String>) -> Result<Vec<Uuid>, Error> {
+  pub fn get_source_links_for_ctx(
+    &self,
+    target: Uuid,
+    ctx: &Vec<String>,
+  ) -> Result<Vec<Uuid>, Error> {
     let ctx: String = ctx.join("/");
 
     let prefix = self.prefix_to_bytes(target, &ctx);

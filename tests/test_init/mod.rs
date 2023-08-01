@@ -24,6 +24,7 @@ use values::constants::_UUID;
 
 const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
+#[cfg(test)]
 pub fn init() -> (TempDir, Settings, AnimoDB) {
   std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
   let _ = env_logger::builder().is_test(true).try_init();
@@ -31,7 +32,7 @@ pub fn init() -> (TempDir, Settings, AnimoDB) {
   let tmp_dir = tempdir().unwrap();
   let tmp_path = tmp_dir.path().to_str().unwrap();
 
-  let settings = Settings::test(tmp_path.into());
+  let settings = test(tmp_path.into());
 
   let mut db: AnimoDB = Memory::init(tmp_path.into()).unwrap();
   let mut animo = Animo::default();
@@ -45,6 +46,23 @@ pub fn init() -> (TempDir, Settings, AnimoDB) {
 
   db.register_dispatcher(Arc::new(animo)).unwrap();
   (tmp_dir, settings, db)
+}
+
+#[cfg(test)]
+pub fn test(folder: PathBuf) -> Settings {
+  Settings {
+    debug: false,
+    jwt_config: JWTConfig {
+      audience: "http://localhost".into(),
+      issuer: "Nae".into(),
+      secret: "1234567890".into(),
+    },
+    database: Database {
+      memory: folder.join("memory"),
+      inventory: folder.join("inventory"),
+      links: folder.join("links"),
+    },
+  }
 }
 
 pub fn create_record(
