@@ -7,9 +7,10 @@ use crate::operations::{Dependant, InternalOperation, Op, OpMutation};
 
 use chrono::{DateTime, Utc};
 use json::JsonValue;
-use rocksdb::{ColumnFamilyDescriptor, Options};
+use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, DB};
 use rust_decimal::Decimal;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub trait OrderedTopology {
@@ -164,7 +165,13 @@ pub trait OrderedTopology {
 
     if let Some(mut op) = op_mut.to_op_after() {
       // do not trust external data
-      let existing = if let Some((o, _b)) = self.get(&op)? { o.dependant } else { vec![] };
+      let existing = if let Some((o, _b)) = self.get(&op)? {
+        println!("actual_op after {o:?}");
+        o.dependant
+      } else {
+        println!("actual_op after not found");
+        vec![]
+      };
       op.dependant = existing;
 
       // let balance_before: BalanceForGoods = self.balance_before(&op)?;
@@ -173,6 +180,10 @@ pub trait OrderedTopology {
       // log::debug!("mutate ops.push {ops:#?}");
     } else if let Some(before) = op_mut.to_op_before() {
       self.delete_op(db, &mut pf, &before)?;
+      // TODO: stack overflow happens if we use this code:
+      // if let Some((old, _)) = self.get(&before)? {
+      //   self.delete_op(db, &mut pf, &old)?;
+      // }
     }
 
     let mut uniq = HashSet::new();
@@ -311,6 +322,16 @@ pub trait OrderedTopology {
       (None, BalanceForGoods::default())
     };
     log::debug!("{before_op:?}");
+
+    // TODO: I was trying to make it here, but it had no effect
+    // if op.is_issue() && op.batch.is_empty() && !op.is_dependent && op.dependant.is_empty() {
+    //   // find op in db with same id
+    //   if let Some((o, b)) = self.get(op)? {
+    //     println!("remove_op actual_op: {o:?}");
+    //   } else {
+    //     println!("remove_op actual_op not found");
+    //   }
+    // }
 
     self.del(op)?;
     pf.remove(op);
@@ -610,6 +631,21 @@ pub trait OrderedTopology {
   //   ops.push(new);
   //   log::debug!("cleanup_and_push ops.push {ops:#?}");
   // }
+
+  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError>;
+
+  fn db(&self) -> Arc<DB>;
+
+  fn debug(&self) -> Result<(), WHError> {
+    println!("DEBUG: topology");
+    for record in self.db().full_iterator_cf(&self.cf()?, IteratorMode::Start) {
+      let (k, value) = record?;
+      let (op, b) = self.from_bytes(&value)?;
+      println!("{op:#?} > {b:?}");
+    }
+
+    Ok(())
+  }
 }
 
 pub struct PropagationFront<'a> {

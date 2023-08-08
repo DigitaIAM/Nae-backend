@@ -1,5 +1,5 @@
 mod memories_in_files;
-pub mod stock;
+pub(crate) mod stock;
 
 use crate::storage::organizations::Workspace;
 use json::JsonValue;

@@ -15,10 +15,11 @@ use crate::memories::{Enrich, Resolve};
 use crate::utils::substring::StringUtils;
 use service::utils::json::JsonParams;
 use service::Services;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use store::elements::receive_data;
 use uuid::Uuid;
-use values::constants::{_ID, _UUID};
+use values::constants::{_ID, _STATUS, _UUID};
 
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
@@ -45,71 +46,98 @@ fn save_data(
   _id: &String,
   _uuid: Option<Uuid>,
   time: DateTime<Utc>,
-  stack: Vec<(String, JsonValue)>,
   mut data: JsonValue,
 ) -> Result<JsonValue, Error> {
-  let _lock = LOCK.lock().unwrap();
+  let mut stack: HashMap<String, (JsonValue, JsonValue)> = HashMap::new();
 
-  // if data[_ID] != id {
-  //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data[_ID])));
-  // }
+  let (before, after) = {
+    let _lock = LOCK.lock().unwrap();
 
-  let time_str = time_to_string(time);
+    // if data[_ID] != id {
+    //   return Err(Error::IOError(format!("incorrect id {id} vs {}", data[_ID])));
+    // }
 
-  let file_name = format!("{time_str}.json");
-  let mut path_current = folder.clone();
-  path_current.push(&file_name);
+    let time_str = time_to_string(time);
 
-  // 2023/01/2023-01-06T12:43:15Z/latest.json
-  let mut path_latest = folder.clone();
-  path_latest.push("latest.json");
+    let file_name = format!("{time_str}.json");
+    let mut path_current = folder.clone();
+    path_current.push(&file_name);
 
-  // ["warehouse", "receive"]
-  // ["warehouse", "issue"]
-  // ["warehouse", "transfer"]
-  // TODO handles[self.ctx].apply()
-  // data = { _id: "", date: "2023-01-11", storage: "uuid", goods: [{goods: "", uom: "", qty: 0, price: 0, cost: 0, _tid: ""}, ...]}
-  // cost = qty * price
+    // 2023/01/2023-01-06T12:43:15Z/latest.json
+    let mut path_latest = folder.clone();
+    path_latest.push("latest.json");
 
-  // println!("loading before {path_latest:?}");
+    // ["warehouse", "receive"]
+    // ["warehouse", "issue"]
+    // ["warehouse", "transfer"]
+    // TODO handles[self.ctx].apply()
+    // data = { _id: "", date: "2023-01-11", storage: "uuid", goods: [{goods: "", uom: "", qty: 0, price: 0, cost: 0, _tid: ""}, ...]}
+    // cost = qty * price
 
-  let before = match load(&path_latest) {
-    Ok(b) => {
-      //WORKAROUND: make sure that id & uuid stay same
-      if !b[_ID].is_null() {
-        data[_ID] = b[_ID].clone();
-      }
-      if !b[_UUID].is_null() {
-        data[_UUID] = b[_UUID].clone();
-      }
-      b
-    },
-    Err(_) => JsonValue::Null,
+    // println!("loading before {path_latest:?}");
+
+    let before = match load(&path_latest) {
+      Ok(b) => {
+        //WORKAROUND: make sure that id & uuid stay same
+        if !b[_ID].is_null() {
+          data[_ID] = b[_ID].clone();
+        }
+        if !b[_UUID].is_null() {
+          data[_UUID] = b[_UUID].clone();
+        }
+        b
+      },
+      Err(_) => JsonValue::Null,
+    };
+
+    // println!("loaded before {before:?}");
+
+    let _ = crate::text_search::handle_mutation(app, ctx, &before, &data);
+    // TODO .map_err(|e| IOError(e.to_string()))?;
+
+    receive_data(app, ws.id.to_string().as_str(), before.clone(), data.clone(), ctx, &stack)
+      .map_err(|e| Error::GeneralError(e.message()))?;
+
+    app.links().save_links(ws, ctx, &data, &before)?;
+
+    let uuid = data[_UUID].as_str();
+
+    save(&path_current, data.dump())?;
+
+    // ignore error if file do not exist
+    let _ = symlink::remove_symlink_file(&path_latest);
+    symlink::symlink_file(&file_name, &path_latest)?;
+
+    if let Some(uuid) = uuid {
+      index_uuid(top_folder, folder, uuid)?;
+    }
+
+    (before, data.clone())
   };
 
-  // println!("loaded before {before:?}");
+  log::debug!("_Before {before:?}\n_After {after:?}");
 
-  let _ = crate::text_search::handle_mutation(app, ctx, &before, &data);
-  // TODO .map_err(|e| IOError(e.to_string()))?;
+  stack.insert(before[_ID].string(), (before, after.clone()));
 
-  let data = receive_data(app, ws.id.to_string().as_str(), before.clone(), data, ctx, stack)
-    .map_err(|e| Error::GeneralError(e.message()))?;
+  let sources = app.links().get_source_links_without_ctx(data[_UUID].uuid()?)?;
 
-  app.links().save_links(ws, ctx, &data, &before)?;
+  log::debug!("_sources {sources:?}");
 
-  let uuid = data[_UUID].as_str();
+  let _ops: Vec<JsonValue> = sources
+    .iter()
+    .map(|uuid| uuid.resolve_to_json_object(&ws))
+    .filter(|o| o.is_object())
+    .filter(|o| o[_STATUS].string() != *"deleted")
+    .map(|o| {
+      let mut _ctx: Vec<String> = o[_ID].string().split('/').map(|s| s.to_string()).collect();
+      _ctx.pop();
+      let _ = receive_data(app, ws.id.to_string().as_str(), o.clone(), o.clone(), &_ctx, &stack) // TODO
+        .map_err(|e| Error::GeneralError(e.message()));
+      o
+    })
+    .collect();
 
-  save(&path_current, data.dump())?;
-
-  // ignore error if file do not exist
-  let _ = symlink::remove_symlink_file(&path_latest);
-  symlink::symlink_file(&file_name, &path_latest)?;
-
-  if let Some(uuid) = uuid {
-    index_uuid(top_folder, folder, uuid)?;
-  }
-
-  Ok(data)
+  Ok(after)
 }
 
 pub(crate) fn index_uuid(top_folder: &PathBuf, folder: &PathBuf, uuid: &str) -> Result<(), Error> {
@@ -217,18 +245,8 @@ impl Memories {
     data[_ID] = id.clone().into();
     data[_UUID] = uuid.to_string().into();
 
-    let data = save_data(
-      app,
-      &self.ws,
-      &self.top_folder,
-      &folder,
-      &self.ctx,
-      &id,
-      Some(uuid),
-      time,
-      Vec::new(),
-      data,
-    )?;
+    let data =
+      save_data(app, &self.ws, &self.top_folder, &folder, &self.ctx, &id, Some(uuid), time, data)?;
 
     Ok(data.enrich(&self.ws))
   }
@@ -238,7 +256,6 @@ impl Memories {
     app: &Application,
     id: String,
     data: Data,
-    stack: Vec<(String, JsonValue)>,
   ) -> Result<JsonValue, Error> {
     let time = Utc::now();
 
@@ -248,7 +265,7 @@ impl Memories {
     };
 
     let data =
-      save_data(app, &self.ws, &self.top_folder, &folder, &self.ctx, &id, None, time, stack, data)?;
+      save_data(app, &self.ws, &self.top_folder, &folder, &self.ctx, &id, None, time, data)?;
 
     Ok(data.enrich(&self.ws))
   }

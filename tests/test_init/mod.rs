@@ -104,39 +104,6 @@ pub fn goods(app: &Application, name: &str) -> Uuid {
   create(app, name, vec!["warehouse", "goods"])
 }
 
-pub fn document_create(app: &Application, data: JsonValue, ctx: Vec<&str>) -> JsonValue {
-  let data = app
-    .service("memories")
-    .create(
-      Context::local(),
-      data,
-      json::object! {
-        oid: WID,
-        ctx: ctx,
-      },
-    )
-    .unwrap();
-
-  data
-}
-
-pub fn document_update(app: &Application, id: String, data: JsonValue, ctx: Vec<&str>) -> JsonValue {
-  let data = app
-    .service("memories")
-    .patch(
-      Context::local(),
-      id,
-      data,
-      json::object! {
-        oid: WID,
-        ctx: ctx,
-      },
-    )
-    .unwrap();
-
-  data
-}
-
 pub fn receive(
   app: &Application,
   date: &str,
@@ -253,4 +220,44 @@ pub fn transfer(
   app.warehouse().mutate(&ops).unwrap();
 
   id
+}
+
+pub trait DocumentCreation {
+  fn create(&self, app: &Application, data: JsonValue) -> JsonValue;
+  fn update(&self, app: &Application, id: String, data: JsonValue) -> JsonValue;
+}
+
+impl DocumentCreation for Vec<&str> {
+  fn create(&self, app: &Application, data: JsonValue) -> JsonValue {
+    let data = app
+      .service("memories")
+      .create(
+        Context::local(),
+        data,
+        json::object! {
+          oid: WID,
+          ctx: self.clone(),
+        },
+      )
+      .unwrap();
+
+    data
+  }
+
+  fn update(&self, app: &Application, id: String, data: JsonValue) -> JsonValue {
+    let data = app
+      .service("memories")
+      .patch(
+        Context::local(),
+        id,
+        data,
+        json::object! {
+          oid: WID,
+          ctx: self.clone(),
+        },
+      )
+      .unwrap();
+
+    data
+  }
 }

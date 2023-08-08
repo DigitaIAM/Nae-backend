@@ -27,14 +27,6 @@ impl StoreDateTypeBatchId {
   pub fn cf_name() -> &'static str {
     CF_NAME
   }
-
-  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
-    if let Some(cf) = self.db.cf_handle(StoreDateTypeBatchId::cf_name()) {
-      Ok(cf)
-    } else {
-      Err(WHError::new("can't get CF"))
-    }
-  }
 }
 
 impl OrderedTopology for StoreDateTypeBatchId {
@@ -218,14 +210,6 @@ impl OrderedTopology for StoreDateTypeBatchId {
     Ok(res)
   }
 
-  fn operations_for_store_goods(
-    &self,
-    _from: DateTime<Utc>,
-    _till: &Op,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
   fn ops_for_store_goods_and_batch(
     &self,
     _store: Store,
@@ -291,6 +275,14 @@ impl OrderedTopology for StoreDateTypeBatchId {
     Ok(res)
   }
 
+  fn operations_for_store_goods(
+    &self,
+    _from: DateTime<Utc>,
+    _till: &Op,
+  ) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("not implemented"))
+  }
+
   fn get_report_for_storage(
     &self,
     db: &Db,
@@ -333,5 +325,17 @@ impl OrderedTopology for StoreDateTypeBatchId {
       .chain(op_dependant.to_be_bytes().iter())
       .copied()
       .collect()
+  }
+
+  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
+    if let Some(cf) = self.db.cf_handle(StoreDateTypeBatchId::cf_name()) {
+      Ok(cf)
+    } else {
+      Err(WHError::new("can't get CF"))
+    }
+  }
+
+  fn db(&self) -> Arc<DB> {
+    self.db.clone()
   }
 }

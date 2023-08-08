@@ -1,6 +1,7 @@
 mod test_init;
 
-use crate::test_init::{document_create, document_update, goods, init, receive, store};
+use crate::test_init::DocumentCreation;
+use crate::test_init::{goods, init, receive, store};
 use chrono::Utc;
 use json::object;
 use nae_backend::commutator::Application;
@@ -28,6 +29,9 @@ async fn update_document_with_receive() {
   app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
+  let receive_op = vec!["warehouse", "receive"];
+  let receive_doc = vec!["warehouse", "receive", "document"];
+
   let s1 = store(&app, "s1");
   let s2 = store(&app, "s2");
   let g1 = goods(&app, "g1");
@@ -40,7 +44,7 @@ async fn update_document_with_receive() {
     number: "1",
   };
 
-  let d1 = document_create(&app, doc.clone(), vec!["warehouse", "receive", "document"]);
+  let d1 = receive_doc.create(&app, doc.clone());
 
   // create receive operation
   let receive_obj = object! {
@@ -50,16 +54,19 @@ async fn update_document_with_receive() {
     cost: object! {number: "0.3"},
   };
 
-  let r1 = document_create(&app, receive_obj, vec!["warehouse", "receive"]);
+  let r1 = receive_op.create(&app, receive_obj);
   // log::debug!("receive_data: {:#?}", r1.dump());
 
   let r1_batch = Batch { id: r1["_uuid"].uuid().unwrap(), date: dt("2023-01-01").unwrap() };
 
+  app.warehouse().database.ordered_topologies[0].debug().unwrap();
+
   // change document
   doc["date"] = "2023-05-25".into();
 
-  let d2 =
-    document_update(&app, d1["_uuid"].string(), doc, vec!["warehouse", "receive", "document"]);
+  let d2 = receive_doc.update(&app, d1["_id"].string(), doc);
+
+  app.warehouse().database.ordered_topologies[0].debug().unwrap();
 
   // let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
   // log::debug!("balances: {balances:#?}");

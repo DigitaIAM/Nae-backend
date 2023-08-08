@@ -150,33 +150,51 @@ pub fn receive_data(
   before: JsonValue,
   after: JsonValue,
   ctx: &Vec<String>,
-  mut stack: Vec<(String, JsonValue)>,
-) -> Result<JsonValue, WHError> {
+  stack: &HashMap<String, (JsonValue, JsonValue)>,
+) -> Result<(), WHError> {
   // TODO if structure of input Json is invalid, should return it without changes and save it to memories anyway
   // If my data was corrupted, should rewrite it and do the operations
   // TODO tests with invalid structure of incoming JsonValue
   log::debug!("BEFOR: {:?}", before.dump());
   log::debug!("AFTER: {:?}", after.dump());
 
-  let old_data = after.clone();
-  let new_data = after.clone();
-  let new_before = before;
+  let _before = match json_to_ops(app, wid, &before, ctx, stack, |id| {
+    if let Some((b, _)) = stack.get(&id) {
+      Some(b.clone())
+    } else {
+      let params = object! {oid: wid, ctx: [], enrich: false };
 
-  let _before = match json_to_ops(app, wid, &new_before, ctx, &mut stack) {
+      match app.service("memories").get(Context::local(), id, params) {
+        Ok(d) => Some(d),
+        Err(_) => None,
+      }
+    }
+  }) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ BEFORE: {}", e.message());
       println!("{}", after.dump());
-      return Ok(old_data);
+      return Ok(());
     },
   };
 
-  let mut _after = match json_to_ops(app, wid, &new_data, ctx, &mut stack) {
+  let mut _after = match json_to_ops(app, wid, &after, ctx, stack, |id| {
+    if let Some((_, a)) = stack.get(&id) {
+      Some(a.clone())
+    } else {
+      let params = object! {oid: wid, ctx: [], enrich: false };
+
+      match app.service("memories").get(Context::local(), id, params) {
+        Ok(d) => Some(d),
+        Err(_) => None,
+      }
+    }
+  }) {
     Ok(res) => res,
     Err(e) => {
       println!("_WHERROR_ AFTER: {}", e.message());
       println!("{}", after.dump());
-      return Ok(old_data);
+      return Ok(());
     },
   };
 
@@ -213,12 +231,11 @@ pub fn receive_data(
 
   log::debug!("OPS: {:#?}", ops);
 
-  if ops.is_empty() {
-    Ok(old_data)
-  } else {
+  if !ops.is_empty() {
     app.warehouse().mutate(&ops)?;
-    Ok(new_data)
   }
+
+  Ok(())
 }
 
 #[derive(PartialEq, Clone)]
@@ -229,13 +246,17 @@ enum OpType {
   Transfer,
 }
 
-fn json_to_ops(
+fn json_to_ops<F>(
   app: &(impl GetWarehouse + Services),
   wid: &str,
   data: &JsonValue,
   ctx: &Vec<String>,
-  stack: &mut Vec<(String, JsonValue)>,
-) -> Result<HashMap<String, Op>, WHError> {
+  stack: &HashMap<String, (JsonValue, JsonValue)>,
+  get_doc: F,
+) -> Result<HashMap<String, Op>, WHError>
+where
+  F: FnOnce(String) -> Option<JsonValue>,
+{
   // log::debug!("json_to_ops {data:?}");
 
   let mut ops = HashMap::new();
@@ -267,19 +288,9 @@ fn json_to_ops(
 
   let doc_id = data[_DOCUMENT].string();
 
-  let (last_key, last_value) = if let Some((k, v)) = stack.pop() {
-    (k, v)
-  } else {
-    ("none".to_string(), JsonValue::Null) // if key will be "", document could be JsonValue::Null - this is wrong
-  };
-
-  let document = if last_key == doc_id {
-    last_value
-  } else {
-    match app.service("memories").get(Context::local(), doc_id, params) {
-      Ok(d) => d,
-      Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-    }
+  let document = match get_doc(doc_id) {
+    Some(d) => d,
+    None => return Ok(ops),
   };
 
   // let document = match app.service("memories").get(Context::local(), doc_id, params) {

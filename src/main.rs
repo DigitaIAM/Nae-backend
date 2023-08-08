@@ -113,13 +113,13 @@ async fn reindex(
 
       text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
 
-      let after = store::elements::receive_data(
+      store::elements::receive_data(
         &app,
         ws.id.to_string().as_str(),
         before.clone(),
-        after,
+        after.clone(),
         ctx,
-        Vec::new(),
+        &HashMap::new(),
       )
       .unwrap();
 

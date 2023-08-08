@@ -11,7 +11,7 @@ use store::elements::{Goods, Store, ToJson};
 use uuid::Uuid;
 use values::constants::_UUID;
 
-pub fn find_items(
+pub(crate) fn find_items(
   ws: &Workspace,
   balances: &HashMap<Store, HashMap<Goods, HashMap<Batch, BalanceForGoods>>>,
   filters: &JsonValue,
