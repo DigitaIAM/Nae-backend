@@ -62,6 +62,15 @@ impl Enrich for JsonValue {
       data["storage"] = storage.resolve_to_json_object(ws);
     }
 
+    // workaround for storage_from and storage_into
+    if let Some(storage_from) = data["storage_from"].as_str() {
+      data["storage_from"] = storage_from.resolve_to_json_object(ws);
+    }
+
+    if let Some(storage_into) = data["storage_into"].as_str() {
+      data["storage_into"] = storage_into.resolve_to_json_object(ws);
+    }
+
     data
   }
 }

@@ -166,10 +166,10 @@ pub trait OrderedTopology {
     if let Some(mut op) = op_mut.to_op_after() {
       // do not trust external data
       let existing = if let Some((o, _b)) = self.get(&op)? {
-        println!("actual_op after {o:?}");
+        log::debug!("actual_op after {o:?}");
         o.dependant
       } else {
-        println!("actual_op after not found");
+        log::debug!("actual_op after not found");
         vec![]
       };
       op.dependant = existing;
@@ -308,7 +308,6 @@ pub trait OrderedTopology {
     log::debug!("fn_remove_op");
     let balance_before: BalanceForGoods = self.balance_before(op)?;
 
-    // TODO: before_op somehow is None when op is dependent. That's why receive op not deleting for transfer? Qty of goods get x2
     let (before_op, balance_after) = if op.dependant.is_empty() {
       if let Some((o, b)) = self.get(op)? {
         log::debug!("before__op is Some");
@@ -323,18 +322,33 @@ pub trait OrderedTopology {
     };
     log::debug!("{before_op:?}");
 
-    // TODO: I was trying to make it here, but it had no effect
-    // if op.is_issue() && op.batch.is_empty() && !op.is_dependent && op.dependant.is_empty() {
-    //   // find op in db with same id
-    //   if let Some((o, b)) = self.get(op)? {
-    //     println!("remove_op actual_op: {o:?}");
-    //   } else {
-    //     println!("remove_op actual_op not found");
-    //   }
-    // }
+    let mut op = op.clone();
+    if op.is_issue() && op.batch.is_empty() && !op.is_dependent && op.dependant.is_empty() {
+      // find op in db with same id
+      if let Some((o, b)) = self.get(&op)? {
+        log::debug!("remove_op act_op: {o:?}");
+        op.dependant = o.dependant.clone();
+      } else {
+        log::debug!("remove_op act_op not found");
+      }
+    }
 
-    self.del(op)?;
-    pf.remove(op);
+    // delete dependant
+    for dependant in op.dependant.iter() {
+      let mut dep = op.clone();
+      let (store, batch, _) = dependant.clone().tuple();
+      dep.store = store;
+      dep.batch = batch;
+      dep.is_dependent = true;
+      dep.dependant = vec![];
+
+      log::debug!("dep: {dep:?}");
+
+      self.delete_op(db, pf, &dep)?;
+    }
+
+    self.del(&op)?;
+    pf.remove(&op);
 
     if op.dependant.is_empty() {
       db.update(
@@ -419,14 +433,14 @@ pub trait OrderedTopology {
     }
 
     // delete dependant
-    for dependant in op.dependant.iter() {
-      let mut dep = op.clone();
-      let (store, batch, _) = dependant.clone().tuple();
-      dep.store = store;
-      dep.batch = batch;
-
-      self.delete_op(db, pf, &dep)?;
-    }
+    // for dependant in op.dependant.iter() {
+    //   let mut dep = op.clone();
+    //   let (store, batch, _) = dependant.clone().tuple();
+    //   dep.store = store;
+    //   dep.batch = batch;
+    //
+    //   self.delete_op(db, pf, &dep)?;
+    // }
 
     // if transfer op create dependant op
     if let Some(dep) = op.dependent_on_transfer() {
@@ -637,11 +651,11 @@ pub trait OrderedTopology {
   fn db(&self) -> Arc<DB>;
 
   fn debug(&self) -> Result<(), WHError> {
-    println!("DEBUG: topology");
+    log::debug!("DEBUG: topology");
     for record in self.db().full_iterator_cf(&self.cf()?, IteratorMode::Start) {
       let (k, value) = record?;
       let (op, b) = self.from_bytes(&value)?;
-      println!("{op:#?} > {b:?}");
+      log::debug!("{op:#?} > {b:?}");
     }
 
     Ok(())
@@ -915,7 +929,7 @@ impl<'a> PropagationFront<'a> {
           zero.dependant = vec![];
           zero.is_dependent = true;
           zero.op = InternalOperation::Receive(Decimal::ZERO, Cost::ZERO);
-          // println!("zero = {zero:?}");
+          // log::debug!("zero = {zero:?}");
           // ops.insert(0, zero);
           // log::debug!("cleanup ops.push {ops:#?}");
           self.mt.delete_op(self.db, self, &zero)?;
@@ -927,7 +941,7 @@ impl<'a> PropagationFront<'a> {
           zero.dependant = vec![];
           zero.is_dependent = true;
           zero.op = InternalOperation::Issue(Decimal::ZERO, Cost::ZERO, Mode::Manual);
-          // println!("zero = {zero:?}");
+          // log::debug!("zero = {zero:?}");
           // ops.insert(0, zero);
           // log::debug!("cleanup ops.push {ops:#?}");
           self.mt.delete_op(self.db, self, &zero)?;

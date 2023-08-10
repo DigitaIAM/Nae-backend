@@ -104,11 +104,11 @@ async fn update_document_with_transfer() {
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
 
-  println!("balances: {balances:#?}");
-
-  println!("s1: {s1:#?}");
-  println!("s2: {s2:#?}");
-  println!("s3: {s3:#?}");
+  // println!("balances: {balances:#?}");
+  //
+  // println!("s1: {s1:#?}");
+  // println!("s2: {s2:#?}");
+  // println!("s3: {s3:#?}");
 
   assert_eq!(balances.get(&s1), None);
 
