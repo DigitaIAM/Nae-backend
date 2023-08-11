@@ -158,7 +158,7 @@ pub fn receive_data(
   log::debug!("BEFOR: {:?}", before.dump());
   log::debug!("AFTER: {:?}", after.dump());
 
-  let _before = match json_to_ops(app, wid, &before, ctx, stack, |id| {
+  let before = match json_to_ops(app, wid, &before, ctx, stack, |id| {
     if let Some((b, _)) = stack.get(&id) {
       Some(b.clone())
     } else {
@@ -172,13 +172,13 @@ pub fn receive_data(
   }) {
     Ok(res) => res,
     Err(e) => {
-      println!("_WHERROR_ BEFORE: {}", e.message());
-      println!("{}", after.dump());
+      log::debug!("_WHERROR_ BEFORE: {}", e.message());
+      log::debug!("{}", after.dump());
       return Ok(());
     },
   };
 
-  let mut _after = match json_to_ops(app, wid, &after, ctx, stack, |id| {
+  let mut after = match json_to_ops(app, wid, &after, ctx, stack, |id| {
     if let Some((_, a)) = stack.get(&id) {
       Some(a.clone())
     } else {
@@ -192,21 +192,21 @@ pub fn receive_data(
   }) {
     Ok(res) => res,
     Err(e) => {
-      println!("_WHERROR_ AFTER: {}", e.message());
-      println!("{}", after.dump());
+      log::debug!("_WHERROR_ AFTER: {}", e.message());
+      log::debug!("{}", after.dump());
       return Ok(());
     },
   };
 
-  log::debug!("OPS BEFOR: {_before:#?}");
-  log::debug!("OPS AFTER: {_after:#?}");
+  log::debug!("OPS BEFOR: {before:#?}");
+  log::debug!("OPS AFTER: {after:#?}");
 
-  let _before = _before.into_iter();
+  let before = before.into_iter();
 
   let mut ops: Vec<OpMutation> = Vec::new();
 
-  for ref b in _before {
-    if let Some(a) = _after.remove_entry(&b.0) {
+  for ref b in before {
+    if let Some(a) = after.remove_entry(&b.0) {
       if a.1.store == b.1.store
         && a.1.goods == b.1.goods
         && a.1.batch == b.1.batch
@@ -223,9 +223,9 @@ pub fn receive_data(
     }
   }
 
-  let _after = _after.into_iter();
+  let after = after.into_iter();
 
-  for ref a in _after {
+  for ref a in after {
     ops.push(OpMutation::new_from_ops(None, Some(a.1.clone())));
   }
 
@@ -252,7 +252,7 @@ fn json_to_ops<F>(
   data: &JsonValue,
   ctx: &Vec<String>,
   stack: &HashMap<String, (JsonValue, JsonValue)>,
-  get_doc: F,
+  resolve_doc: F,
 ) -> Result<HashMap<String, Op>, WHError>
 where
   F: FnOnce(String) -> Option<JsonValue>,
@@ -288,22 +288,12 @@ where
 
   let doc_id = data[_DOCUMENT].string();
 
-  let document = match get_doc(doc_id) {
+  let document = match resolve_doc(doc_id) {
     Some(d) => d,
     None => return Ok(ops),
   };
 
-  // let document = match app.service("memories").get(Context::local(), doc_id, params) {
-  //   Ok(d) => d,
-  //   Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-  // };
-
-  println!("DOCUMENT: {:?}", document.dump());
-
-  // let date = match document["date"].date_with_check() {
-  //   Ok(d) => d,
-  //   Err(_) => return Ok(ops),
-  // };
+  log::debug!("DOCUMENT: {:?}", document.dump());
 
   let date = match ctx_str[..] {
     ["production", "produce"] => match data["date"].date_with_check() {
@@ -322,7 +312,7 @@ where
       Err(_) => return Ok(ops),
     };
 
-  println!("store from: {store_from:?} into: {store_into:?}");
+  log::debug!("store from: {store_from:?} into: {store_into:?}");
 
   let goods = if data["goods"].is_object() {
     data["goods"].clone()
@@ -400,11 +390,7 @@ where
     } else {
       Batch { id: tid, date }
     }
-  }
-  // else {
-  //   Batch { id: UUID_NIL, date: dt("1970-01-01")? }
-  // };
-  else if type_of_operation == OpType::Inventory {
+  } else if type_of_operation == OpType::Inventory {
     match &data["batch"] {
       JsonValue::Object(d) => Batch { id: d[_UUID].uuid()?, date: d["date"].date_with_check()? },
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? }, // TODO is it ok?
@@ -412,8 +398,6 @@ where
   } else {
     match &data["batch"] {
       JsonValue::Object(_d) => {
-        // let params = object! {oid: oid["data"][0][_ID].as_str(), ctx: vec!["warehouse", "receive", "document"] };
-        // let doc_from = app.service("memories").get(d["_ID].string(), params)?;
         Batch { id: data["batch"][_UUID].uuid()?, date: data["batch"]["date"].date_with_check()? }
       },
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },

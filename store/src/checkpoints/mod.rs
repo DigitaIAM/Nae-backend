@@ -67,10 +67,10 @@ pub trait CheckpointTopology {
     // for op in ops {
     log::debug!("================================");
     log::debug!("checkpoint_update {:#?}", op);
-    if op.before.is_none() && op.after.is_none() {
-      log::debug!("empty operation");
-      return Ok(());
-    }
+
+    // This assert do not pass
+    // assert!(op.before.is_some() || op.after.is_some());
+
     let mut tmp_date = op.date;
     let mut check_point_date = op.date;
 

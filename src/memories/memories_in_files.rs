@@ -406,16 +406,12 @@ impl Service for MemoriesInFiles {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
       let doc = memories.get(&id).ok_or(Error::GeneralError(format!("id '{id}' not found")))?;
-      let mut old_obj = doc.json()?;
-
-      // println!("_doc before changes {:?}", old_obj.clone());
+      let mut obj = doc.json()?;
 
       let mut patch = data;
       patch.remove(_ID); // TODO check id?
 
-      let obj = old_obj.merge(&patch);
-
-      // println!("_doc after changes {:?}", obj.clone());
+      let obj = obj.merge(&patch);
 
       // for (n, v) in data.entries() {
       //   if n != _ID {

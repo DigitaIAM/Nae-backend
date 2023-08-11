@@ -1,8 +1,10 @@
 use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::elements::{Goods, Mode, Qty, Store, ToJson, WHError};
+use crate::ordered_topology::OrderedTopology;
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use service::utils::json::JsonParams;
 use uuid::Uuid;
@@ -18,6 +20,29 @@ impl Dependant {
     match self {
       Dependant::Receive(s, b) => (s, b, ORDER_RECEIVE),
       Dependant::Issue(s, b) => (s, b, ORDER_ISSUE),
+    }
+  }
+
+  pub fn to_op(&self, op: &Op) -> Op {
+    match self {
+      Dependant::Receive(store, batch) => {
+        let mut zero = op.clone();
+        zero.store = *store;
+        zero.batch = batch.clone();
+        zero.dependant = vec![];
+        zero.is_dependent = true;
+        zero.op = InternalOperation::Receive(Decimal::ZERO, Cost::ZERO);
+        zero
+      },
+      Dependant::Issue(store, batch) => {
+        let mut zero = op.clone();
+        zero.store = *store;
+        zero.batch = batch.clone();
+        zero.dependant = vec![];
+        zero.is_dependent = true;
+        zero.op = InternalOperation::Issue(Decimal::ZERO, Cost::ZERO, Mode::Manual);
+        zero
+      },
     }
   }
 }
@@ -312,28 +337,11 @@ pub struct OpMutation {
   pub goods: Goods,
   pub batch: Batch,
   // value
-  pub before: Option<InternalOperation>,
-  pub after: Option<InternalOperation>,
+  pub before: Option<(InternalOperation, bool)>,
+  pub after: Option<(InternalOperation, bool)>,
   // internal
-  pub is_dependent: bool,
-  pub dependant: Vec<Dependant>,
-}
-
-impl Default for OpMutation {
-  fn default() -> Self {
-    Self {
-      id: Default::default(),
-      date: Default::default(),
-      store: Default::default(),
-      transfer: Default::default(),
-      goods: Default::default(),
-      batch: Batch::new(),
-      before: None,
-      after: None,
-      is_dependent: false,
-      dependant: vec![],
-    }
-  }
+  // pub is_dependent: bool,
+  // pub dependant: Vec<Dependant>,
 }
 
 impl OpMutation {
@@ -354,10 +362,8 @@ impl OpMutation {
       transfer,
       goods,
       batch,
-      before,
-      after,
-      is_dependent: false,
-      dependant: vec![],
+      before: before.map(|o| (o, false)),
+      after: after.map(|o| (o, false)),
     }
   }
 
@@ -378,9 +384,7 @@ impl OpMutation {
       goods,
       batch,
       before: None,
-      after: Some(InternalOperation::Receive(qty, cost)),
-      is_dependent: false,
-      dependant: vec![],
+      after: Some((InternalOperation::Receive(qty, cost), false)),
     }
   }
 
@@ -389,7 +393,7 @@ impl OpMutation {
   }
 
   pub fn to_op_before(&self) -> Option<Op> {
-    self.before.as_ref().map(|op| Op {
+    self.before.as_ref().map(|(op, is_dependent)| Op {
       id: self.id,
       date: self.date,
       store: self.store,
@@ -397,13 +401,13 @@ impl OpMutation {
       batch: self.batch.clone(),
       store_into: self.transfer,
       op: op.clone(),
-      is_dependent: self.is_dependent,
-      dependant: self.dependant.clone(),
+      is_dependent: *is_dependent,
+      dependant: vec![],
     })
   }
 
   pub fn to_op_after(&self) -> Option<Op> {
-    self.after.as_ref().map(|op| Op {
+    self.after.as_ref().map(|(op, is_dependent)| Op {
       id: self.id,
       date: self.date,
       store: self.store,
@@ -411,14 +415,14 @@ impl OpMutation {
       batch: self.batch.clone(),
       store_into: self.transfer,
       op: op.clone(),
-      is_dependent: self.is_dependent,
-      dependant: self.dependant.clone(),
+      is_dependent: *is_dependent,
+      dependant: vec![],
     })
   }
 
   pub(crate) fn to_delta(&self) -> BalanceDelta {
-    if let Some(before) = self.before.as_ref() {
-      if let Some(after) = self.after.as_ref() {
+    if let Some((before, _)) = self.before.as_ref() {
+      if let Some((after, _)) = self.after.as_ref() {
         let before: BalanceDelta = before.clone().into();
         let after: BalanceDelta = after.clone().into();
 
@@ -428,7 +432,7 @@ impl OpMutation {
 
         BalanceDelta { qty: -before.qty, cost: -before.cost }
       }
-    } else if let Some(after) = self.after.as_ref() {
+    } else if let Some((after, _)) = self.after.as_ref() {
       after.clone().into()
     } else {
       BalanceDelta::default()
@@ -444,10 +448,8 @@ impl OpMutation {
         transfer: a.store_into,
         goods: a.goods,
         batch: a.batch.clone(),
-        before: Some(b.op.clone()),
-        after: Some(a.op.clone()),
-        is_dependent: a.is_dependent,
-        dependant: a.dependant.clone(),
+        before: Some((b.op.clone(), false)),
+        after: Some((a.op.clone(), false)),
       }
     } else if let Some(b) = &before {
       OpMutation {
@@ -457,10 +459,8 @@ impl OpMutation {
         transfer: b.store_into,
         goods: b.goods,
         batch: b.batch.clone(),
-        before: Some(b.op.clone()),
+        before: Some((b.op.clone(), false)),
         after: None,
-        is_dependent: b.is_dependent,
-        dependant: b.dependant.clone(),
       }
     } else if let Some(a) = &after {
       OpMutation {
@@ -471,18 +471,16 @@ impl OpMutation {
         goods: a.goods,
         batch: a.batch.clone(),
         before: None,
-        after: Some(a.op.clone()),
-        is_dependent: a.is_dependent,
-        dependant: a.dependant.clone(),
+        after: Some((a.op.clone(), false)),
       }
     } else {
-      OpMutation::default()
+      panic!("must no happen")
     }
   }
 
   pub fn is_issue(&self) -> bool {
     match &self.after {
-      Some(o) => match o {
+      Some((o, _)) => match o {
         InternalOperation::Inventory(..) => false,
         InternalOperation::Receive(..) => false,
         InternalOperation::Issue(..) => true,
@@ -493,7 +491,7 @@ impl OpMutation {
 
   pub fn is_inventory(&self) -> bool {
     match &self.after {
-      Some(o) => match o {
+      Some((o, _)) => match o {
         InternalOperation::Inventory(..) => true,
         InternalOperation::Receive(..) => false,
         InternalOperation::Issue(..) => false,

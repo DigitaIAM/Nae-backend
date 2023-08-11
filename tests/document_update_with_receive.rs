@@ -37,24 +37,24 @@ async fn update_document_with_receive() {
   let g1 = goods(&app, "g1");
 
   // create document
-  let mut doc = object! {
+  let mut receiveDoc = object! {
     date: "2023-01-01",
     counterparty: s1.to_string(),
     storage: s2.to_string(),
     number: "1",
   };
 
-  let d1 = receive_doc.create(&app, doc.clone());
+  let d1 = receive_doc.create(&app, receiveDoc.clone());
 
   // create receive operation
-  let receive_obj = object! {
+  let receiveOp = object! {
     document: d1["_id"].to_string(),
     goods: g1.to_string(),
     qty: object! {number: "3.0"},
     cost: object! {number: "0.3"},
   };
 
-  let r1 = receive_op.create(&app, receive_obj);
+  let r1 = receive_op.create(&app, receiveOp);
   // log::debug!("receive_data: {:#?}", r1.dump());
 
   let r1_batch = Batch { id: r1["_uuid"].uuid().unwrap(), date: dt("2023-01-01").unwrap() };
@@ -62,9 +62,9 @@ async fn update_document_with_receive() {
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
 
   // change document
-  doc["date"] = "2023-05-25".into();
+  receiveDoc["date"] = "2023-05-25".into();
 
-  let d2 = receive_doc.update(&app, d1["_id"].string(), doc);
+  let d2 = receive_doc.update(&app, d1["_id"].string(), receiveDoc);
 
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
 
@@ -78,7 +78,7 @@ async fn update_document_with_receive() {
     .get_report_for_goods(s2, g1, &r1_batch, dt("2022-01-01").unwrap(), dt("2023-12-31").unwrap())
     .unwrap();
 
-  // println!("report1: {report1:#?}");
+  // log::debug!("report1: {report1:#?}");
 
   assert_eq!(report1.len(), 2);
 
@@ -97,7 +97,7 @@ async fn update_document_with_receive() {
     )
     .unwrap();
 
-  // println!("report2: {report2:#?}");
+  // log::debug!("report2: {report2:#?}");
 
   assert_eq!(report2.len(), 3);
 }

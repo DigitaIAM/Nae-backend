@@ -124,9 +124,7 @@ pub fn receive(
     goods,
     batch: Batch { id, date },
     before: None,
-    after: Some(InternalOperation::Receive(qty, cost)),
-    is_dependent: false,
-    dependant: vec![],
+    after: Some((InternalOperation::Receive(qty, cost), false)),
   });
 
   app.warehouse().mutate(&ops).unwrap();
@@ -154,10 +152,8 @@ pub fn delete(
     transfer: into,
     goods,
     batch,
-    before: Some(before),
+    before: Some((before, false)),
     after: None,
-    is_dependent: false,
-    dependant: vec![],
   });
 
   app.warehouse().mutate(&ops).unwrap();
@@ -184,10 +180,8 @@ pub fn update(
     transfer: into,
     goods,
     batch,
-    before: Some(before),
-    after: Some(after),
-    is_dependent: false,
-    dependant: vec![],
+    before: Some((before, false)),
+    after: Some((after, false)),
   });
 
   app.warehouse().mutate(&ops).unwrap();
@@ -212,9 +206,7 @@ pub fn transfer(
     goods,
     batch: Batch::no(),
     before: None,
-    after: Some(InternalOperation::Issue(qty, Cost::ZERO, Mode::Auto)),
-    is_dependent: false,
-    dependant: vec![],
+    after: Some((InternalOperation::Issue(qty, Cost::ZERO, Mode::Auto), false)),
   });
 
   app.warehouse().mutate(&ops).unwrap();
