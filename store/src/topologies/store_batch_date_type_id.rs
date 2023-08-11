@@ -28,14 +28,6 @@ impl StoreBatchDateTypeId {
   pub fn cf_name() -> &'static str {
     CF_NAME
   }
-
-  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
-    if let Some(cf) = self.db.cf_handle(StoreBatchDateTypeId::cf_name()) {
-      Ok(cf)
-    } else {
-      Err(WHError::new("can't get CF"))
-    }
-  }
 }
 
 impl OrderedTopology for StoreBatchDateTypeId {
@@ -138,6 +130,50 @@ impl OrderedTopology for StoreBatchDateTypeId {
     Ok(BalanceForGoods::default())
   }
 
+  fn operation_after(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+    // log::debug!("operations_after {op:#?}");
+
+    let key = self.key(op);
+    let till =
+      self.key_build(op.store, op.goods, op.batch.clone(), i64::MAX, u8::MAX, UUID_MAX, true);
+
+    // println!("key:");
+    // for b in key.iter() {
+    //   println!("{b:#010b}");
+    // }
+
+    let mut options = ReadOptions::default();
+    options.set_iterate_range(key.clone()..till);
+
+    // TODO change iterator with range from..till?
+    let iter =
+      self
+        .db
+        .iterator_cf_opt(&self.cf()?, options, IteratorMode::From(&key, Direction::Forward));
+
+    for bytes in iter {
+      if let Ok((k, v)) = bytes {
+        if k[0..] == key {
+          continue;
+        }
+
+        let (loaded_op, balance) = self.from_bytes(&v)?;
+
+        // log::debug!("operations_after loaded {loaded_op:#?}\nbalance {balance:#?}");
+
+        if loaded_op.store != op.store || loaded_op.goods != op.goods || loaded_op.batch != op.batch
+        {
+          // log::debug!("break");
+          break;
+        }
+
+        return Ok(Some((loaded_op, balance)));
+      }
+    }
+
+    Ok(None)
+  }
+
   fn operations_after(&self, op: &Op) -> Result<Vec<(Op, BalanceForGoods)>, WHError> {
     // log::debug!("operations_after {op:#?}");
 
@@ -189,50 +225,6 @@ impl OrderedTopology for StoreBatchDateTypeId {
     Ok(res)
   }
 
-  fn operation_after(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
-    // log::debug!("operations_after {op:#?}");
-
-    let key = self.key(op);
-    let till =
-      self.key_build(op.store, op.goods, op.batch.clone(), i64::MAX, u8::MAX, UUID_MAX, true);
-
-    // println!("key:");
-    // for b in key.iter() {
-    //   println!("{b:#010b}");
-    // }
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(key.clone()..till);
-
-    // TODO change iterator with range from..till?
-    let iter =
-      self
-        .db
-        .iterator_cf_opt(&self.cf()?, options, IteratorMode::From(&key, Direction::Forward));
-
-    for bytes in iter {
-      if let Ok((k, v)) = bytes {
-        if k[0..] == key {
-          continue;
-        }
-
-        let (loaded_op, balance) = self.from_bytes(&v)?;
-
-        // log::debug!("operations_after loaded {loaded_op:#?}\nbalance {balance:#?}");
-
-        if loaded_op.store != op.store || loaded_op.goods != op.goods || loaded_op.batch != op.batch
-        {
-          // log::debug!("break");
-          break;
-        }
-
-        return Ok(Some((loaded_op, balance)));
-      }
-    }
-
-    Ok(None)
-  }
-
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor {
     ColumnFamilyDescriptor::new(StoreBatchDateTypeId::cf_name(), opts)
   }
@@ -260,15 +252,6 @@ impl OrderedTopology for StoreBatchDateTypeId {
     _goods: Goods,
     _from_date: DateTime<Utc>,
     _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
-  // operations for store+goods (return all batches)
-  fn operations_for_store_goods(
-    &self,
-    _from: DateTime<Utc>,
-    _till: &Op,
   ) -> Result<Vec<Op>, WHError> {
     Err(WHError::new("not implemented"))
   }
@@ -334,6 +317,15 @@ impl OrderedTopology for StoreBatchDateTypeId {
     Err(WHError::new("not implemented"))
   }
 
+  // operations for store+goods (return all batches)
+  fn operations_for_store_goods(
+    &self,
+    _from: DateTime<Utc>,
+    _till: &Op,
+  ) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("not implemented"))
+  }
+
   fn get_report_for_storage(
     &self,
     _db: &Db,
@@ -368,5 +360,17 @@ impl OrderedTopology for StoreBatchDateTypeId {
       .chain(op_dependant.to_be_bytes().iter())
       .copied()
       .collect()
+  }
+
+  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
+    if let Some(cf) = self.db.cf_handle(StoreBatchDateTypeId::cf_name()) {
+      Ok(cf)
+    } else {
+      Err(WHError::new("can't get CF"))
+    }
+  }
+
+  fn db(&self) -> Arc<DB> {
+    self.db.clone()
   }
 }

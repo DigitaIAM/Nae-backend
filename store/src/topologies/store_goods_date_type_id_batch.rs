@@ -29,14 +29,6 @@ impl StoreGoodsDateTypeIdBatch {
   pub fn cf_name() -> &'static str {
     CF_NAME
   }
-
-  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
-    if let Some(cf) = self.db.cf_handle(StoreGoodsDateTypeIdBatch::cf_name()) {
-      Ok(cf)
-    } else {
-      Err(WHError::new("can't get CF"))
-    }
-  }
 }
 
 impl OrderedTopology for StoreGoodsDateTypeIdBatch {
@@ -127,6 +119,26 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     Err(WHError::new("not implemented"))
   }
 
+  fn ops_for_store_goods_and_batch(
+    &self,
+    _store: Store,
+    _goods: Goods,
+    _batch: &Batch,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("not implemented"))
+  }
+
+  fn get_ops_for_many_goods(
+    &self,
+    _goods: &Vec<Goods>,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("not implemented"))
+  }
+
   // operations for store+goods (return all batches)
   fn operations_for_store_goods(&self, from: DateTime<Utc>, till: &Op) -> Result<Vec<Op>, WHError> {
     log::debug!("TOPOLOGY: store_goods_date_type_id_batch.operations_for_store_goods");
@@ -196,26 +208,6 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     Ok(res)
   }
 
-  fn ops_for_store_goods_and_batch(
-    &self,
-    _store: Store,
-    _goods: Goods,
-    _batch: &Batch,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
-  fn get_ops_for_many_goods(
-    &self,
-    _goods: &Vec<Goods>,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
   fn get_report_for_storage(
     &self,
     _db: &Db,
@@ -251,5 +243,17 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
       .chain(batch.to_bytes(&goods).iter())
       .copied()
       .collect()
+  }
+
+  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
+    if let Some(cf) = self.db.cf_handle(StoreGoodsDateTypeIdBatch::cf_name()) {
+      Ok(cf)
+    } else {
+      Err(WHError::new("can't get CF"))
+    }
+  }
+
+  fn db(&self) -> Arc<DB> {
+    self.db.clone()
   }
 }

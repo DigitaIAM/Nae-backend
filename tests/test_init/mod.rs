@@ -24,6 +24,7 @@ use values::constants::_UUID;
 
 const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
+#[cfg(test)]
 pub fn init() -> (TempDir, Settings, AnimoDB) {
   std::env::set_var("RUST_LOG", "actix_web=debug,nae_backend=debug");
   let _ = env_logger::builder().is_test(true).try_init();
@@ -31,7 +32,7 @@ pub fn init() -> (TempDir, Settings, AnimoDB) {
   let tmp_dir = tempdir().unwrap();
   let tmp_path = tmp_dir.path().to_str().unwrap();
 
-  let settings = Settings::test(tmp_path.into());
+  let settings = test(tmp_path.into());
 
   let mut db: AnimoDB = Memory::init(tmp_path.into()).unwrap();
   let mut animo = Animo::default();
@@ -45,6 +46,23 @@ pub fn init() -> (TempDir, Settings, AnimoDB) {
 
   db.register_dispatcher(Arc::new(animo)).unwrap();
   (tmp_dir, settings, db)
+}
+
+#[cfg(test)]
+pub fn test(folder: PathBuf) -> Settings {
+  Settings {
+    debug: false,
+    jwt_config: JWTConfig {
+      audience: "http://localhost".into(),
+      issuer: "Nae".into(),
+      secret: "1234567890".into(),
+    },
+    database: Database {
+      memory: folder.join("memory"),
+      inventory: folder.join("inventory"),
+      links: folder.join("links"),
+    },
+  }
 }
 
 pub fn create_record(
@@ -86,39 +104,6 @@ pub fn goods(app: &Application, name: &str) -> Uuid {
   create(app, name, vec!["warehouse", "goods"])
 }
 
-pub fn document_create(app: &Application, data: JsonValue, ctx: Vec<&str>) -> JsonValue {
-  let data = app
-    .service("memories")
-    .create(
-      Context::local(),
-      data,
-      json::object! {
-        oid: WID,
-        ctx: ctx,
-      },
-    )
-    .unwrap();
-
-  data
-}
-
-pub fn document_update(app: &Application, id: String, data: JsonValue, ctx: Vec<&str>) -> JsonValue {
-  let data = app
-    .service("memories")
-    .patch(
-      Context::local(),
-      id,
-      data,
-      json::object! {
-        oid: WID,
-        ctx: ctx,
-      },
-    )
-    .unwrap();
-
-  data
-}
-
 pub fn receive(
   app: &Application,
   date: &str,
@@ -139,9 +124,7 @@ pub fn receive(
     goods,
     batch: Batch { id, date },
     before: None,
-    after: Some(InternalOperation::Receive(qty, cost)),
-    is_dependent: false,
-    dependant: vec![],
+    after: Some((InternalOperation::Receive(qty, cost), false)),
   });
 
   app.warehouse().mutate(&ops).unwrap();
@@ -169,10 +152,8 @@ pub fn delete(
     transfer: into,
     goods,
     batch,
-    before: Some(before),
+    before: Some((before, false)),
     after: None,
-    is_dependent: false,
-    dependant: vec![],
   });
 
   app.warehouse().mutate(&ops).unwrap();
@@ -199,10 +180,8 @@ pub fn update(
     transfer: into,
     goods,
     batch,
-    before: Some(before),
-    after: Some(after),
-    is_dependent: false,
-    dependant: vec![],
+    before: Some((before, false)),
+    after: Some((after, false)),
   });
 
   app.warehouse().mutate(&ops).unwrap();
@@ -227,12 +206,50 @@ pub fn transfer(
     goods,
     batch: Batch::no(),
     before: None,
-    after: Some(InternalOperation::Issue(qty, Cost::ZERO, Mode::Auto)),
-    is_dependent: false,
-    dependant: vec![],
+    after: Some((InternalOperation::Issue(qty, Cost::ZERO, Mode::Auto), false)),
   });
 
   app.warehouse().mutate(&ops).unwrap();
 
   id
+}
+
+pub trait DocumentCreation {
+  fn create(&self, app: &Application, data: JsonValue) -> JsonValue;
+  fn update(&self, app: &Application, id: String, data: JsonValue) -> JsonValue;
+}
+
+impl DocumentCreation for Vec<&str> {
+  fn create(&self, app: &Application, data: JsonValue) -> JsonValue {
+    let data = app
+      .service("memories")
+      .create(
+        Context::local(),
+        data,
+        json::object! {
+          oid: WID,
+          ctx: self.clone(),
+        },
+      )
+      .unwrap();
+
+    data
+  }
+
+  fn update(&self, app: &Application, id: String, data: JsonValue) -> JsonValue {
+    let data = app
+      .service("memories")
+      .patch(
+        Context::local(),
+        id,
+        data,
+        json::object! {
+          oid: WID,
+          ctx: self.clone(),
+        },
+      )
+      .unwrap();
+
+    data
+  }
 }

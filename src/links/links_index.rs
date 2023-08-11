@@ -168,10 +168,33 @@ impl LinksIndex {
     hasher.finalize()
   }
 
-  pub fn get_source_links(&self, target: Uuid, ctx: &Vec<String>) -> Result<Vec<Uuid>, Error> {
+  pub fn get_source_links_for_ctx(
+    &self,
+    target: Uuid,
+    ctx: &Vec<String>,
+  ) -> Result<Vec<Uuid>, Error> {
     let ctx: String = ctx.join("/");
 
     let prefix = self.prefix_to_bytes(target, &ctx);
+
+    let mut result: Vec<Uuid> = Vec::new();
+
+    for item in self.database.prefix_iterator_cf(&self.cf()?, &prefix) {
+      let (k, _) = item.map_err(|e| Error::GeneralError(e.to_string()))?;
+
+      if k[0..prefix.len()] != prefix[0..] {
+        break;
+      }
+
+      let source_uuid = Uuid::from_slice(&k[32..=47])?;
+
+      result.push(source_uuid);
+    }
+    Ok(result)
+  }
+
+  pub fn get_source_links_without_ctx(&self, target: Uuid) -> Result<Vec<Uuid>, Error> {
+    let prefix: Vec<u8> = target.as_bytes().iter().copied().collect();
 
     let mut result: Vec<Uuid> = Vec::new();
 

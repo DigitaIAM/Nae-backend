@@ -200,7 +200,7 @@ impl Service for MemoriesInFiles {
         let produced = self
           .app
           .links()
-          .get_source_links(order_uuid, &vec!["production".into(), "produce".into()])?;
+          .get_source_links_for_ctx(order_uuid, &vec!["production".into(), "produce".into()])?;
 
         let mut boxes = 0_u32;
         let sum: Decimal = produced
@@ -400,7 +400,7 @@ impl Service for MemoriesInFiles {
     }
 
     let ws = self.app.wss.get(&oid);
-    let memories = ws.memories(ctx);
+    let memories = ws.memories(ctx.clone());
 
     if !data.is_object() {
       Err(Error::GeneralError("only object allowed".into()))
@@ -411,7 +411,7 @@ impl Service for MemoriesInFiles {
       let mut patch = data;
       patch.remove(_ID); // TODO check id?
 
-      obj = obj.merge(&patch);
+      let obj = obj.merge(&patch);
 
       // for (n, v) in data.entries() {
       //   if n != _ID {
@@ -419,7 +419,7 @@ impl Service for MemoriesInFiles {
       //   }
       // }
 
-      let data = memories.update(&self.app, id, obj)?;
+      let data = memories.update(&self.app, id, obj.clone())?;
 
       Ok(data.enrich(&ws))
     }

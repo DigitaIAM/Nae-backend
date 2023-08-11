@@ -309,7 +309,7 @@ impl AddAssign<&OpMutation> for Balance {
     self.date = rhs.date;
     self.goods = rhs.goods;
     self.store = rhs.store;
-    if let Some(o) = &rhs.after {
+    if let Some((o, _)) = &rhs.after {
       self.number.apply(o);
     }
   }

@@ -147,35 +147,54 @@ pub(crate) fn time_to_naive_string(time: DateTime<Utc>) -> String {
 pub fn receive_data(
   app: &(impl GetWarehouse + Services),
   wid: &str,
-  data: JsonValue,
-  ctx: &Vec<String>,
   before: JsonValue,
-) -> Result<JsonValue, WHError> {
+  after: JsonValue,
+  ctx: &Vec<String>,
+  stack: &HashMap<String, (JsonValue, JsonValue)>,
+) -> Result<(), WHError> {
   // TODO if structure of input Json is invalid, should return it without changes and save it to memories anyway
   // If my data was corrupted, should rewrite it and do the operations
   // TODO tests with invalid structure of incoming JsonValue
   log::debug!("BEFOR: {:?}", before.dump());
-  log::debug!("AFTER: {:?}", data.dump());
+  log::debug!("AFTER: {:?}", after.dump());
 
-  let old_data = data.clone();
-  let new_data = data.clone();
-  let new_before = before;
+  let before = match json_to_ops(app, wid, &before, ctx, stack, |id| {
+    if let Some((b, _)) = stack.get(&id) {
+      Some(b.clone())
+    } else {
+      let params = object! {oid: wid, ctx: [], enrich: false };
 
-  let before = match json_to_ops(app, wid, &new_before, ctx) {
+      match app.service("memories").get(Context::local(), id, params) {
+        Ok(d) => Some(d),
+        Err(_) => None,
+      }
+    }
+  }) {
     Ok(res) => res,
     Err(e) => {
-      println!("_WHERROR_ BEFORE: {}", e.message());
-      println!("{}", data.dump());
-      return Ok(old_data);
+      log::debug!("_WHERROR_ BEFORE: {}", e.message());
+      log::debug!("{}", after.dump());
+      return Ok(());
     },
   };
 
-  let mut after = match json_to_ops(app, wid, &new_data, ctx) {
+  let mut after = match json_to_ops(app, wid, &after, ctx, stack, |id| {
+    if let Some((_, a)) = stack.get(&id) {
+      Some(a.clone())
+    } else {
+      let params = object! {oid: wid, ctx: [], enrich: false };
+
+      match app.service("memories").get(Context::local(), id, params) {
+        Ok(d) => Some(d),
+        Err(_) => None,
+      }
+    }
+  }) {
     Ok(res) => res,
     Err(e) => {
-      println!("_WHERROR_ AFTER: {}", e.message());
-      println!("{}", data.dump());
-      return Ok(old_data);
+      log::debug!("_WHERROR_ AFTER: {}", e.message());
+      log::debug!("{}", after.dump());
+      return Ok(());
     },
   };
 
@@ -212,12 +231,11 @@ pub fn receive_data(
 
   log::debug!("OPS: {:#?}", ops);
 
-  if ops.is_empty() {
-    Ok(old_data)
-  } else {
+  if !ops.is_empty() {
     app.warehouse().mutate(&ops)?;
-    Ok(new_data)
   }
+
+  Ok(())
 }
 
 #[derive(PartialEq, Clone)]
@@ -228,12 +246,17 @@ enum OpType {
   Transfer,
 }
 
-fn json_to_ops(
+fn json_to_ops<F>(
   app: &(impl GetWarehouse + Services),
   wid: &str,
   data: &JsonValue,
   ctx: &Vec<String>,
-) -> Result<HashMap<String, Op>, WHError> {
+  stack: &HashMap<String, (JsonValue, JsonValue)>,
+  resolve_doc: F,
+) -> Result<HashMap<String, Op>, WHError>
+where
+  F: FnOnce(String) -> Option<JsonValue>,
+{
   // log::debug!("json_to_ops {data:?}");
 
   let mut ops = HashMap::new();
@@ -262,18 +285,15 @@ fn json_to_ops(
   };
 
   let params = object! {oid: wid, ctx: [], enrich: false };
-  let document =
-    match app.service("memories").get(Context::local(), data[_DOCUMENT].string(), params) {
-      Ok(d) => d,
-      Err(_) => return Ok(ops), // TODO handle IO error differently!!!!
-    };
+
+  let doc_id = data[_DOCUMENT].string();
+
+  let document = match resolve_doc(doc_id) {
+    Some(d) => d,
+    None => return Ok(ops),
+  };
 
   log::debug!("DOCUMENT: {:?}", document.dump());
-
-  // let date = match document["date"].date_with_check() {
-  //   Ok(d) => d,
-  //   Err(_) => return Ok(ops),
-  // };
 
   let date = match ctx_str[..] {
     ["production", "produce"] => match data["date"].date_with_check() {
@@ -292,11 +312,15 @@ fn json_to_ops(
       Err(_) => return Ok(ops),
     };
 
-  println!("store from: {store_from:?} into: {store_into:?}");
+  log::debug!("store from: {store_from:?} into: {store_into:?}");
 
-  let goods = match goods(app, wid, data, &document, ctx_str.clone()) {
-    Ok(g) => g,
-    Err(_) => return Ok(ops),
+  let goods = if data["goods"].is_object() {
+    data["goods"].clone()
+  } else {
+    match goods(app, wid, data, &document, ctx_str.clone()) {
+      Ok(g) => g,
+      Err(_) => return Ok(ops),
+    }
   };
 
   let goods_uuid = match goods[_UUID].uuid_or_none() {
@@ -374,8 +398,6 @@ fn json_to_ops(
   } else {
     match &data["batch"] {
       JsonValue::Object(_d) => {
-        // let params = object! {oid: oid["data"][0][_ID].as_str(), ctx: vec!["warehouse", "receive", "document"] };
-        // let doc_from = app.service("memories").get(d["_ID].string(), params)?;
         Batch { id: data["batch"][_UUID].uuid()?, date: data["batch"]["date"].date_with_check()? }
       },
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },

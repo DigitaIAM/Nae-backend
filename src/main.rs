@@ -113,9 +113,15 @@ async fn reindex(
 
       text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
 
-      let after =
-        store::elements::receive_data(&app, ws.id.to_string().as_str(), after, ctx, before.clone())
-          .unwrap();
+      store::elements::receive_data(
+        &app,
+        ws.id.to_string().as_str(),
+        before.clone(),
+        after.clone(),
+        ctx,
+        &HashMap::new(),
+      )
+      .unwrap();
 
       app.links().save_links(&ws, &ctx, &after, &before).unwrap();
 
