@@ -50,6 +50,7 @@ use crate::storage::Workspaces;
 use animo::db::AnimoDB;
 use animo::memory::Memory;
 use inventory::service::Inventory;
+use service::utils::json::JsonParams;
 use service::Services;
 use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
@@ -93,6 +94,13 @@ async fn reindex(
           &doc.mem.top_folder,
           &doc.path.parent().unwrap().into(),
           uuid.as_str(),
+        )?;
+      } else {
+        // create symlink if not exist
+        storage::memories::index_uuid(
+          &doc.mem.top_folder,
+          &doc.path.parent().unwrap().into(),
+          &after[_UUID].string(),
         )?;
       }
 
