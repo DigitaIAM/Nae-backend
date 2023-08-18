@@ -162,13 +162,21 @@ pub trait CheckpointTopology {
 
     for record in self.db().full_iterator_cf(&self.cf()?, IteratorMode::Start) {
       let (k, value) = record?;
+      let b = self.from_bytes(&value)?;
+      let (date, store, goods, batch) = self.key_to_data(k.to_vec())?;
       if latest[..] == k[..] {
-        log::debug!("latest checkpoint: ");
+        log::debug!("latest checkpoint:");
       } else {
-        let (date, store, goods, batch) = self.key_to_data(k.to_vec())?;
-        let b = self.from_bytes(&value)?;
-        log::debug!("{:?}\n{:?}\n{:?}\n{:?}\n{:?}", date, store, goods, batch, b);
+        log::debug!("checkpoint:");
       }
+      log::debug!(
+        "date: {:?}\nstore: {:?}\ngoods: {:?}\nbatch: {:?}\nbalance: {:?}",
+        date,
+        store,
+        goods,
+        batch,
+        b
+      );
     }
 
     Ok(())

@@ -3,7 +3,6 @@ use crate::{
   db::Db,
   elements::{Report, Store},
   error::WHError,
-  RangeIterator,
 };
 
 use crate::batch::Batch;
@@ -13,6 +12,7 @@ use crate::operations::Op;
 use crate::ordered_topology::OrderedTopology;
 use chrono::{DateTime, Utc};
 
+use db::RangeIterator;
 use log::debug;
 use rocksdb::{
   BoundColumnFamily, ColumnFamilyDescriptor, Direction, IteratorMode, Options, ReadOptions, DB,
