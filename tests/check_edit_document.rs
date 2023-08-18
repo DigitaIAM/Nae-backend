@@ -24,7 +24,7 @@ use store::GetWarehouse;
 use test_init::DocumentCreation;
 
 #[actix_web::test]
-async fn check_transfer_receive_transfer() {
+async fn check_edit_document() {
   std::env::set_var("RUST_LOG", "debug,tantivy=off");
   env_logger::init();
 

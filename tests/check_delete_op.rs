@@ -23,7 +23,7 @@ use store::process_records::process_record;
 use store::GetWarehouse;
 
 #[actix_web::test]
-async fn check_zero_batch_deleted() {
+async fn check_delete_op() {
   std::env::set_var("RUST_LOG", "debug,tantivy=off");
   env_logger::init();
 

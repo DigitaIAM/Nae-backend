@@ -26,7 +26,7 @@ pub fn report(
   from_date: &str,
   till_date: &str,
 ) {
-  println!("CSV_REPORT");
+  log::debug!("CSV_REPORT");
   // let oid = ID::from(company);
   let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
   let ctx = vec!["report"];
@@ -34,13 +34,13 @@ pub fn report(
   let storage =
     json(app, object! { name: storage }, STORAGE.to_vec(), &|| object! { name: storage }).unwrap();
 
-  println!("STORAGE: {:?}", storage[_UUID]);
+  log::debug!("STORAGE: {:?}", storage[_UUID]);
 
   let params: JsonValue = object! {ctx: ctx, oid: oid, storage: storage[_UUID].clone(), dates: {"from": from_date, "till": till_date}};
 
   let result = app.service("inventory").find(Context::local(), params).unwrap();
 
-  println!("report: {:#?}", result);
+  log::debug!("report: {:#?}", result);
 }
 
 pub fn receive_csv_to_json(
@@ -53,7 +53,7 @@ pub fn receive_csv_to_json(
 
   for record in reader.records() {
     process_record(app, &ctx, record.unwrap())?;
-    // println!("data: {_res:?}");
+    // log::debug!("data: {_res:?}");
   }
 
   Ok(())
@@ -80,7 +80,7 @@ pub fn memories_create(
   let params = object! {oid: oid, ctx: ctx };
   let result = app.service("memories").create(Context::local(), data, params)?;
 
-  // println!("create_result: {result:?}");
+  // log::debug!("create_result: {result:?}");
   Ok(result)
 }
 
@@ -114,7 +114,7 @@ pub fn process_record(
     _ => return Ok(()),
   };
 
-  println!("start process_record {record:?}");
+  log::debug!("start process_record {record:?}");
 
   let date = &record[7];
   let date = format!("{}-{}-{}", &date[6..=9], &date[3..=4], &date[0..=1]);
@@ -320,7 +320,7 @@ pub fn process_record(
 
   let _res = memories_create(app, data, ctx.clone())?;
 
-  // println!("_res: {_res:#?}");
+  // log::debug!("_res: {_res:#?}");
 
   Ok(())
 }

@@ -10,41 +10,44 @@ use crate::test_init::create_record;
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
+use service::utils::json::JsonParams;
 use service::{Context, Services};
 use store::process_records::process_record;
+use store::GetWarehouse;
 use values::constants::_UUID;
 
 #[actix_web::test]
-async fn adding_ops_before() {
+async fn check_emulate_write_from_csv() {
+  std::env::set_var("RUST_LOG", "debug,tantivy=off");
+  env_logger::init();
+
   let (tmp_dir, settings, db) = init();
 
-  let (mut application, events_receiver) = Application::new(Arc::new(settings), Arc::new(db))
-    .await
-    .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
-    .unwrap();
+  let wss = Workspaces::new(tmp_dir.path().join("companies"));
+
+  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db), wss).await.unwrap();
 
   let storage = Workspaces::new(tmp_dir.path().join("companies"));
-  application.storage = Some(storage.clone());
 
-  application.register(MemoriesInFiles::new(application.clone(), "memories", storage.clone()));
-  application.register(nae_backend::inventory::service::Inventory::new(application.clone()));
+  app.register(MemoriesInFiles::new(app.clone(), "memories"));
+  app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
   // write ops
   let mut data = new_data();
-  create_record(&application, data).unwrap();
+  create_record(&app, data).unwrap();
 
   // get result
   let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
-  let stock_ctx = vec!["warehouse", "stock"];
+  let stock = vec!["warehouse", "stock"];
 
   let mut filter = object! {};
 
-  let params = object! {oid: oid, ctx: stock_ctx.clone(), filter: filter.clone()};
+  let params = object! {oid: oid, ctx: stock.clone(), filter: filter.clone()};
 
-  let result = application.service("memories").find(Context::local(), params).unwrap();
+  let result = app.service("memories").find(Context::local(), params).unwrap();
 
-  // println!("test_result: {:#?}", result);
+  // log::debug!("test_result: {:#?}", result);
 
   let data = result["data"][0].clone();
   let qty = data["_balance"]["qty"].as_str().unwrap();
@@ -56,37 +59,40 @@ async fn adding_ops_before() {
 
   filter["goods"] = goods.into();
 
-  let params = object! {oid: oid, ctx: stock_ctx, filter: filter.clone()};
+  let params = object! {oid: oid, ctx: stock, filter: filter.clone()};
 
-  let batches = application.service("memories").find(Context::local(), params).unwrap();
+  let batches = app.service("memories").find(Context::local(), params).unwrap();
 
-  // println!("batches: {:#?}", batches);
+  // log::debug!("batches: {:#?}", batches);
 
   // operations
-  let storage = batches["data"][0]["storage"][_UUID].as_str().unwrap();
+  let storage = batches["data"][0]["storage"].clone();
   let batch_id = batches["data"][0]["batch"]["id"].as_str().unwrap();
   let batch_date = batches["data"][0]["batch"]["date"].as_str().unwrap();
-  // println!("storage: {:#?}", storage);
+  // log::debug!("storage: {:#?}", storage);
 
   filter["dates"] =
     object! {"from": "2022-01-01", "till": chrono::offset::Utc::now().date_naive().to_string()};
-  filter["storage"] = storage.into();
+  filter["storage"] = storage[_UUID].as_str().unwrap().into();
   filter["batch_id"] = batch_id.into();
   filter["batch_date"] = batch_date.into();
 
   let inventory_ctx = vec!["warehouse", "inventory"];
   let params = array![object! {oid: oid, ctx: inventory_ctx.clone(), filter: filter.clone()}];
-  // println!("filter: {:#?}", filter);
 
-  let report = application.service("inventory").find(Context::local(), params).unwrap();
-  println!("report: {:#?}", report);
+  let balances = app.warehouse().database.get_balance_for_all(chrono::Utc::now()).unwrap();
+  // log::debug!("balances: {balances:#?}");
+
+  assert_eq!(1, balances.len());
+
+  assert_eq!("цех".to_string(), storage["name"].string());
 }
 
 fn new_data<'a>() -> Vec<(Vec<&'a str>, Vec<&'a str>)> {
   let mut data = Vec::new();
 
-  let transfer_ctx = vec!["warehouse", "transfer"];
-  let receive_ctx = vec!["warehouse", "receive"];
+  let transfer = vec!["warehouse", "transfer"];
+  let receive = vec!["warehouse", "receive"];
 
   // transfer
   let data0_vec = vec![
@@ -104,7 +110,7 @@ fn new_data<'a>() -> Vec<(Vec<&'a str>, Vec<&'a str>)> {
     "",
   ];
 
-  data.push((data0_vec, transfer_ctx.clone()));
+  data.push((data0_vec, transfer.clone()));
 
   // receive
   let data1_vec = vec![
@@ -117,10 +123,12 @@ fn new_data<'a>() -> Vec<(Vec<&'a str>, Vec<&'a str>)> {
     "",
     "13.03.2023",
     "AMETOV RUSTEM SHEVKETOVICH",
-    "Гагарина 36",
+    "снабжение Бегбудиев Носир",
+    "",
+    "",
   ];
 
-  data.push((data1_vec, receive_ctx));
+  data.push((data1_vec, receive));
 
   // new transfer
   let data2_vec = vec![
@@ -138,7 +146,7 @@ fn new_data<'a>() -> Vec<(Vec<&'a str>, Vec<&'a str>)> {
     "",
   ];
 
-  data.push((data2_vec, transfer_ctx));
+  data.push((data2_vec, transfer));
 
   data
 }

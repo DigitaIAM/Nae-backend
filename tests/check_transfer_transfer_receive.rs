@@ -47,20 +47,20 @@ async fn check_transfer_transfer_receive() {
   transfer(&app, "2023-02-03", s1, s2, g1, 1.into());
 
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
-  app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
+  // app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
 
   log::debug!("transfer 03.02 s2 > s3 1");
   transfer(&app, "2023-02-03", s2, s3, g1, 1.into());
 
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
-  app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
+  // app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
 
   log::debug!("receive 02.02 s1 1");
   let r1 = receive(&app, "2023-02-02", s1, g1, 1.into(), "15".try_into().unwrap());
   let r1_batch = Batch { id: r1, date: dt("2023-02-02").unwrap() };
 
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
-  app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
+  // app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
 
   // s1 b0 0 0
   // s1 r1 0 0

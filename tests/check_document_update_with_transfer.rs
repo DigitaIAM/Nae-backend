@@ -22,7 +22,7 @@ use values::constants::_UUID;
 use values::ID;
 
 #[actix_web::test]
-async fn update_document_with_transfer() {
+async fn check_document_update_with_transfer() {
   std::env::set_var("RUST_LOG", "debug,tantivy=off");
   env_logger::init();
 
