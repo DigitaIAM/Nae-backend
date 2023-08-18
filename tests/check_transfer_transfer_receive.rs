@@ -17,6 +17,7 @@ use service::utils::json::JsonParams;
 use service::{Context, Services};
 use store::balance::{BalanceForGoods, Cost};
 use store::batch::Batch;
+use store::elements::ToJson;
 use store::elements::{dt, Goods, Mode, Qty, Store};
 use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
@@ -36,20 +37,30 @@ async fn check_transfer_transfer_receive() {
   app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
-  let s1 = store(&app, "s1");
-  let s2 = store(&app, "s2");
-  let s3 = store(&app, "s3");
+  let s1 = Uuid::from_str("00000000-0000-0000-0000-000000000003").unwrap();
+  let s2 = Uuid::from_str("00000000-0000-0000-0000-000000000002").unwrap();
+  let s3 = Uuid::from_str("00000000-0000-0000-0000-000000000001").unwrap();
+
   let g1 = goods(&app, "g1");
 
   log::debug!("transfer 03.02 s1 > s2 1");
   transfer(&app, "2023-02-03", s1, s2, g1, 1.into());
 
+  app.warehouse().database.ordered_topologies[0].debug().unwrap();
+  app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
+
   log::debug!("transfer 03.02 s2 > s3 1");
   transfer(&app, "2023-02-03", s2, s3, g1, 1.into());
+
+  app.warehouse().database.ordered_topologies[0].debug().unwrap();
+  app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
 
   log::debug!("receive 02.02 s1 1");
   let r1 = receive(&app, "2023-02-02", s1, g1, 1.into(), "15".try_into().unwrap());
   let r1_batch = Batch { id: r1, date: dt("2023-02-02").unwrap() };
+
+  app.warehouse().database.ordered_topologies[0].debug().unwrap();
+  app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
 
   // s1 b0 0 0
   // s1 r1 0 0
@@ -60,10 +71,6 @@ async fn check_transfer_transfer_receive() {
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
   log::debug!("balances: {balances:#?}");
-
-  // s1: 8823d2fa-485d-426b-9d06-ef67191965ba
-  // s2: 13b3227e-f032-491f-a9ca-188628b0abf5
-  // s3: 070cd0cd-4cd8-4dbb-bc04-e798ed31ebde
 
   log::debug!("s1: {s1:#?}");
   log::debug!("s2: {s2:#?}");

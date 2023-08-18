@@ -6,11 +6,14 @@ use crate::batch::Batch;
 use crate::elements::{first_day_next_month, Goods, Store, WHError};
 use crate::operations::OpMutation;
 use chrono::{DateTime, Utc};
+use rocksdb::{BoundColumnFamily, IteratorMode, DB};
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub trait CheckpointTopology {
   fn key(&self, store: Store, goods: Goods, batch: Batch, date: DateTime<Utc>) -> Vec<u8>;
+  fn key_to_data(&self, k: Vec<u8>) -> Result<(DateTime<Utc>, Store, Goods, Batch), WHError>;
 
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError>;
   fn set_balance(&self, key: &Vec<u8>, balance: BalanceForGoods) -> Result<(), WHError>;
@@ -138,4 +141,36 @@ pub trait CheckpointTopology {
     &self,
     date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError>;
+
+  fn db(&self) -> Arc<DB>;
+
+  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError>;
+
+  fn to_bytes(&self, balance: &BalanceForGoods) -> Result<Vec<u8>, WHError> {
+    let mut bs = Vec::new();
+    ciborium::ser::into_writer(&balance, &mut bs)?;
+    Ok(bs)
+  }
+
+  fn from_bytes(&self, bytes: &[u8]) -> Result<BalanceForGoods, WHError> {
+    Ok(ciborium::de::from_reader(bytes)?)
+  }
+
+  fn debug(&self) -> Result<(), WHError> {
+    log::debug!("DEBUG: checkpoint_topology");
+    let latest = self.key_latest_checkpoint_date();
+
+    for record in self.db().full_iterator_cf(&self.cf()?, IteratorMode::Start) {
+      let (k, value) = record?;
+      if latest[..] == k[..] {
+        log::debug!("latest checkpoint: ");
+      } else {
+        let (date, store, goods, batch) = self.key_to_data(k.to_vec())?;
+        let b = self.from_bytes(&value)?;
+        log::debug!("{:?}\n{:?}\n{:?}\n{:?}\n{:?}", date, store, goods, batch, b);
+      }
+    }
+
+    Ok(())
+  }
 }

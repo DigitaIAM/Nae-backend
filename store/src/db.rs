@@ -73,7 +73,8 @@ impl Db {
     // balances at closest checkpoint
     let (from, mut balances) = self.closest_checkpoint_balances_for_store_goods(operation)?;
 
-    debug!("closest_checkpoint_balances_for_store_goods: {balances:#?}");
+    debug!("closest_checkpoint_balances_for_store_goods: {from:?} {balances:#?}");
+    debug!("operation {operation:#?}");
 
     // apply operation between from and till
     for op in self.operations_for_store_goods(from, operation)? {
@@ -278,11 +279,7 @@ impl Db {
     let mut it = self.checkpoint_topologies.iter();
     let (from_date, checkpoints) = loop {
       if let Some(checkpoint_topology) = it.next() {
-        match checkpoint_topology.get_checkpoints_for_one_goods_with_date(
-          *storage,
-          *goods,
-          date,
-        ) {
+        match checkpoint_topology.get_checkpoints_for_one_goods_with_date(*storage, *goods, date) {
           Ok(result) => {
             break result;
           },

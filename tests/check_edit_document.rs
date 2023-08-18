@@ -9,9 +9,7 @@ use std::sync::Arc;
 use test_init::init;
 use uuid::Uuid;
 
-use crate::test_init::{
-  create_record, document_create, document_update, goods, receive, store, transfer,
-};
+use crate::test_init::{create_record, goods, receive, store, transfer, update};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
@@ -23,6 +21,7 @@ use store::elements::{dt, Goods, Mode, Qty, Store};
 use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
 use store::GetWarehouse;
+use test_init::DocumentCreation;
 
 #[actix_web::test]
 async fn check_transfer_receive_transfer() {
@@ -38,6 +37,9 @@ async fn check_transfer_receive_transfer() {
   app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
+  let receive_op = vec!["warehouse", "receive"];
+  let receive_doc = vec!["warehouse", "receive", "document"];
+
   let s1 = store(&app, "s1");
   let s2 = store(&app, "s2");
   let s3 = store(&app, "s3");
@@ -50,25 +52,20 @@ async fn check_transfer_receive_transfer() {
     number: "1",
   };
 
-  let d1 = document_create(&app, doc.clone(), vec!["warehouse", "receive", "document"]);
-  // log::debug!("d1: {:#?}", d1.dump());
+  let d1 = receive_doc.create(&app, doc.clone());
 
-  let receive_doc = object! {
-    document: d1["_id"].to_string(),
+  let receiveDoc = object! {
+    document: d1["_id"].string(),
     goods: g1.to_string(),
     qty: object! {number: "3.0"},
     cost: object! {number: "0.3"},
   };
 
-  let receive = document_create(&app, receive_doc, vec!["warehouse", "receive"]);
-
-  // log::debug!("receive_data: {:#?}", receive.dump());
+  let receive = receive_op.create(&app, receiveDoc.clone());
 
   doc["storage"] = s3.to_string().into();
 
-  let d2 =
-    document_update(&app, d1["_uuid"].string(), doc, vec!["warehouse", "receive", "document"]);
-  // log::debug!("d2: {:#?}", d2.dump());
+  let d2 = receive_doc.update(&app, d1["_id"].string(), doc);
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
   log::debug!("balances: {balances:#?}");

@@ -3,6 +3,7 @@ use crate::{
   db::Db,
   elements::{Report, Store},
   error::WHError,
+  RangeIterator,
 };
 
 use crate::batch::Batch;
@@ -140,12 +141,14 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
   }
 
   // operations for store+goods (return all batches)
-  fn operations_for_store_goods(&self, from: DateTime<Utc>, till: &Op) -> Result<Vec<Op>, WHError> {
-    log::debug!("TOPOLOGY: store_goods_date_type_id_batch.operations_for_store_goods");
-
+  fn operations_for_store_goods(
+    &self,
+    from: DateTime<Utc>,
+    till_exclude: &Op,
+  ) -> Result<Vec<Op>, WHError> {
     let bytes_from: Vec<u8> = self.key_build(
-      till.store,
-      till.goods,
+      till_exclude.store,
+      till_exclude.goods,
       Batch::min(),
       from.timestamp(),
       u8::MIN,
@@ -153,31 +156,18 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
       false,
     );
     let bytes_till: Vec<u8> = self.key_build(
-      till.store,
-      till.goods,
+      till_exclude.store,
+      till_exclude.goods,
       Batch::max(),
-      till.date.timestamp(),
-      till.op.order(),
-      till.id,
-      till.is_dependent,
+      till_exclude.date.timestamp(),
+      till_exclude.op.order(),
+      till_exclude.id,
+      till_exclude.is_dependent,
     );
-
-    let mut options = ReadOptions::default();
-    options.set_iterate_range(bytes_from.clone()..bytes_till.clone());
 
     let mut res = Vec::new();
 
-    for item in self.db.iterator_cf_opt(
-      &self.cf()?,
-      options,
-      IteratorMode::From(&bytes_from, Direction::Forward),
-    ) {
-      let (k, value) = item?;
-
-      if k[0..] == bytes_till {
-        continue;
-      }
-
+    for (k, value) in (bytes_from.clone()..bytes_till.clone()).lookup(&self.db, &self.cf()?)? {
       let (op, b) = self.from_bytes(&value)?;
 
       debug!("loaded_op {op:#?}\n > {b:?}");
