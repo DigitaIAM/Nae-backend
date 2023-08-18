@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["./store"]
+members = ["./db", "./service", "./values", "./store", "./derives"]
 
 [profile.release]
 strip = true
@@ -13,6 +13,7 @@ strip = true
 #panic = "abort"
 
 [dependencies]
+db = { path = "./db" }
 service = { path = "./service" }
 store = { path = "./store" }
 derives = { path = "./derives" }

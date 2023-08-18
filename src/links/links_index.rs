@@ -2,6 +2,7 @@ use crate::memories::Resolve;
 use crate::storage::organizations::Workspace;
 use blake2::digest::Output;
 use blake2::{digest::consts::U16, Blake2b, Digest};
+use db::PrefixIterator;
 use json::JsonValue;
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, Options, DB};
 use service::error::Error;
@@ -179,13 +180,11 @@ impl LinksIndex {
 
     let mut result: Vec<Uuid> = Vec::new();
 
-    for item in self.database.prefix_iterator_cf(&self.cf()?, &prefix) {
-      let (k, _) = item.map_err(|e| Error::GeneralError(e.to_string()))?;
-
-      if k[0..prefix.len()] != prefix[0..] {
-        break;
-      }
-
+    for (k, _) in self
+      .database
+      .prefix(&self.cf()?, prefix)
+      .map_err(|e| Error::GeneralError(e.to_string()))?
+    {
       let source_uuid = Uuid::from_slice(&k[32..=47])?;
 
       result.push(source_uuid);
@@ -198,13 +197,11 @@ impl LinksIndex {
 
     let mut result: Vec<Uuid> = Vec::new();
 
-    for item in self.database.prefix_iterator_cf(&self.cf()?, &prefix) {
-      let (k, _) = item.map_err(|e| Error::GeneralError(e.to_string()))?;
-
-      if k[0..prefix.len()] != prefix[0..] {
-        break;
-      }
-
+    for (k, _) in self
+      .database
+      .prefix(&self.cf()?, prefix)
+      .map_err(|e| Error::GeneralError(e.to_string()))?
+    {
       let source_uuid = Uuid::from_slice(&k[32..=47])?;
 
       result.push(source_uuid);

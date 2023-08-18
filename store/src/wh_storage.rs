@@ -25,28 +25,40 @@ impl WHStorage {
     std::fs::create_dir_all(&path)
       .map_err(|_e| WHError::new("Can't create folder for WHStorage"))?;
 
+    // let prefix_extractor = SliceTransform::create_fixed_prefix(1); // refuse this idea because we have many different prefix len
     let mut opts = Options::default();
-    let mut cfs = Vec::new();
+    opts.create_if_missing(true);
 
-    let cf_names: Vec<&str> = vec![
-      StoreBatchDateTypeId::cf_name(),
-      StoreDateTypeBatchId::cf_name(),
-      DateTypeStoreBatchId::cf_name(),
-      StoreGoodsDateTypeIdBatch::cf_name(),
-      CheckDateStoreBatch::cf_name(),
-      // CheckBatchStoreDate::cf_name(),
-    ];
+    let cfs = match DB::list_cf(&opts, &path) {
+      Ok(list) => list,
+      Err(_) => Vec::new(),
+    };
+    let is_empty = cfs.is_empty();
+    let cf_descriptors = cfs.into_iter().map(|name| {
+      let mut cf_opts = Options::default();
+      ColumnFamilyDescriptor::new(name, cf_opts)
+    });
 
-    for name in cf_names {
-      let cf = ColumnFamilyDescriptor::new(name, opts.clone());
-      cfs.push(cf);
+    // opts.create_missing_column_families(true);
+
+    let tmp_db = DB::open_cf_descriptors(&opts, &path, cf_descriptors)
+      .expect("Can't open database in settings.database.inventory");
+
+    if is_empty {
+      let cf_names: Vec<&str> = vec![
+        StoreBatchDateTypeId::cf_name(),
+        StoreDateTypeBatchId::cf_name(),
+        DateTypeStoreBatchId::cf_name(),
+        StoreGoodsDateTypeIdBatch::cf_name(),
+        CheckDateStoreBatch::cf_name(),
+        // CheckBatchStoreDate::cf_name(),
+      ];
+
+      for name in cf_names {
+        let _ = tmp_db.create_cf(name, &opts);
+      }
     }
 
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-
-    let tmp_db = DB::open_cf_descriptors(&opts, &path, cfs)
-      .expect("Can't open database in settings.database.inventory");
     let inner_db = Arc::new(tmp_db);
 
     let checkpoint_topologies: Vec<Box<dyn CheckpointTopology + Sync + Send>> = vec![

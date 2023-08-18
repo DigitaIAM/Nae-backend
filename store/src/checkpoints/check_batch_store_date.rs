@@ -22,14 +22,6 @@ impl CheckBatchStoreDate {
   pub fn cf_name() -> &'static str {
     CF_NAME
   }
-
-  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
-    if let Some(cf) = self.db.cf_handle(CheckBatchStoreDate::cf_name()) {
-      Ok(cf)
-    } else {
-      Err(WHError::new("can't get CF"))
-    }
-  }
 }
 
 impl CheckpointTopology for CheckBatchStoreDate {
@@ -40,6 +32,10 @@ impl CheckpointTopology for CheckBatchStoreDate {
       .chain((date.timestamp() as u64).to_be_bytes().iter())
       .copied()
       .collect()
+  }
+
+  fn key_to_data(&self, k: Vec<u8>) -> Result<(DateTime<Utc>, Store, Goods, Batch), WHError> {
+    unimplemented!()
   }
 
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError> {
@@ -163,5 +159,17 @@ impl CheckpointTopology for CheckBatchStoreDate {
     _date: DateTime<Utc>,
   ) -> Result<Vec<Balance>, WHError> {
     unimplemented!()
+  }
+
+  fn db(&self) -> Arc<DB> {
+    self.db.clone()
+  }
+
+  fn cf(&self) -> Result<Arc<BoundColumnFamily>, WHError> {
+    if let Some(cf) = self.db.cf_handle(CheckBatchStoreDate::cf_name()) {
+      Ok(cf)
+    } else {
+      Err(WHError::new("can't get CF"))
+    }
   }
 }

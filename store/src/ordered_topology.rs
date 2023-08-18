@@ -67,7 +67,11 @@ pub trait OrderedTopology {
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError>;
 
-  fn operations_for_store_goods(&self, from: DateTime<Utc>, till: &Op) -> Result<Vec<Op>, WHError>;
+  fn operations_for_store_goods(
+    &self,
+    from: DateTime<Utc>,
+    till_exclude: &Op,
+  ) -> Result<Vec<Op>, WHError>;
 
   fn get_report_for_goods(
     &self,
@@ -197,6 +201,7 @@ pub trait OrderedTopology {
 
     while let Some(op) = pf.next() {
       log::debug!("processing {:#?}", op);
+      pf.debug();
 
       // assert!(uniq.insert(op.clone()));
       // workaround to avoid recursive processing
@@ -217,7 +222,10 @@ pub trait OrderedTopology {
 
       // propagate change ... note: virtual nodes do not change balance
       if op.batch.is_empty() || balance_changed {
-        // log::debug!("propagation {} {current_balance:?} vs {new_balance:?}", op.batch.is_empty());
+        log::debug!(
+          "op.batch.is_empty() = {}, balance_changed = {balance_changed}",
+          op.batch.is_empty()
+        );
         self.propagate(&op, &mut pf)?;
 
         // check empty batched topology for changes
@@ -621,7 +629,7 @@ pub trait OrderedTopology {
   fn db(&self) -> Arc<DB>;
 
   fn debug(&self) -> Result<(), WHError> {
-    log::debug!("DEBUG: topology");
+    log::debug!("DEBUG: ordered_topology");
     for record in self.db().full_iterator_cf(&self.cf()?, IteratorMode::Start) {
       let (k, value) = record?;
       let (op, b) = self.from_bytes(&value)?;
@@ -646,16 +654,16 @@ impl<'a> PropagationFront<'a> {
   // | ts | type | store | goods | batch | id | dependant |
   fn key_build(&self, op: &Op) -> Vec<u8> {
     let op_order = op.op.order();
-    let op_dependant = if op.is_dependent { 1_u8 } else { 0_u8 };
+    let op_dependant = if op.is_dependent { 0_u8 } else { 1_u8 };
 
     (op.date.timestamp() as u64)
       .to_be_bytes()
       .iter()
       .chain(op_order.to_be_bytes().iter())
+      .chain(op_dependant.to_be_bytes().iter())
       .chain(op.store.as_bytes().iter())
       .chain(op.batch.to_bytes(&op.goods).iter())
       .chain(op.id.as_bytes().iter())
-      .chain(op_dependant.to_be_bytes().iter())
       .copied()
       .collect()
   }

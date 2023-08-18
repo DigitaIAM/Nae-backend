@@ -187,16 +187,19 @@ impl Service for MemoriesInFiles {
 
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
-      let mut materials_produced = ws
-        .memories(vec!["production".into(), "material".into(), "produced".into()])
-        .list(None)?;
-
-      let materials_used = ws
-        .memories(vec!["production".into(), "material".into(), "used".into()])
-        .list(None)?;
-
       for order in &mut list {
         let order_uuid = order[_UUID].uuid()?;
+
+        let mut materials_produced = self.app.links().get_source_links_for_ctx(
+          order_uuid,
+          &vec!["production".into(), "material".into(), "produced".into()],
+        )?;
+
+        let materials_used = self.app.links().get_source_links_for_ctx(
+          order_uuid,
+          &vec!["production".into(), "material".into(), "used".into()],
+        )?;
+
         let produced = self
           .app
           .links()
@@ -231,7 +234,7 @@ impl Service for MemoriesInFiles {
 
         let materials_used: Vec<JsonValue> = materials_used
           .iter()
-          .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+          .map(|uuid| uuid.resolve_to_json_object(&ws))
           .filter(|o| o.is_object())
           .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
           .filter(|o| o[_STATUS].string() != *"deleted")
@@ -262,7 +265,7 @@ impl Service for MemoriesInFiles {
 
         let materials_produced: Vec<JsonValue> = materials_produced
           .iter()
-          .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
+          .map(|uuid| uuid.resolve_to_json_object(&ws))
           .filter(|o| o.is_object())
           .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
           .filter(|o| o[_STATUS].string() != *"deleted")

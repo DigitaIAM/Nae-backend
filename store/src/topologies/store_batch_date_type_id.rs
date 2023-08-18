@@ -264,7 +264,7 @@ impl OrderedTopology for StoreBatchDateTypeId {
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
-    println!("STORE_BATCH_DATE_TYPE_ID.get_ops_for_one_goods_and_batch");
+    log::debug!("TODO STORE_BATCH_DATE_TYPE_ID::ops_for_store_goods_and_batch");
 
     let from: Vec<u8> =
       self.key_build(store, goods, batch.clone(), from_date.timestamp(), u8::MIN, UUID_NIL, false);

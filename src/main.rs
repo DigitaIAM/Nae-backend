@@ -50,6 +50,7 @@ use crate::storage::Workspaces;
 use animo::db::AnimoDB;
 use animo::memory::Memory;
 use inventory::service::Inventory;
+use service::utils::json::JsonParams;
 use service::Services;
 use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
@@ -93,6 +94,13 @@ async fn reindex(
           &doc.mem.top_folder,
           &doc.path.parent().unwrap().into(),
           uuid.as_str(),
+        )?;
+      } else {
+        // create symlink if not exist
+        storage::memories::index_uuid(
+          &doc.mem.top_folder,
+          &doc.path.parent().unwrap().into(),
+          &after[_UUID].string(),
         )?;
       }
 
@@ -302,6 +310,7 @@ mod tests {
   use crate::warehouse::test_util::init;
   use actix_web::web::Bytes;
   use actix_web::{test, web, App};
+  use rocksdb::Direction;
 
   #[actix_web::test]
   async fn test_put_get() {
