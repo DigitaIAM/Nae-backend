@@ -4,6 +4,7 @@ debug = false
 memory = "./data/memory"
 inventory = "./data/inventory"
 links = "./data/links"
+ftsearch = "./data/tantivy"
 
 [jwt_config]
 audience = "https://yourdomain.com"
