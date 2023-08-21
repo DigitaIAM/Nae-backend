@@ -1,10 +1,10 @@
 use core::str::FromStr;
 use rust_decimal::Decimal; // TODO change to another Decimal
+use store::aggregations::{AggregationStore, AgregationStoreGoods};
 use store::balance::{BalanceDelta, BalanceForGoods};
-use store::elements::{
-  dt, AggregationStore, AgregationStoreGoods, Batch, InternalOperation, Mode, OpMutation,
-};
-use store::error::WHError;
+use store::batch::Batch;
+use store::elements::{dt, Mode};
+use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -128,7 +128,7 @@ fn store_test_report() {
     },
   ];
 
-  let report = db.get_report(w1, start_d, end_d).unwrap();
+  let report = db.get_report_for_storage(w1, start_d, end_d).unwrap();
 
   assert_eq!(report.items.0, agr_store);
   assert_eq!(report.items.1, ex_items);

@@ -1,10 +1,8 @@
-use core::str::FromStr;
-use rust_decimal::Decimal; // TODO change to another Decimal
+use store::aggregations::AgregationStoreGoods;
 use store::balance::{BalanceDelta, BalanceForGoods};
-use store::elements::{
-  dt, AggregationStore, AgregationStoreGoods, Batch, InternalOperation, Mode, OpMutation,
-};
-use store::error::WHError;
+use store::batch::Batch;
+use store::elements::{dt, Mode};
+use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -63,7 +61,7 @@ fn store_test_parties_date_type_store_goods_id() {
 
   db.record_ops(&ops).expect("test_parties");
 
-  let res = db.get_report(w1, start_d, end_d).unwrap();
+  let res = db.get_report_for_storage(w1, start_d, end_d).unwrap();
 
   let agrs = vec![
     AgregationStoreGoods {

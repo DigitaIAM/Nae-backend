@@ -198,7 +198,7 @@ pub(crate) async fn signup_post(
   data: web::Json<SignUpRequest>,
 ) -> Result<HttpResponse, Error> {
   match signup_procedure(app.get_ref(), data.into_inner()) {
-    Ok((_, token)) => Ok(HttpResponse::Ok().json(token)),
+    Ok((_, token)) => Ok(HttpResponse::Ok().json(LoginResponse { token })),
     Err(mgs) => Err(actix_web::error::ErrorUnauthorized(mgs)),
   }
 }
@@ -344,7 +344,7 @@ mod tests {
 
     let wss = Workspaces::new(tmp_dir.path().join("companies"));
 
-    let app = Application::new(Arc::new(settings), Arc::new(db), wss);
+    let (app, _) = Application::new(Arc::new(settings), Arc::new(db), wss).await.unwrap();
 
     let server = test::init_service(
       App::new()
@@ -393,6 +393,17 @@ mod tests {
     let login_data = crate::auth::LoginRequest {
       email: "tester@nae.org".to_string(),
       password: "Nae".to_string(),
+      remember_me: false,
+    };
+
+    let req = test::TestRequest::post().uri("/login").set_json(login_data).to_request();
+
+    let response = test::call_service(&server, req).await;
+    assert_eq!(response.status(), 401);
+
+    let login_data = crate::auth::LoginRequest {
+      email: "tester@nae.org".to_string(),
+      password: "Nae_password".to_string(),
       remember_me: false,
     };
 
