@@ -1,8 +1,8 @@
-use store::balance::{BalanceDelta, BalanceForGoods};
-use store::elements::{
-  dt, AggregationStore, AgregationStoreGoods, Balance, Batch, InternalOperation, Mode, OpMutation,
-};
-use store::error::WHError;
+use store::aggregations::AgregationStoreGoods;
+use store::balance::{Balance, BalanceDelta, BalanceForGoods};
+use store::batch::Batch;
+use store::elements::dt;
+use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -57,8 +57,9 @@ fn store_test_receive_change_op() {
     number: BalanceForGoods { qty: 4.into(), cost: 40.into() },
   };
 
-  let mut old_checkpoints =
-    db.get_checkpoints_before_date(w1, start_d).expect("test_receive_change_op");
+  let mut old_checkpoints = db
+    .get_checkpoints_for_one_storage_before_date(w1, start_d)
+    .expect("test_receive_change_op");
 
   // println!("OLD_CHECKPOINTS: {old_checkpoints:#?}");
 
@@ -86,13 +87,13 @@ fn store_test_receive_change_op() {
   };
 
   let mut new_checkpoints = db
-    .get_checkpoints_before_date(w1, start_d)
+    .get_checkpoints_for_one_storage_before_date(w1, start_d)
     .expect("test_receive_change_op")
     .into_iter();
 
   assert_eq!(Some(new_check), new_checkpoints.next());
 
-  let res = db.get_report(w1, start_d, end_d).unwrap();
+  let res = db.get_report_for_storage(w1, start_d, end_d).unwrap();
 
   let agr = AgregationStoreGoods {
     store: Some(w1),

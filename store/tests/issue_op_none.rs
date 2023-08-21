@@ -1,8 +1,8 @@
+use store::aggregations::AgregationStoreGoods;
 use store::balance::{BalanceDelta, BalanceForGoods};
-use store::elements::{
-  dt, AggregationStore, AgregationStoreGoods, Batch, InternalOperation, Mode, OpMutation,
-};
-use store::error::WHError;
+use store::batch::Batch;
+use store::elements::dt;
+use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -23,7 +23,6 @@ fn store_test_issue_op_none() {
   let doc = Batch { id: Uuid::new_v4(), date: start_d };
 
   let id1 = Uuid::from_u128(101);
-  let id2 = Uuid::from_u128(102);
   let id3 = Uuid::from_u128(103);
 
   let ops = vec![
@@ -42,7 +41,7 @@ fn store_test_issue_op_none() {
 
   db.record_ops(&ops).unwrap();
 
-  let res = db.get_report(w1, start_d, end_d).unwrap();
+  let res = db.get_report_for_storage(w1, start_d, end_d).unwrap();
 
   // println!("REPORT: {res:#?}");
 

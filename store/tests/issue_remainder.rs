@@ -1,8 +1,8 @@
+use store::aggregations::AgregationStoreGoods;
 use store::balance::{BalanceDelta, BalanceForGoods};
-use store::elements::{
-  dt, AggregationStore, AgregationStoreGoods, Batch, InternalOperation, Mode, OpMutation,
-};
-use store::error::WHError;
+use store::batch::Batch;
+use store::elements::{dt, Mode};
+use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -63,7 +63,7 @@ fn store_test_issue_remainder() {
 
   // println!("HELLO: {:#?}", res.items.1);
 
-  let res = db.get_report(w1, start_d, end_d).unwrap();
+  let res = db.get_report_for_storage(w1, start_d, end_d).unwrap();
 
   let agr = AgregationStoreGoods {
     store: Some(w1),
