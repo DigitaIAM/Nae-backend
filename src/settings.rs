@@ -41,6 +41,7 @@ impl Settings {
     println!("debug: {:?}", config.get_bool("debug"));
     println!("memory: {:?}", config.get::<String>("database.memory"));
     println!("inventory: {:?}", config.get::<String>("database.inventory"));
+    println!("ftsearch: {:?}", config.get::<String>("database.ftsearch"));
 
     config.try_deserialize()
   }
@@ -58,7 +59,7 @@ impl Settings {
         memory: folder.join("memory"),
         inventory: folder.join("inventory"),
         links: folder.join("links"),
-        ftsearch: folder.join("ftsearch"),
+        ftsearch: folder.join("tantivy"),
       },
     }
   }
