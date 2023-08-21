@@ -6,10 +6,11 @@ use serde_json::from_str;
 use std::io;
 use std::str::FromStr;
 use std::sync::Arc;
-use test_init::init;
 use uuid::Uuid;
 
-use crate::test_init::{create_record, goods, receive, store, transfer, update};
+use crate::test_init::{
+  create_record, goods, init, receive, store, transfer, update, DocumentCreation,
+};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
@@ -21,13 +22,9 @@ use store::elements::{dt, Goods, Mode, Qty, Store};
 use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
 use store::GetWarehouse;
-use test_init::DocumentCreation;
 
 #[actix_web::test]
 async fn check_edit_document() {
-  std::env::set_var("RUST_LOG", "debug,tantivy=off");
-  env_logger::init();
-
   let (tmp_dir, settings, db) = init();
 
   let wss = Workspaces::new(tmp_dir.path().join("companies"));

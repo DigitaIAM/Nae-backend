@@ -1,7 +1,6 @@
 mod test_init;
 
-use crate::test_init::DocumentCreation;
-use crate::test_init::{goods, init, receive, store};
+use crate::test_init::{goods, init, receive, store, DocumentCreation};
 use chrono::Utc;
 use json::object;
 use nae_backend::commutator::Application;
@@ -17,9 +16,6 @@ use store::GetWarehouse;
 
 #[actix_web::test]
 async fn check_document_update_with_receive() {
-  std::env::set_var("RUST_LOG", "debug,tantivy=off");
-  env_logger::init();
-
   let (tmp_dir, settings, db) = init();
 
   let wss = Workspaces::new(tmp_dir.path().join("companies"));

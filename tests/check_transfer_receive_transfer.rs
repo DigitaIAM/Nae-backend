@@ -6,10 +6,9 @@ use serde_json::from_str;
 use std::io;
 use std::str::FromStr;
 use std::sync::Arc;
-use test_init::init;
 use uuid::Uuid;
 
-use crate::test_init::{create_record, goods, receive, store, transfer};
+use crate::test_init::{create_record, goods, init, receive, store, transfer};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
@@ -24,9 +23,6 @@ use store::GetWarehouse;
 
 #[actix_web::test]
 async fn check_transfer_receive_transfer() {
-  std::env::set_var("RUST_LOG", "debug,tantivy=off");
-  env_logger::init();
-
   let (tmp_dir, settings, db) = init();
 
   let wss = Workspaces::new(tmp_dir.path().join("companies"));
