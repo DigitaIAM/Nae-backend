@@ -1,6 +1,5 @@
 mod test_init;
-
-use crate::test_init::{goods, init, receive, store};
+use crate::test_init::{goods, init, receive, store, DocumentCreation};
 use chrono::Utc;
 use json::object;
 use json::JsonValue;
@@ -17,15 +16,11 @@ use store::elements::dt;
 use store::elements::ToJson;
 use store::GetWarehouse;
 use tantivy::HasLen;
-use test_init::DocumentCreation;
 use values::constants::_UUID;
 use values::ID;
 
 #[actix_web::test]
 async fn check_change_receive() {
-  std::env::set_var("RUST_LOG", "debug,tantivy=off");
-  env_logger::init();
-
   let (tmp_dir, settings, db) = init();
 
   let wss = Workspaces::new(tmp_dir.path().join("companies"));

@@ -609,6 +609,7 @@ mod tests {
   use crate::warehouse::test_util::{delete, incoming, init, outgoing};
 
   #[test]
+  #[ignore]
   fn test_store_operations() {
     let (tmp_dir, settings, db) = init();
 

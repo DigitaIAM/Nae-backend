@@ -377,7 +377,10 @@ mod tests {
 
     let json = serde_json::to_string(&trans).unwrap();
 
-    assert_eq!(json, "{\"context\":[[98,88,81,227,135,110,110,109,164,5,201,90,194,70,135,206,75,178,205,216,251,216,69,146,120,246,240,206,128,62,19,238],[205,122,236,69,159,185,201,253,103,216,158,107,115,60,57,77,208,80,61,243,171,61,8,232,8,148,201,164,161,77,8,109]],\"what\":[122,167,248,2,221,30,181,208,192,68,198,5,234,197,226,208,176,34,65,33,3,129,84,53,142,154,43,190,213,230,96,15],\"into\":{\"String\":\"4\"}}");
+    assert_eq!(
+      json,
+      r#"{"context":["YlhR44dubm2kBclawkaHzkuyzdj72EWSePbwzoA-E-4","zXrsRZ-5yf1n2J5rczw5TdBQPfOrPQjoCJTJpKFNCG0"],"what":"eqf4At0etdDARMYF6sXi0LAiQSEDgVQ1jporvtXmYA8","into":{"String":"4"}}"#
+    );
   }
 
   #[test]
@@ -392,7 +395,10 @@ mod tests {
 
     let json = serde_json::to_string(&trans).unwrap();
 
-    assert_eq!(json, "{\"context\":[[98,88,81,227,135,110,110,109,164,5,201,90,194,70,135,206,75,178,205,216,251,216,69,146,120,246,240,206,128,62,19,238],[205,122,236,69,159,185,201,253,103,216,158,107,115,60,57,77,208,80,61,243,171,61,8,232,8,148,201,164,161,77,8,109]],\"what\":[122,167,248,2,221,30,181,208,192,68,198,5,234,197,226,208,176,34,65,33,3,129,84,53,142,154,43,190,213,230,96,15],\"into_before\":\"Nothing\",\"into_after\":{\"String\":\"4\"}}");
+    assert_eq!(
+      json,
+      r#"{"zone":"hHy5FdUoBcm_4Lba8xu50uZloYS5PWL0Aw-UxX0QW34","context":["YlhR44dubm2kBclawkaHzkuyzdj72EWSePbwzoA-E-4","zXrsRZ-5yf1n2J5rczw5TdBQPfOrPQjoCJTJpKFNCG0"],"what":"eqf4At0etdDARMYF6sXi0LAiQSEDgVQ1jporvtXmYA8","into_before":"Nothing","into_after":{"String":"4"}}"#
+    );
   }
 
   #[test]

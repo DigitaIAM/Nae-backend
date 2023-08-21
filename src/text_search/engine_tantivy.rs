@@ -1,6 +1,7 @@
 use super::*;
 
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -24,14 +25,17 @@ pub struct TantivyEngine {
 }
 
 impl TantivyEngine {
-  pub fn new() -> Self {
+  pub fn new<S: AsRef<Path>>(folder: S) -> Self
+  where
+    PathBuf: From<S>,
+  {
     let mut schema_builder = Schema::builder();
     schema_builder.add_text_field("uuid", TEXT | STORED);
     schema_builder.add_text_field("name", TEXT);
 
     let schema = schema_builder.build();
 
-    let path = "./data/tantivy";
+    let path = folder.as_ref();
     fs::create_dir_all(path).unwrap();
 
     let directory = MmapDirectory::open(path).unwrap();

@@ -4,9 +4,8 @@ use json::{array, object};
 use serde_json::from_str;
 use std::io;
 use std::sync::Arc;
-use test_init::init;
 
-use crate::test_init::create_record;
+use crate::test_init::{create_record, init};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
@@ -19,9 +18,6 @@ use values::ID;
 
 #[actix_web::test]
 async fn check_csv_incomplete_data() {
-  std::env::set_var("RUST_LOG", "debug,tantivy=off");
-  env_logger::init();
-
   let (tmp_dir, settings, db) = init();
 
   let wss = Workspaces::new(tmp_dir.path().join("companies"));

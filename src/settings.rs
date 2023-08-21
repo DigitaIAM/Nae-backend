@@ -8,6 +8,7 @@ pub struct Database {
   pub memory: PathBuf,
   pub inventory: PathBuf,
   pub links: PathBuf,
+  pub ftsearch: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,6 +58,7 @@ impl Settings {
         memory: folder.join("memory"),
         inventory: folder.join("inventory"),
         links: folder.join("links"),
+        ftsearch: folder.join("ftsearch"),
       },
     }
   }

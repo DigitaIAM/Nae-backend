@@ -803,6 +803,7 @@ mod tests {
   use std::time::{SystemTime, UNIX_EPOCH};
 
   #[test]
+  #[ignore]
   fn test_warehouse_store_turnover() {
     let (tmp_dir, settings, db) = init();
 

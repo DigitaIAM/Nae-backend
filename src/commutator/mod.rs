@@ -84,7 +84,7 @@ impl Application {
       stop: stop.clone(),
       events: events_sender,
       sender,
-      search: Arc::new(RwLock::new(SearchEngine::new())),
+      search: Arc::new(RwLock::new(SearchEngine::new(&settings.database.ftsearch))),
     };
 
     thread::spawn({

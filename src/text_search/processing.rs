@@ -1,4 +1,5 @@
 use super::*;
+use std::path::{Path, PathBuf};
 
 use json::JsonValue;
 use simsearch::SimSearch;
@@ -41,8 +42,11 @@ pub struct SearchEngine {
 }
 
 impl SearchEngine {
-  pub fn new() -> Self {
-    Self { sim: SimSearch::new(), tan: TantivyEngine::new() }
+  pub fn new<S: AsRef<Path>>(folder: S) -> Self
+  where
+    PathBuf: From<S>,
+  {
+    Self { sim: SimSearch::new(), tan: TantivyEngine::new(folder) }
   }
 
   pub fn load(&mut self, workspaces: Workspaces) -> Result<(), service::error::Error> {
