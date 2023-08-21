@@ -245,7 +245,7 @@ impl Service for MemoriesInFiles {
         for material_used in materials_used {
           let qty = material_used["qty"]["number"].number();
 
-          let goods = material_used["goods"].string().resolve_to_json_object(&ws);
+          let goods = material_used["goods"].clone();
 
           *sum_used_materials.entry(goods["name"].string()).or_insert(Decimal::ZERO) += qty;
 
@@ -276,7 +276,7 @@ impl Service for MemoriesInFiles {
         for material_produced in materials_produced {
           let qty = material_produced["qty"]["number"].number();
 
-          let goods = material_produced["goods"].string().resolve_to_json_object(&ws);
+          let goods = material_produced["goods"].clone();
 
           *sum_produced_materials.entry(goods["name"].string()).or_insert(Decimal::ZERO) += qty;
 
