@@ -1,7 +1,7 @@
 use super::*;
 
 use chrono::Utc;
-use json::JsonValue;
+use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
@@ -69,7 +69,7 @@ impl Service for MemoriesInFiles {
         .map(|id| id.resolve_to_json_object(&ws))
         .collect();
 
-      return Ok(json::object! {
+      return Ok(object! {
         data: JsonValue::Array(list),
         total: total,
         "$skip": skip,
@@ -82,7 +82,7 @@ impl Service for MemoriesInFiles {
         let list = vec![];
         let total = list.len();
 
-        return Ok(json::object! {
+        return Ok(object! {
           data: JsonValue::Array(list),
           total: total,
           "$skip": skip,
@@ -219,7 +219,7 @@ impl Service for MemoriesInFiles {
           .sum();
 
         // TODO rolls - kg, caps - piece
-        order["produced"] = json::object! { "piece": sum.to_json(), "box": boxes.to_string() };
+        order["produced"] = object! { "piece": sum.to_json(), "box": boxes.to_string() };
 
         // workaround: ignore all areas except "экструдер"
         let area = order["area"].string().resolve_to_json_object(&ws);
@@ -255,7 +255,7 @@ impl Service for MemoriesInFiles {
         let used: Vec<JsonValue> = sum_used_materials
           .into_iter()
           .map(|(k, v)| {
-            let mut o = json::object!();
+            let mut o = object!();
             o[k] = v.to_json();
             o
           })
@@ -286,17 +286,31 @@ impl Service for MemoriesInFiles {
         let produced: Vec<JsonValue> = sum_produced_materials
           .into_iter()
           .map(|(k, v)| {
-            let mut o = json::object!();
+            let mut o = object!();
             o[k] = v.to_json();
             o
           })
           .collect();
 
-        order["_material"] = json::object! { "used": used, "produced": produced };
-
         let delta = sum_produced - sum_used;
 
-        order["_delta"] = json::object! { "delta": delta.to_json() };
+        order["_material"] = object! {
+          "used": used,
+          "produced": produced,
+        };
+
+        if !sum_used.is_zero() || !sum_produced.is_zero() {
+          order["_material"]
+            .insert(
+              "sum",
+              object! {
+                "used": sum_used.to_json(),
+                "produced": sum_produced.to_json(),
+                "delta": delta.to_json()
+              },
+            )
+            .map_err(|e| Error::GeneralError(e.to_string()))?;
+        }
       }
     }
 
@@ -328,7 +342,7 @@ impl Service for MemoriesInFiles {
       }
     }
 
-    Ok(json::object! {
+    Ok(object! {
       data: JsonValue::Array(list),
       total: total,
       "$skip": skip,
