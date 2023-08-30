@@ -217,10 +217,10 @@ impl Iterator for Documents {
     if let Some(e) = self.it.next() {
       let mut top_folder = self.ws.folder.canonicalize().unwrap();
       top_folder.push("memories");
-      println!("top_ {top_folder:?}");
+      // log::debug!("top_ {top_folder:?}");
 
       let path = e.into_path().canonicalize().unwrap();
-      println!("path {path:?}");
+      // log::debug!("path {path:?}");
 
       let record = path.parent().unwrap();
 
@@ -239,7 +239,7 @@ impl Iterator for Documents {
         .collect();
       let ctx_folder = context.into();
 
-      println!("ctx {ctx:?}");
+      // log::debug!("ctx {ctx:?}");
 
       let did = id;
 
