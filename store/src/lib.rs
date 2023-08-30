@@ -10,6 +10,7 @@ pub mod error;
 pub mod operations;
 pub mod ordered_topology;
 pub mod process_records;
+pub mod qty;
 pub mod topologies;
 pub mod wh_storage;
 
