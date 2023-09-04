@@ -21,13 +21,13 @@ pub struct Qty {
 
 trait Convert {
   type Into;
-  fn convert(&self, into: Self) -> Result<Vec<Self::Into>, WHError>;
+  fn convert(&mut self, into: Self) -> Result<Vec<Self::Into>, WHError>;
 }
 
 impl Convert for Vec<(Decimal, Uuid)> {
   type Into = Qty;
 
-  fn convert(&self, into: Self) -> Result<Vec<Self::Into>, WHError> {
+  fn convert(&mut self, into: Self) -> Result<Vec<Self::Into>, WHError> {
     let mut result: Vec<Qty> = Vec::new();
 
     if self.len() >= into.len() {
@@ -35,8 +35,8 @@ impl Convert for Vec<(Decimal, Uuid)> {
       return Ok(result);
     }
 
-    let mut from = self.clone();
-    let mut into = into.clone();
+    let mut from = self;
+    let mut into = into;
 
     let start_index = from.len() - 1;
 
@@ -53,7 +53,7 @@ impl Convert for Vec<(Decimal, Uuid)> {
       if let Some((from_number, from_uuid)) = from.get(index) {
         if from_number == into_number {
           if let Some((_, next_uuid)) = into.get(index + 1) {
-            from.push((Decimal::ONE, next_uuid.clone()));
+            from.push((Decimal::ONE, *next_uuid));
           }
         } else if from_number > into_number {
           // div with remainder and create two Qty objects
@@ -62,14 +62,14 @@ impl Convert for Vec<(Decimal, Uuid)> {
           {
             if rem > Decimal::ZERO {
               let mut tmp = from.clone();
-              tmp[index] = (rem, from_uuid.clone());
+              tmp[index] = (rem, *from_uuid);
               result.push(Qty::from_vec(tmp)?);
-              from[index] = ((from_number - rem) / Decimal::from(div), from_uuid.clone());
+              from[index] = ((from_number - rem) / Decimal::from(div), *from_uuid);
             } else {
-              from[index] = (from_number / Decimal::from(div), from_uuid.clone());
+              from[index] = (from_number / Decimal::from(div), *from_uuid);
             }
             if let Some((_, next_uuid)) = into.get(index + 1) {
-              from.push((Decimal::from(div), next_uuid.clone()));
+              from.push((Decimal::from(div), *next_uuid));
             }
           }
         }
@@ -78,7 +78,7 @@ impl Convert for Vec<(Decimal, Uuid)> {
       index += 1;
     }
 
-    result.push(Qty::from_vec(from)?);
+    result.push(Qty::from_vec(from.clone())?);
     Ok(result)
   }
 }
@@ -145,7 +145,7 @@ impl PartialEq for Uom {
 
 impl Qty {
   fn from_json(data: &JsonValue) -> Result<Self, WHError> {
-    let mut data = data.clone();
+    let mut data = data;
 
     let mut root = Qty { number: data["number"].number(), name: Uom::In(UUID_NIL, None) };
 
@@ -157,7 +157,7 @@ impl Qty {
       if uom.is_object() {
         tmp.number = uom["number"].number();
         tmp.name = Uom::In(UUID_NIL, None);
-        head.name = Uom::In(uom["in"].uuid()?, Some(Box::new(tmp.clone())));
+        head.name = Uom::In(uom["in"].uuid()?, Some(Box::new(tmp)));
         head = match &mut head.name {
           Uom::In(_, ref mut qty) => qty.as_mut().unwrap(),
           _ => unreachable!(),
@@ -165,7 +165,7 @@ impl Qty {
       } else {
         head.name = Uom::In(uom.uuid()?, None);
       }
-      data = uom.clone();
+      data = uom;
     }
 
     Ok(root)
@@ -183,7 +183,7 @@ impl Qty {
     let mut head = &mut root;
 
     for (num, id) in data[1..].iter() {
-      let tmp = Qty { number: num.clone(), name: Uom::In(id.clone(), None) };
+      let tmp = Qty { number: *num, name: Uom::In(*id, None) };
       head.name = Uom::In(head.name.uuid(), Some(Box::new(tmp)));
       head = match &mut head.name {
         Uom::In(_, ref mut qty) => qty.as_mut().unwrap(),
@@ -208,17 +208,16 @@ impl Qty {
 
     while let Some(qty) = current.qty() {
       result.insert(0, (qty.number, qty.name.uuid()));
-      current = qty.as_ref().clone();
+      current = *qty;
     }
 
     result
   }
 
   fn simplify(data: &mut Vec<(Decimal, Uuid)>, index: usize) {
-    // println!("simplify: {data:?}");
     while data.len() > index + 1 {
       if let (Some(popped), Some(last)) = (data.pop(), data.last_mut()) {
-        let (last_number, last_uuid) = last.clone();
+        let (last_number, last_uuid) = *last;
         *last = (popped.0 * last_number, last_uuid);
       }
     }
@@ -230,12 +229,12 @@ impl Qty {
     right: Vec<(Decimal, Uuid)>,
   ) -> Result<Vec<Self>, WHError> {
     if let (Some(l_last), Some(r_last)) = (left.last_mut(), right.last()) {
-      let (last_number, last_uuid) = l_last;
-      let number = *last_number - r_last.clone().0;
+      let (last_number, last_uuid) = *l_last;
+      let number = last_number - r_last.0;
       if number == Decimal::ZERO {
         return Ok(Vec::new());
       }
-      *l_last = (number, *last_uuid);
+      *l_last = (number, last_uuid);
     }
 
     left.convert(full)
@@ -246,7 +245,6 @@ impl Add for Qty {
   type Output = Vec<Self>;
 
   fn add(self, rhs: Self) -> Self::Output {
-    let mut result = self.clone();
     let mut vector: Vec<Self> = Vec::new();
 
     let mut is_equal = true;
@@ -290,6 +288,7 @@ impl Add for Qty {
     }
 
     if is_equal {
+      let mut result = self.clone();
       result.number += rhs.number;
       vector.push(result);
     } else {
@@ -305,7 +304,7 @@ impl Neg for Qty {
   type Output = Self;
 
   fn neg(self) -> Self::Output {
-    Qty { number: -self.number, name: self.name.clone() }
+    Qty { number: -self.number, name: self.name }
   }
 }
 
