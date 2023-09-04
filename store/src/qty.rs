@@ -132,26 +132,10 @@ impl PartialEq for Uom {
             } else {
               false
             }
-          } else {
+          } else if left_qty.is_none() && right_qty.is_none() {
             left_id == right_id
-          }
-        },
-      },
-    }
-  }
-
-  fn ne(&self, other: &Self) -> bool {
-    match self {
-      Uom::In(left_id, left_qty) => match other {
-        Uom::In(right_id, right_qty) => {
-          if let (Some(l), Some(r)) = (left_qty, right_qty) {
-            if left_id == right_id && l.name == r.name {
-              false
-            } else {
-              true
-            }
           } else {
-            left_id != right_id
+            false
           }
         },
       },
@@ -168,7 +152,7 @@ impl Qty {
     let mut head = &mut root;
 
     while data.is_object() {
-      let uom = data["uom"].clone();
+      let uom = &data["uom"];
       let mut tmp = Qty { number: Decimal::ZERO, name: Uom::In(UUID_NIL, None) };
       if uom.is_object() {
         tmp.number = uom["number"].number();
@@ -181,7 +165,7 @@ impl Qty {
       } else {
         head.name = Uom::In(uom.uuid()?, None);
       }
-      data = uom;
+      data = uom.clone();
     }
 
     Ok(root)
@@ -246,12 +230,12 @@ impl Qty {
     right: Vec<(Decimal, Uuid)>,
   ) -> Result<Vec<Self>, WHError> {
     if let (Some(l_last), Some(r_last)) = (left.last_mut(), right.last()) {
-      let (last_number, last_uuid) = l_last.clone();
-      let number = last_number - r_last.clone().0;
+      let (last_number, last_uuid) = l_last;
+      let number = *last_number - r_last.clone().0;
       if number == Decimal::ZERO {
         return Ok(Vec::new());
       }
-      *l_last = (number, last_uuid);
+      *l_last = (number, *last_uuid);
     }
 
     left.convert(full)
@@ -265,40 +249,44 @@ impl Add for Qty {
     let mut result = self.clone();
     let mut vector: Vec<Self> = Vec::new();
 
-    let mut left = Uom::In(self.name.uuid(), Some(Box::new(self.clone())));
-    let mut right = Uom::In(self.name.uuid(), Some(Box::new(rhs.clone())));
-
     let mut is_equal = true;
 
-    while left.is_some() && right.is_some() {
-      if left != right {
-        is_equal = false;
-        break;
+    if self.name != rhs.name {
+      is_equal = false;
+    } else {
+      let mut left = Uom::In(self.name.uuid(), Some(Box::new(self.clone())));
+      let mut right = Uom::In(self.name.uuid(), Some(Box::new(rhs.clone())));
+
+      while left.is_some() && right.is_some() {
+        left = match left {
+          Uom::In(uuid, qty) => {
+            if let Some(q) = qty {
+              match q.name {
+                Uom::In(inner_uuid, inner_qty) => Uom::In(inner_uuid, inner_qty),
+              }
+            } else {
+              Uom::In(uuid, None)
+            }
+          },
+        };
+
+        right = match right {
+          Uom::In(uuid, qty) => {
+            if let Some(q) = qty {
+              match q.name {
+                Uom::In(inner_uuid, inner_qty) => Uom::In(inner_uuid, inner_qty),
+              }
+            } else {
+              Uom::In(uuid, None)
+            }
+          },
+        };
+
+        if left != right {
+          is_equal = false;
+          break;
+        }
       }
-
-      left = match left {
-        Uom::In(uuid, qty) => {
-          if let Some(q) = qty {
-            match q.name {
-              Uom::In(inner_uuid, inner_qty) => Uom::In(inner_uuid, inner_qty),
-            }
-          } else {
-            Uom::In(uuid, None)
-          }
-        },
-      };
-
-      right = match right {
-        Uom::In(uuid, qty) => {
-          if let Some(q) = qty {
-            match q.name {
-              Uom::In(inner_uuid, inner_qty) => Uom::In(inner_uuid, inner_qty),
-            }
-          } else {
-            Uom::In(uuid, None)
-          }
-        },
-      };
     }
 
     if is_equal {
