@@ -444,7 +444,10 @@ pub trait OrderedTopology {
       InternalOperation::Inventory(b, d, m) => {
         let mut cost = d.cost;
         let op = if m == &Mode::Auto {
-          cost = balance.price().cost(d.qty);
+          if let Some(common) = balance.qty.common(&d.qty) {
+            cost = balance.clone().price(common.clone()).cost(d.qty.clone(), common);
+          }
+
           Op {
             id: op.id,
             date: op.date,
@@ -454,7 +457,7 @@ pub trait OrderedTopology {
             store_into: op.store_into,
             op: InternalOperation::Inventory(
               b.clone(),
-              BalanceDelta { qty: d.qty, cost },
+              BalanceDelta { qty: d.qty.clone(), cost },
               m.clone(),
             ),
             is_dependent: op.is_dependent,
@@ -464,15 +467,24 @@ pub trait OrderedTopology {
           op.clone()
         };
 
-        (op, BalanceForGoods { qty: balance.qty + d.qty, cost: balance.cost - cost })
+        (op, BalanceForGoods { qty: balance.qty.clone() + d.qty.clone(), cost: balance.cost - cost })
       },
-      InternalOperation::Receive(q, c) => {
-        (op.clone(), BalanceForGoods { qty: balance.qty + q, cost: balance.cost + *c })
-      },
+      InternalOperation::Receive(q, c) => (
+        op.clone(),
+        BalanceForGoods { qty: balance.qty.clone() + q.clone(), cost: balance.cost + *c },
+      ),
       InternalOperation::Issue(q, c, m) => {
         let mut cost = *c;
         let op = if m == &Mode::Auto {
-          cost = if balance.qty == *q { balance.cost } else { balance.price().cost(*q) };
+          cost = if balance.qty == *q {
+            balance.cost
+          } else {
+            if let Some(common) = balance.qty.common(q) {
+              balance.clone().price(common.clone()).cost(q.clone(), common)
+            } else {
+              Cost::ZERO
+            }
+          };
           Op {
             id: op.id,
             date: op.date,
@@ -480,7 +492,7 @@ pub trait OrderedTopology {
             goods: op.goods,
             batch: op.batch.clone(),
             store_into: op.store_into,
-            op: InternalOperation::Issue(*q, cost, m.clone()),
+            op: InternalOperation::Issue(q.clone(), cost, m.clone()),
             is_dependent: op.is_dependent,
             dependant: op.dependant.clone(),
           }
@@ -488,7 +500,7 @@ pub trait OrderedTopology {
           op.clone()
         };
 
-        (op, BalanceForGoods { qty: balance.qty - q, cost: balance.cost - cost })
+        (op, BalanceForGoods { qty: balance.qty.clone() - q.clone(), cost: balance.cost - cost })
       },
     }
   }
@@ -549,9 +561,11 @@ pub trait OrderedTopology {
         .entry(op.goods)
         .and_modify(|bal| bal.apply(&op.op))
         .or_insert(match &op.op {
-          InternalOperation::Inventory(_, d, _) => BalanceForGoods { qty: d.qty, cost: d.cost },
-          InternalOperation::Receive(q, c) => BalanceForGoods { qty: *q, cost: *c },
-          InternalOperation::Issue(q, c, _) => BalanceForGoods { qty: -*q, cost: -*c },
+          InternalOperation::Inventory(_, d, _) => {
+            BalanceForGoods { qty: d.qty.clone(), cost: d.cost }
+          },
+          InternalOperation::Receive(q, c) => BalanceForGoods { qty: q.clone(), cost: *c },
+          InternalOperation::Issue(q, c, _) => BalanceForGoods { qty: -q.clone(), cost: -*c },
         });
     }
 
@@ -631,7 +645,7 @@ pub trait OrderedTopology {
   fn debug(&self) -> Result<(), WHError> {
     log::debug!("DEBUG: ordered_topology");
     for record in self.db().full_iterator_cf(&self.cf()?, IteratorMode::Start) {
-      let (k, value) = record?;
+      let (_k, value) = record?;
       let (op, b) = self.from_bytes(&value)?;
       log::debug!("{op:#?} > {b:?}");
     }
@@ -725,8 +739,8 @@ impl<'a> PropagationFront<'a> {
 
     let mut stock_balance = BalanceForGoods::default();
     for (_batch, balance) in balance_before_operation.iter() {
-      if balance.qty > Decimal::ZERO {
-        stock_balance.qty += balance.qty;
+      if balance.qty.is_positive() {
+        stock_balance.qty += &balance.qty;
         stock_balance.cost += balance.cost;
       }
     }
@@ -738,8 +752,8 @@ impl<'a> PropagationFront<'a> {
 
     let mut new_dependant: Vec<Dependant> = vec![];
 
-    if diff_balance.qty == Decimal::ZERO && diff_balance.cost == Cost::ZERO {
-    } else if diff_balance.qty > Decimal::ZERO {
+    if diff_balance.qty.is_zero() && diff_balance.cost == Cost::ZERO {
+    } else if diff_balance.qty.is_positive() {
       let batch = Batch { id: op.id, date: op.date };
       let mut new = op.clone();
       new.is_dependent = true;
@@ -756,36 +770,42 @@ impl<'a> PropagationFront<'a> {
       let (mut qty, _cost, _mode) = (diff_balance.qty, Decimal::ZERO, Mode::Auto);
 
       for (batch, balance) in balance_before_operation {
-        if balance.qty <= Decimal::ZERO || batch == Batch::no() {
+        if !balance.qty.is_positive() || batch == Batch::no() {
           continue;
         } else if qty.abs() >= balance.qty {
           let mut new = op.clone();
           new.is_dependent = true;
           new.dependant = vec![];
           new.batch = batch;
-          new.op = InternalOperation::Issue(balance.qty, balance.cost, Mode::Auto);
+          new.op = InternalOperation::Issue(balance.qty.clone(), balance.cost, Mode::Auto);
           // log::debug!("NEW_OP inventory partly: qty {qty} balance {balance:?} op {new:?}");
 
           new_dependant.push(Dependant::from(&new));
           self.insert(new)?;
 
-          qty += balance.qty; // qty is always negative here
+          qty += &balance.qty; // qty is always negative here
         } else if qty.abs() < balance.qty {
           let mut new = op.clone();
           new.is_dependent = true;
           new.dependant = vec![];
           new.batch = batch;
-          new.op = InternalOperation::Issue(qty.abs(), balance.price().cost(qty.abs()), Mode::Auto);
+          let cost = if let Some(common) = balance.qty.common(&qty) {
+            balance.price(common.clone()).cost(qty.abs(), common)
+          } else {
+            Cost::ZERO
+          };
+          new.op = InternalOperation::Issue(qty.abs(), cost, Mode::Auto);
           // log::debug!("NEW_OP inventory full: qty {qty} balance {balance:?} op {new:?}");
 
           new_dependant.push(Dependant::from(&new));
           self.insert(new)?;
 
           // zero the qty
-          qty -= qty;
+          let q = qty.clone();
+          qty -= &q;
         }
 
-        if qty == Decimal::ZERO {
+        if qty.is_zero() {
           break;
         }
       }
@@ -815,9 +835,9 @@ impl<'a> PropagationFront<'a> {
 
     log::debug!("BEFORE BALANCE: {:#?}\nISSUE: {:#?}", balance_before_operation, op);
 
-    let mut qty = match op.op {
+    let mut qty = match &op.op {
       InternalOperation::Receive(_, _) | InternalOperation::Inventory(_, _, _) => unreachable!(),
-      InternalOperation::Issue(qty, _, _) => qty,
+      InternalOperation::Issue(qty, _, _) => qty.clone(),
     };
 
     // assert!(!qty.is_zero(), "{:#?}", op);
@@ -825,15 +845,15 @@ impl<'a> PropagationFront<'a> {
     let mut new_dependant: Vec<Dependant> = vec![];
 
     for (batch, balance) in balance_before_operation {
-      if balance.qty <= Decimal::ZERO || batch == Batch::no() {
+      if !balance.qty.is_positive() || batch == Batch::no() {
         continue;
       } else if qty >= balance.qty {
         let mut new = op.clone();
         new.is_dependent = true;
         new.dependant = vec![];
         new.batch = batch;
-        new.op = InternalOperation::Issue(balance.qty, balance.cost, Mode::Auto);
-        log::debug!("NEW_OP partly: qty {qty} balance {balance:?} op {new:#?}");
+        new.op = InternalOperation::Issue(balance.qty.clone(), balance.cost, Mode::Auto);
+        log::debug!("NEW_OP partly: qty {qty:?} balance {balance:?} op {new:#?}");
 
         // let balance_before = self.mt.balance_before(&new)?;
         // assert_eq!(balance, balance_before);
@@ -841,7 +861,7 @@ impl<'a> PropagationFront<'a> {
         new_dependant.push(Dependant::from(&new));
         self.insert(new)?;
 
-        qty -= balance.qty;
+        qty -= &balance.qty;
 
         // log::debug!("NEW_OP: qty {:?}", qty);
       } else {
@@ -849,8 +869,13 @@ impl<'a> PropagationFront<'a> {
         new.is_dependent = true;
         new.dependant = vec![];
         new.batch = batch;
-        new.op = InternalOperation::Issue(qty, balance.price().cost(qty), Mode::Auto);
-        log::debug!("NEW_OP full: qty {qty} balance {balance:?} op {new:#?}");
+        let cost = if let Some(common) = balance.qty.common(&qty) {
+          balance.price(common.clone()).cost(qty.clone(), common)
+        } else {
+          Cost::ZERO
+        };
+        new.op = InternalOperation::Issue(qty.clone(), cost, Mode::Auto);
+        log::debug!("NEW_OP full: qty {qty:?} balance {balance:?} op {new:#?}");
 
         // let balance_before = self.balance_before(&new)?;
         // assert_eq!(balance, balance_before);
@@ -858,18 +883,18 @@ impl<'a> PropagationFront<'a> {
         new_dependant.push(Dependant::from(&new));
         self.insert(new)?;
 
-        qty -= qty;
+        qty -= &qty.clone();
         // log::debug!("NEW_OP: qty {:?}", qty);
       }
 
-      if qty <= Decimal::ZERO {
+      if !qty.is_positive() {
         break;
       }
     }
 
     // log::debug!("issue qty left {qty}");
 
-    if qty > Decimal::ZERO {
+    if qty.is_positive() {
       let mut new = op.clone();
       new.is_dependent = true;
       new.dependant = vec![];

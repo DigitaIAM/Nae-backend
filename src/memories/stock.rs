@@ -98,14 +98,14 @@ fn process(
         *cost += bb.cost;
 
         let balance = goods_aggregation.entry(*goods).or_insert(BalanceForGoods::default());
-        balance.qty += bb.qty;
+        balance.qty += &bb.qty;
         balance.cost += bb.cost;
 
         if goods_filter.is_some() {
           let balance = batches_aggregation
             .entry((*store, *goods, batch.clone()))
             .or_insert(BalanceForGoods::default());
-          balance.qty += bb.qty;
+          balance.qty += &bb.qty;
           balance.cost += bb.cost;
         }
       }
