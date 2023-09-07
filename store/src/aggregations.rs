@@ -4,6 +4,7 @@ use crate::elements::{
   time_to_naive_string, Goods, KeyValueStore, Mode, ReturnType, Store, ToJson, WHError,
 };
 use crate::operations::{InternalOperation, Op, OpMutation};
+use crate::qty::Uom;
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
 use std::collections::BTreeMap;
@@ -12,7 +13,7 @@ use uuid::Uuid;
 
 trait Agregation {
   fn check(&mut self, op: &OpMutation) -> ReturnType; // если операция валидна, вернет None, если нет - вернет свое значение и обнулит себя и выставит новые ключи
-  fn apply_operation(&mut self, op: &Op);
+  fn apply_operation(&mut self, op: &Op, name: Uom);
   fn apply_aggregation(&mut self, agr: Option<&AgregationStoreGoods>);
   fn balance(&mut self, balance: Option<&Balance>) -> ReturnType; // имплементировать для трех возможных ситуаций
   fn is_applyable_for(&self, op: &OpMutation) -> bool;
@@ -81,10 +82,18 @@ impl ToJson for AgregationStoreGoods {
 impl AddAssign<&Op> for AgregationStoreGoods {
   fn add_assign(&mut self, rhs: &Op) {
     // if let Some(batch) = rhs.batch.as_ref() {
-    self.store = Some(rhs.store);
-    self.goods = Some(rhs.goods);
-    self.batch = Some(rhs.batch.clone());
-    self.apply_operation(rhs);
+    let common = match &rhs.op {
+      InternalOperation::Inventory(b, _, _) => self.open_balance.qty.common(&b.qty),
+      InternalOperation::Receive(q, _) => self.open_balance.qty.common(q),
+      InternalOperation::Issue(q, _, _) => self.open_balance.qty.common(q),
+    };
+
+    if let Some(name) = common {
+      self.store = Some(rhs.store);
+      self.goods = Some(rhs.goods);
+      self.batch = Some(rhs.batch.clone());
+      self.apply_operation(rhs, name);
+    }
     // } else {
     //   todo!();
     // }
@@ -162,21 +171,22 @@ impl Agregation for AggregationStore {
     }
   }
 
-  fn apply_operation(&mut self, op: &Op) {
-    match &op.op {
-      InternalOperation::Inventory(_, d, _) => {
-        self.receive += d.cost;
-        self.close_balance += d.cost;
-      },
-      InternalOperation::Receive(_, cost) => {
-        self.receive += cost;
-        self.close_balance += cost;
-      },
-      InternalOperation::Issue(_, cost, _) => {
-        self.issue -= cost;
-        self.close_balance -= cost;
-      },
-    }
+  fn apply_operation(&mut self, op: &Op, name: Uom) {
+    // match &op.op {
+    //   InternalOperation::Inventory(_, d, _) => {
+    //     self.receive += d.cost;
+    //     self.close_balance += d.cost;
+    //   },
+    //   InternalOperation::Receive(_, cost) => {
+    //     self.receive += cost;
+    //     self.close_balance += cost;
+    //   },
+    //   InternalOperation::Issue(_, cost, _) => {
+    //     self.issue -= cost;
+    //     self.close_balance -= cost;
+    //   },
+    // }
+    unimplemented!()
   }
 
   fn apply_aggregation(&mut self, agr: Option<&AgregationStoreGoods>) {
@@ -214,13 +224,13 @@ impl Agregation for AgregationStoreGoods {
     }
   }
 
-  fn apply_operation(&mut self, op: &Op) {
+  fn apply_operation(&mut self, op: &Op, name: Uom) {
     match &op.op {
       InternalOperation::Inventory(_b, d, mode) => {
-        self.issue.qty += d.qty;
+        self.issue.qty += &d.qty;
         if mode == &Mode::Auto {
           let balance = self.open_balance.clone() + self.receive.clone();
-          let cost = balance.price().cost(d.qty);
+          let cost = balance.price(name.clone()).cost(d.qty.clone(), name);
           self.issue.cost += cost;
         } else {
           self.issue.cost += d.cost;
@@ -234,7 +244,7 @@ impl Agregation for AgregationStoreGoods {
         self.issue.qty -= qty;
         if mode == &Mode::Auto {
           let balance = self.open_balance.clone() + self.receive.clone();
-          let cost = balance.price().cost(*qty);
+          let cost = balance.price(name.clone()).cost(qty.clone(), name);
           self.issue.cost -= cost;
         } else {
           self.issue.cost -= cost;
@@ -322,7 +332,7 @@ pub(crate) fn get_aggregations_for_one_goods(
     date: time_to_naive_string(start_date),
     type: JsonValue::String("open_balance".to_string()),
     _id: Uuid::new_v4().to_json(), // TODO generate from date & store & goods & batch
-    qty: balance.number.qty.to_json(),
+    qty: Into::<JsonValue>::into(balance.number.qty.clone()),
     cost: balance.number.cost.to_json(),
   });
 
@@ -343,14 +353,14 @@ pub(crate) fn get_aggregations_for_one_goods(
     }
   }
 
-  result[0]["qty"] = open_balance.qty.to_json();
+  result[0]["qty"] = open_balance.qty.into();
   result[0]["cost"] = open_balance.cost.to_json();
 
   result.push(object! {
     date: time_to_naive_string(end_date),
     type: JsonValue::String("close_balance".to_string()),
     _id: Uuid::new_v4().to_json(),
-    qty: close_balance.qty.to_json(),
+    qty: Into::<JsonValue>::into(close_balance.qty),
     cost: close_balance.cost.to_json(),
   });
 

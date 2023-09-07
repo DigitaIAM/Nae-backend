@@ -1,10 +1,10 @@
 use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
-use crate::elements::{Goods, Mode, Qty, Store, ToJson, WHError};
+use crate::elements::{Goods, Mode, Store, ToJson, WHError};
 use crate::ordered_topology::OrderedTopology;
+use crate::qty::Qty;
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use service::utils::json::JsonParams;
 use uuid::Uuid;
@@ -31,7 +31,7 @@ impl Dependant {
         zero.batch = batch.clone();
         zero.dependant = vec![];
         zero.is_dependent = true;
-        zero.op = InternalOperation::Receive(Decimal::ZERO, Cost::ZERO);
+        zero.op = InternalOperation::Receive(Qty::new(Vec::new()), Cost::ZERO);
         zero
       },
       Dependant::Issue(store, batch) => {
@@ -40,7 +40,7 @@ impl Dependant {
         zero.batch = batch.clone();
         zero.dependant = vec![];
         zero.is_dependent = true;
-        zero.op = InternalOperation::Issue(Decimal::ZERO, Cost::ZERO, Mode::Manual);
+        zero.op = InternalOperation::Issue(Qty::new(Vec::new()), Cost::ZERO, Mode::Manual);
         zero
       },
     }
@@ -147,9 +147,11 @@ impl Op {
           Mode::Auto,
         )
       },
-      InternalOperation::Receive(..) => self.op = InternalOperation::Receive(Qty::ZERO, Cost::ZERO),
+      InternalOperation::Receive(..) => {
+        self.op = InternalOperation::Receive(Qty::new(Vec::new()), Cost::ZERO)
+      },
       InternalOperation::Issue(..) => {
-        self.op = InternalOperation::Issue(Qty::ZERO, Cost::ZERO, Mode::Auto)
+        self.op = InternalOperation::Issue(Qty::new(Vec::new()), Cost::ZERO, Mode::Auto)
       },
     }
 
@@ -163,15 +165,20 @@ impl Op {
     let operation = match op["type"].as_str() {
       Some("inventory") => InternalOperation::Inventory(
         BalanceForGoods {
-          qty: op["balance"]["qty"].number(),
+          qty: op["balance"].clone().into(),
           cost: op["balance"]["cost"].number().into(),
         },
-        BalanceDelta { qty: op["delta"]["qty"].number(), cost: op["delta"]["cost"].number().into() },
+        BalanceDelta {
+          qty: op["delta"]["qty"].clone().into(),
+          cost: op["delta"]["cost"].number().into(),
+        },
         mode,
       ),
-      Some("receive") => InternalOperation::Receive(op["qty"].number(), op["cost"].number().into()),
+      Some("receive") => {
+        InternalOperation::Receive(op["qty"].clone().into(), op["cost"].number().into())
+      },
       Some("issue") => {
-        InternalOperation::Issue(op["qty"].number(), op["cost"].number().into(), mode)
+        InternalOperation::Issue(op["qty"].clone().into(), op["cost"].number().into(), mode)
       },
       _ => return Err(WHError::new(&format!("unknown operation type {}", op["type"]))),
     };
@@ -256,7 +263,7 @@ impl Op {
           goods: self.goods,
           batch: self.batch.clone(),
           store_into: Some(self.store),
-          op: InternalOperation::Receive(*q, *c),
+          op: InternalOperation::Receive(q.clone(), *c),
           is_dependent: true,
           dependant: vec![],
         }),
@@ -518,11 +525,19 @@ impl InternalOperation {
   pub fn apply(&self, balance: &BalanceForGoods) -> BalanceDelta {
     match self {
       InternalOperation::Inventory(b, _, m) => {
-        let qty = b.qty - balance.qty;
+        let qty = b.qty.clone() - balance.qty.clone();
 
-        let cost = if m == &Mode::Auto { balance.price().cost(qty) } else { b.cost - balance.cost };
+        let cost = if m == &Mode::Auto {
+          if let Some(common) = balance.qty.common(&qty) {
+            balance.clone().price(common.clone()).cost(qty.clone(), common)
+          } else {
+            Cost::ZERO
+          }
+        } else {
+          b.cost - balance.cost
+        };
 
-        BalanceDelta { qty, cost }
+        BalanceDelta { qty: qty.clone(), cost }
       },
       InternalOperation::Receive(..) => unimplemented!(),
       InternalOperation::Issue(..) => unimplemented!(),
@@ -562,16 +577,18 @@ impl ToJson for InternalOperation {
         }
       },
       InternalOperation::Receive(q, c) => {
+        let q: JsonValue = q.clone().into();
         object! {
           type: "receive",
-          qty: q.to_json(),
+          qty: q,
           cost: c.to_json(),
         }
       },
       InternalOperation::Issue(q, c, m) => {
+        let q: JsonValue = q.clone().into();
         object! {
           type: "issue",
-          qty: q.to_json(),
+          qty: q,
           cost: c.to_json(),
           mode: m.to_json(),
         }
