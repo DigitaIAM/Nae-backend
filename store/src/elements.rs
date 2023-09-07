@@ -17,12 +17,13 @@ use crate::aggregations::{AggregationStore, AgregationStoreGoods};
 use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
+use crate::qty::Qty;
 use service::utils::json::JsonParams;
 use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
 pub type Goods = Uuid;
 pub type Store = Uuid;
-pub type Qty = Decimal;
+// pub type Qty = Decimal;
 
 pub const UUID_NIL: Uuid = uuid!("00000000-0000-0000-0000-000000000000");
 pub const UUID_MAX: Uuid = uuid!("ffffffff-ffff-ffff-ffff-ffffffffffff");
@@ -251,7 +252,6 @@ fn json_to_ops<F>(
   wid: &str,
   data: &JsonValue,
   ctx: &Vec<String>,
-  stack: &HashMap<String, (JsonValue, JsonValue)>,
   resolve_doc: F,
 ) -> Result<HashMap<String, Op>, WHError>
 where
@@ -283,8 +283,6 @@ where
     ["production", "material", "used"] => OpType::Dispatch,
     _ => return Ok(ops),
   };
-
-  let params = object! {oid: wid, ctx: [], enrich: false };
 
   let doc_id = data[_DOCUMENT].string();
 
@@ -332,43 +330,44 @@ where
 
   let op = match type_of_operation {
     OpType::Inventory => {
-      let qty = data["qty"]["number"].number_or_none();
+      let qty: Qty = data["qty"].clone().into();
       let cost = data["cost"]["number"].number_or_none();
 
-      if qty.is_none() && cost.is_none() {
+      if qty.inner().is_empty() && cost.is_none() {
         return Ok(ops);
       } else {
         let (cost, mode) =
           if let Some(cost) = cost { (cost.into(), Mode::Manual) } else { (0.into(), Mode::Auto) };
 
-        let qty = qty.unwrap_or_default();
+        // let qty = qty.unwrap_or_default();
 
         InternalOperation::Inventory(BalanceForGoods { qty, cost }, BalanceDelta::default(), mode)
       }
     },
     OpType::Receive => {
-      let qty = match ctx_str[..] {
-        ["production", "produce"] => data["qty"].number_or_none(),
-        _ => data["qty"]["number"].number_or_none(),
-      };
+      let qty: Qty = data["qty"].clone().into();
+      // let qty = match ctx_str[..] {
+      //   ["production", "produce"] => data["qty"].number_or_none(),
+      //   _ => data["qty"]["number"].number_or_none(),
+      // };
       let cost = data["cost"]["number"].number_or_none();
 
-      if qty.is_none() && cost.is_none() {
+      if qty.inner().is_empty() && cost.is_none() {
         return Ok(ops);
       } else {
-        InternalOperation::Receive(qty.unwrap_or_default(), cost.unwrap_or_default().into())
+        InternalOperation::Receive(qty, cost.unwrap_or_default().into())
       }
     },
     OpType::Transfer | OpType::Dispatch => {
-      let qty = data["qty"]["number"].number_or_none();
+      let qty: Qty = data["qty"].clone().into();
       let cost = data["cost"]["number"].number_or_none();
 
-      if qty.is_none() && cost.is_none() {
+      if qty.inner().is_empty() && cost.is_none() {
         return Ok(ops);
       } else {
         let (cost, mode) =
           if let Some(cost) = cost { (cost.into(), Mode::Manual) } else { (0.into(), Mode::Auto) };
-        InternalOperation::Issue(qty.unwrap_or_default(), cost, mode)
+        InternalOperation::Issue(qty, cost, mode)
       }
     },
   };

@@ -1,22 +1,128 @@
-use crate::elements::UUID_NIL;
+use crate::elements::{ToJson, UUID_NIL};
 use crate::error::WHError;
 use actix_web::body::MessageBody;
-use json::JsonValue;
-use rust_decimal::prelude::ToPrimitive;
+use json::{object, JsonValue};
+use rust_decimal::prelude::{ToPrimitive, Zero};
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use service::utils::json::JsonParams;
-use std::ops::{Add, AddAssign, Deref, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Deref, Div, Mul, Neg, Sub, SubAssign};
 use uuid::Uuid;
 
-#[derive(Clone, Debug)]
-enum Uom {
-  In(Uuid, Option<Box<Qty>>),
+#[derive(Clone, Debug, PartialOrd, Eq, Hash, Serialize, Deserialize)]
+pub enum Uom {
+  In(Uuid, Option<Box<Number<Uom>>>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Qty {
+#[derive(Clone, Debug, Default, PartialEq, PartialOrd, Eq, Hash, Serialize, Deserialize)]
+pub struct Number<N> {
   number: Decimal,
-  name: Uom,
+  name: N,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, PartialOrd, Eq, Hash, Serialize, Deserialize)]
+pub struct Qty {
+  inner: Vec<Number<Uom>>,
+}
+
+impl Qty {
+  pub fn new(inner: Vec<Number<Uom>>) -> Self {
+    Qty { inner }
+  }
+
+  pub fn inner(&self) -> &Vec<Number<Uom>> {
+    &self.inner
+  }
+  pub fn is_positive(&self) -> bool {
+    for qty in &self.inner {
+      if !qty.is_positive() {
+        return false;
+      }
+    }
+    true
+  }
+
+  pub fn is_negative(&self) -> bool {
+    for qty in &self.inner {
+      if qty.is_positive() || qty.is_zero() {
+        return false;
+      }
+    }
+    true
+  }
+
+  pub fn is_zero(&self) -> bool {
+    if self.inner.is_empty() {
+      return true;
+    }
+
+    for qty in &self.inner {
+      if qty.number.is_zero() {
+        return true;
+      }
+    }
+
+    false
+  }
+
+  pub(crate) fn lowering(&self, name: Uom) -> Option<Number<Uom>> {
+    let mut result = Number::new(Decimal::ZERO, name.uuid(), name.named());
+
+    'outer: for qty in &self.inner {
+      if qty.name == name {
+        result.number += qty.number;
+        continue;
+      }
+      let mut tmp = qty.clone();
+      while let Some(mut inner_qty) = tmp.named() {
+        inner_qty.number *= tmp.number;
+
+        if inner_qty.name == name {
+          result.number += inner_qty.number;
+          continue 'outer;
+        }
+
+        if inner_qty.named().is_none() {
+          return None;
+        }
+
+        tmp = *inner_qty;
+      }
+    }
+
+    Some(result)
+  }
+
+  pub(crate) fn abs(&self) -> Self {
+    let mut result = self.clone();
+
+    for mut qty in &mut result.inner {
+      if qty.number.is_sign_negative() {
+        qty.number = -qty.number;
+      }
+    }
+    result
+  }
+
+  pub fn common(&self, rhs: &Self) -> Option<Uom> {
+    let mut result: Option<Uom> = None;
+
+    for left in &self.inner {
+      for right in &rhs.inner {
+        if let Some(common) = left.common(&right) {
+          // TODO replace unwrap?
+          if result.is_none() || common.depth() >= result.clone().unwrap().depth() {
+            result = Some(common);
+          }
+        }
+      }
+      if result.is_none() {
+        return result;
+      }
+    }
+
+    result
+  }
 }
 
 trait Convert {
@@ -25,13 +131,13 @@ trait Convert {
 }
 
 impl Convert for Vec<(Decimal, Uuid)> {
-  type Into = Qty;
+  type Into = Number<Uom>;
 
   fn convert(&mut self, into: Self) -> Result<Vec<Self::Into>, WHError> {
-    let mut result: Vec<Qty> = Vec::new();
+    let mut result: Vec<Number<Uom>> = Vec::new();
 
     if self.len() >= into.len() {
-      result.push(Qty::from_vec(self.clone())?);
+      result.push(Number::from_vec(self.clone())?);
       return Ok(result);
     }
 
@@ -63,7 +169,7 @@ impl Convert for Vec<(Decimal, Uuid)> {
             if rem > Decimal::ZERO {
               let mut tmp = from.clone();
               tmp[index] = (rem, *from_uuid);
-              result.push(Qty::from_vec(tmp)?);
+              result.push(Number::from_vec(tmp)?);
               from[index] = ((from_number - rem) / Decimal::from(div), *from_uuid);
             } else {
               from[index] = (from_number / Decimal::from(div), *from_uuid);
@@ -78,7 +184,7 @@ impl Convert for Vec<(Decimal, Uuid)> {
       index += 1;
     }
 
-    result.push(Qty::from_vec(from.clone())?);
+    result.push(Number::from_vec(from.clone())?);
     Ok(result)
   }
 }
@@ -90,7 +196,7 @@ impl Uom {
     }
   }
 
-  fn qty(&self) -> Option<Box<Qty>> {
+  fn named(&self) -> Option<Box<Number<Uom>>> {
     match self {
       Uom::In(_, qty) => qty.clone(),
     }
@@ -119,6 +225,18 @@ impl Uom {
       },
     }
   }
+
+  fn depth(&self) -> usize {
+    let mut result = 0;
+    let mut data = self.named().clone();
+
+    while let Some(qty) = data.as_ref() {
+      result += 1;
+      data = qty.name.named();
+    }
+
+    result
+  }
 }
 
 impl PartialEq for Uom {
@@ -143,32 +261,89 @@ impl PartialEq for Uom {
   }
 }
 
-impl Qty {
-  fn from_json(data: &JsonValue) -> Result<Self, WHError> {
-    let mut data = data;
+impl Into<JsonValue> for Number<Uom> {
+  fn into(self) -> JsonValue {
+    let mut data = self.clone();
+    let mut head = object! {};
+    head["number"] = data.number.to_json();
+    head["uom"] = data.name.uuid().to_json();
+    let mut current = &mut head;
 
-    let mut root = Qty { number: data["number"].number(), name: Uom::In(UUID_NIL, None) };
+    while let Some(qty) = data.named() {
+      let mut tmp = object! {};
+      tmp["number"] = qty.number.to_json();
+      tmp["in"] = data.name.uuid().to_json();
+
+      tmp["uom"] = qty.name.uuid().to_json();
+
+      current["uom"] = tmp.clone();
+      current = &mut current["uom"];
+
+      data = *qty;
+    }
+    head
+  }
+}
+
+impl Into<Number<Uom>> for JsonValue {
+  fn into(self) -> Number<Uom> {
+    let mut data = &self;
+
+    let mut root = Number { number: data["number"].number(), name: Uom::In(UUID_NIL, None) };
 
     let mut head = &mut root;
 
     while data.is_object() {
       let uom = &data["uom"];
-      let mut tmp = Qty { number: Decimal::ZERO, name: Uom::In(UUID_NIL, None) };
+      let mut tmp = Number { number: Decimal::ZERO, name: Uom::In(UUID_NIL, None) };
       if uom.is_object() {
         tmp.number = uom["number"].number();
         tmp.name = Uom::In(UUID_NIL, None);
-        head.name = Uom::In(uom["in"].uuid()?, Some(Box::new(tmp)));
+        head.name = Uom::In(uom["in"].uuid().unwrap_or_default(), Some(Box::new(tmp)));
         head = match &mut head.name {
           Uom::In(_, ref mut qty) => qty.as_mut().unwrap(),
           _ => unreachable!(),
         };
       } else {
-        head.name = Uom::In(uom.uuid()?, None);
+        head.name = Uom::In(uom.uuid().unwrap_or_default(), None);
       }
       data = uom;
     }
 
-    Ok(root)
+    root
+  }
+}
+
+impl Into<JsonValue> for Qty {
+  fn into(self) -> JsonValue {
+    let mut result = JsonValue::new_array();
+    for qty in self.inner {
+      let q: JsonValue = qty.into();
+      result.push(q).unwrap_or_default();
+    }
+    result
+  }
+}
+
+impl Into<Qty> for JsonValue {
+  fn into(self) -> Qty {
+    let mut result = Qty { inner: Vec::new() };
+    if self.is_array() {
+      for qty in self.members() {
+        let q: Number<Uom> = qty.clone().into();
+        result.inner.push(q);
+      }
+    } else if self.is_object() {
+      let q: Number<Uom> = self.clone().into();
+      result.inner.push(q);
+    }
+    result
+  }
+}
+
+impl Number<Uom> {
+  pub fn new(number: Decimal, uuid: Uuid, inner: Option<Box<Number<Uom>>>) -> Self {
+    Number { number, name: Uom::In(uuid, inner) }
   }
 
   fn from_vec(data: Vec<(Decimal, Uuid)>) -> Result<Self, WHError> {
@@ -178,12 +353,12 @@ impl Qty {
     let mut data = data.clone();
     data.reverse();
 
-    let mut root = Qty { number: data[0].0, name: Uom::In(data[0].1, None) };
+    let mut root = Number { number: data[0].0, name: Uom::In(data[0].1, None) };
 
     let mut head = &mut root;
 
     for (num, id) in data[1..].iter() {
-      let tmp = Qty { number: *num, name: Uom::In(*id, None) };
+      let tmp = Number { number: *num, name: Uom::In(*id, None) };
       head.name = Uom::In(head.name.uuid(), Some(Box::new(tmp)));
       head = match &mut head.name {
         Uom::In(_, ref mut qty) => qty.as_mut().unwrap(),
@@ -193,20 +368,28 @@ impl Qty {
     Ok(root)
   }
 
-  fn qty(&self) -> Option<Box<Qty>> {
+  pub(crate) fn named(&self) -> Option<Box<Number<Uom>>> {
+    self.name.named()
+  }
+
+  pub(crate) fn uuid(&self) -> Uuid {
     match &self.name {
-      Uom::In(_, qty) => qty.clone(),
+      Uom::In(uuid, _) => uuid.clone(),
     }
   }
 
-  fn depth(&self) -> Vec<(Decimal, Uuid)> {
+  pub(crate) fn number(&self) -> Decimal {
+    self.number
+  }
+
+  fn to_vec(&self) -> Vec<(Decimal, Uuid)> {
     let mut result = Vec::new();
 
     result.insert(0, (self.number, self.name.uuid()));
 
     let mut current = self.clone();
 
-    while let Some(qty) = current.qty() {
+    while let Some(qty) = current.named() {
       result.insert(0, (qty.number, qty.name.uuid()));
       current = *qty;
     }
@@ -239,88 +422,113 @@ impl Qty {
 
     left.convert(full)
   }
-}
 
-impl Add for Qty {
-  type Output = Vec<Self>;
-
-  fn add(self, rhs: Self) -> Self::Output {
-    let mut vector: Vec<Self> = Vec::new();
-
-    let mut is_equal = true;
-
-    if self.name != rhs.name {
-      is_equal = false;
+  pub fn is_zero(&self) -> bool {
+    if self.number.is_zero() {
+      true
     } else {
-      let mut left = Uom::In(self.name.uuid(), Some(Box::new(self.clone())));
-      let mut right = Uom::In(self.name.uuid(), Some(Box::new(rhs.clone())));
+      false
+    } // TODO is this correct?
+  }
 
-      while left.is_some() && right.is_some() {
-        left = match left {
-          Uom::In(uuid, qty) => {
-            if let Some(q) = qty {
-              match q.name {
-                Uom::In(inner_uuid, inner_qty) => Uom::In(inner_uuid, inner_qty),
-              }
-            } else {
-              Uom::In(uuid, None)
+  fn is_positive(&self) -> bool {
+    if self.number > Decimal::ZERO {
+      true
+    } else {
+      false
+    }
+  }
+
+  fn is_negative(&self) -> bool {
+    if self.number < Decimal::ZERO {
+      true
+    } else {
+      false
+    }
+  }
+
+  fn get_common(mut big: Number<Uom>, mut small: Number<Uom>) -> Option<Uom> {
+    if small.name.depth() > 0 {
+      while let Some(s) = small.named() {
+        while let Some(b) = big.named() {
+          if big.name == small.name {
+            return Some(big.name);
+          }
+          big = *b;
+          if big.named().is_none() {
+            if big.name == small.name {
+              return Some(big.name);
             }
-          },
-        };
-
-        right = match right {
-          Uom::In(uuid, qty) => {
-            if let Some(q) = qty {
-              match q.name {
-                Uom::In(inner_uuid, inner_qty) => Uom::In(inner_uuid, inner_qty),
-              }
-            } else {
-              Uom::In(uuid, None)
-            }
-          },
-        };
-
-        if left != right {
-          is_equal = false;
-          break;
+          }
+        }
+        small = *s;
+      }
+    } else {
+      while let Some(b) = big.named() {
+        if big.name == small.name {
+          return Some(big.name);
+        }
+        big = *b;
+        if big.named().is_none() {
+          if big.name == small.name {
+            return Some(big.name);
+          }
         }
       }
     }
 
-    if is_equal {
-      let mut result = self.clone();
-      result.number += rhs.number;
-      vector.push(result);
+    None
+  }
+
+  fn common(&self, rhs: &Self) -> Option<Uom> {
+    if self.name == rhs.name {
+      return Some(self.name.clone());
     } else {
-      vector.push(self);
-      vector.push(rhs);
+      let mut left = self.clone();
+      let mut right = rhs.clone();
+      let left_depth = left.name.depth();
+      let right_depth = right.name.depth();
+
+      if left_depth == right_depth {
+        while let (Some(l), Some(r)) = (left.named(), right.named()) {
+          if left.name == right.name {
+            return Some(left.name);
+          }
+          left = *l;
+          right = *r;
+        }
+      } else if left_depth > right_depth {
+        return Self::get_common(left, right);
+      } else {
+        return Self::get_common(right, left);
+      }
     }
 
-    vector
+    None
   }
 }
 
-impl Neg for Qty {
+impl Neg for Number<Uom> {
   type Output = Self;
 
   fn neg(self) -> Self::Output {
-    Qty { number: -self.number, name: self.name }
+    Number { number: -self.number, name: self.name }
   }
 }
 
-impl Sub for Qty {
-  type Output = Result<Vec<Self>, WHError>;
+impl Sub for Number<Uom> {
+  type Output = Qty;
 
   fn sub(self, rhs: Self) -> Self::Output {
-    let mut left = self.depth();
-    let mut right = rhs.depth();
+    let mut left = self.to_vec();
+    let mut right = rhs.to_vec();
     let mut index = 0;
 
     for (l, r) in left.iter().zip(right.iter()) {
       // compare name and number parts if it's not the last value
       if index + 1 < left.len() && index + 1 < right.len() {
         if l != r {
-          return Ok(vec![self, -rhs]);
+          return Qty { inner: vec![self, -rhs] };
         }
         index += 1;
       } else {
@@ -328,37 +536,211 @@ impl Sub for Qty {
         let (_, left_id) = l;
         let (_, right_id) = r;
         if left_id != right_id {
-          return Ok(vec![self, -rhs]);
+          return Qty { inner: vec![self, -rhs] };
         }
       }
     }
 
-    // println!("index= {index}");
-
     let full = left.clone();
 
     if left.len() > index + 1 {
-      Qty::simplify(&mut left, index);
+      Number::simplify(&mut left, index);
     } else if right.len() > index + 1 {
-      Qty::simplify(&mut right, index);
+      Number::simplify(&mut right, index);
     }
 
-    let mut result = Vec::new();
+    let mut result = Qty { inner: Vec::new() };
 
     if left.len() == right.len() {
-      result = Qty::subtract(full, left, right)?;
+      result.inner = Number::subtract(full, left, right).unwrap_or_default();
     }
 
-    Ok(result)
+    result
+  }
+}
+
+impl Mul<Decimal> for Number<Uom> {
+  type Output = Decimal;
+
+  fn mul(self, rhs: Decimal) -> Self::Output {
+    let mut sum_qty = self.number;
+    let mut data = self;
+
+    while let Some(qty) = data.named() {
+      sum_qty *= qty.number;
+      data = *qty;
+    }
+
+    sum_qty * rhs
+  }
+}
+
+impl Div<Number<Uom>> for Decimal {
+  type Output = Self;
+
+  fn div(self, rhs: Number<Uom>) -> Self::Output {
+    let mut sum_qty = rhs.number;
+    let mut data = rhs;
+
+    while let Some(qty) = data.named() {
+      sum_qty *= qty.number;
+      data = *qty;
+    }
+
+    self / sum_qty
+  }
+}
+
+impl Add for Qty {
+  type Output = Self;
+
+  fn add(self, rhs: Self) -> Self::Output {
+    let mut vector: Self = Qty { inner: Vec::new() };
+
+    let mut rhs = rhs.inner.clone();
+
+    for left in self.inner {
+      let mut index = usize::MAX;
+      for (i, right) in rhs.iter().enumerate() {
+        if left.name == right.name {
+          let mut result = left.clone();
+          result.number += right.number;
+          vector.inner.push(result);
+          index = i;
+          break;
+        }
+      }
+      if index != usize::MAX {
+        rhs.remove(index);
+      } else {
+        vector.inner.push(left);
+      }
+    }
+
+    for right in rhs {
+      vector.inner.push(right);
+    }
+    vector
+  }
+}
+
+impl AddAssign<&Qty> for Qty {
+  fn add_assign(&mut self, rhs: &Qty) {
+    let result = self.clone() + rhs.clone();
+    *self = result;
+  }
+}
+
+impl Sub for Qty {
+  type Output = Self;
+
+  fn sub(self, rhs: Self) -> Self::Output {
+    let mut result: Self = Qty { inner: Vec::new() };
+    let mut vec_left = self.inner.clone();
+    let mut vec_right = rhs.inner.clone();
+    let mut untouched_left: Option<Number<Uom>> = None;
+
+    let mut find_difference = |index: &mut usize,
+                               i,
+                               left: &Number<Uom>,
+                               right: &mut Number<Uom>,
+                               inner: &mut Vec<Number<Uom>>| {
+      *index = i;
+      let mut diff = left.clone() - right.clone();
+      if !left.is_negative() && diff.is_negative() {
+        for qty in diff.inner {
+          if qty.is_negative() {
+            *right = qty;
+            return false;
+          }
+        }
+      } else {
+        inner.append(&mut diff.inner);
+      }
+      true
+    };
+
+    for right in vec_right {
+      let mut index = usize::MAX;
+      let mut right = right.clone();
+      for (i, left) in vec_left.iter().enumerate() {
+        if i == vec_left.len() - 1 && right.is_negative() {
+          right = -right
+        }
+        if left.name == right.name {
+          if find_difference(&mut index, i, left, &mut right, &mut result.inner) {
+            break;
+          } else {
+            continue;
+          }
+        } else {
+          untouched_left = Some(left.clone());
+          if let Some(left_inner) = left.named() {
+            if left_inner.name == right.name {
+              if find_difference(&mut index, i, left, &mut right, &mut result.inner) {
+                break;
+              } else {
+                continue;
+              }
+            }
+          } else if let Some(right_inner) = right.named() {
+            if left.name == right_inner.name {
+              if find_difference(&mut index, i, left, &mut right, &mut result.inner) {
+                break;
+              } else {
+                continue;
+              }
+            }
+          }
+        }
+      }
+
+      if index != usize::MAX {
+        vec_left.remove(index);
+        if right.is_negative() {
+          if vec_left.is_empty() {
+            result.inner.push(right.clone());
+          } else {
+            result.inner.push(-right.clone());
+          }
+        }
+      } else {
+        if let Some(untouched) = &untouched_left {
+          result.inner.push(untouched.clone());
+        }
+        result.inner.push(-right.clone());
+      }
+    }
+    result
+  }
+}
+
+impl SubAssign<&Qty> for Qty {
+  fn sub_assign(&mut self, rhs: &Qty) {
+    let result = self.clone() - rhs.clone();
+    *self = result;
+  }
+}
+
+impl Neg for Qty {
+  type Output = Self;
+
+  fn neg(self) -> Self::Output {
+    let mut result = self;
+
+    for mut qty in &mut result.inner {
+      qty.number = -qty.number;
+    }
+
+    result
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use crate::elements::{ToJson, UUID_MAX};
-  use crate::qty::UUID_NIL;
-  use crate::qty::{Qty, Uom};
-  use json::object;
+  use crate::elements::{ToJson, UUID_MAX, UUID_NIL};
+  use crate::qty::{Number, Qty, Uom};
+  use json::{array, object, JsonValue};
   use rust_decimal::Decimal;
   use uuid::Uuid;
 
@@ -373,11 +755,12 @@ mod tests {
       "uom": u0.to_json(),
     };
 
-    let qty0 = Qty::from_json(&data0).unwrap();
+    let qty0: Qty = data0.into();
     // println!("{qty0:?}");
 
-    assert_eq!(qty0.number, Decimal::from(1));
-    assert_eq!(qty0.name, Uom::In(u0, None));
+    assert_eq!(qty0.inner.len(), 1);
+    assert_eq!(qty0.inner[0].number, Decimal::from(1));
+    assert_eq!(qty0.inner[0].name, Uom::In(u0, None));
 
     let data1 = object! {
       "number": 1,
@@ -388,13 +771,14 @@ mod tests {
       },
     };
 
-    let qty1 = Qty::from_json(&data1).unwrap();
+    let qty1: Qty = data1.into();
     // println!("{qty1:?}");
 
-    assert_eq!(qty1.number, Decimal::from(1));
+    assert_eq!(qty1.inner.len(), 1);
+    assert_eq!(qty1.inner[0].number, Decimal::from(1));
     assert_eq!(
-      qty1.name,
-      Uom::In(u0, Some(Box::new(Qty { number: Decimal::from(2), name: Uom::In(u1, None) })))
+      qty1.inner[0].name,
+      Uom::In(u0, Some(Box::new(Number { number: Decimal::from(2), name: Uom::In(u1, None) })))
     );
 
     let data2 = object! {
@@ -410,19 +794,20 @@ mod tests {
       },
     };
 
-    let qty2 = Qty::from_json(&data2).unwrap();
+    let qty2: Qty = data2.into();
     // println!("{qty2:?}");
 
-    assert_eq!(qty2.number, Decimal::from(2));
+    assert_eq!(qty2.inner.len(), 1);
+    assert_eq!(qty2.inner[0].number, Decimal::from(2));
     assert_eq!(
-      qty2.name,
+      qty2.inner[0].name,
       Uom::In(
         u0,
-        Some(Box::new(Qty {
+        Some(Box::new(Number {
           number: Decimal::from(10),
           name: Uom::In(
             u1,
-            Some(Box::new(Qty { number: Decimal::from(100), name: Uom::In(u2, None) }))
+            Some(Box::new(Number { number: Decimal::from(100), name: Uom::In(u2, None) }))
           ),
         }))
       )
@@ -430,7 +815,47 @@ mod tests {
   }
 
   #[test]
-  fn find_depth() {
+  fn to_json() {
+    let u0 = Uuid::new_v4();
+    let u1 = Uuid::new_v4();
+    let u2 = Uuid::new_v4();
+
+    let data0 = array![object! {
+      "number": Decimal::from(1).to_json(),
+      "uom": u0.to_json(),
+    }];
+
+    let qty0: Qty = data0.clone().into();
+
+    let mut json0: JsonValue = qty0.into();
+    // println!("json0 {json0}");
+
+    assert_eq!(data0, json0);
+
+    let data2 = array![object! {
+      "number": Decimal::from(2).to_json(),
+      "uom": object! {
+        "number": Decimal::from(10).to_json(),
+        "uom": object! {
+          "number": Decimal::from(100).to_json(),
+          "uom": u2.to_json(),
+          "in": u1.to_json(),
+        },
+        "in": u0.to_json(),
+      },
+    }];
+
+    let qty2: Qty = data2.clone().into();
+    // println!("qty2 {qty2:?}");
+
+    let mut json2: JsonValue = qty2.into();
+    // println!("json2 {json2}");
+
+    assert_eq!(data2, json2);
+  }
+
+  #[test]
+  fn into_vec() {
     let u0 = Uuid::new_v4();
     let u1 = Uuid::new_v4();
     let u2 = Uuid::new_v4();
@@ -448,9 +873,10 @@ mod tests {
       },
     };
 
-    let qty0 = Qty::from_json(&data0).unwrap();
+    let qty0: Qty = data0.into();
+    assert_eq!(qty0.inner.len(), 1);
 
-    let result = qty0.depth();
+    let result = qty0.inner[0].clone().to_vec();
     // println!("{result:?}");
 
     assert_eq!(result.len(), 3);
@@ -478,12 +904,14 @@ mod tests {
       },
     };
 
-    let qty2 = Qty::from_json(&data2).unwrap();
-    let mut vector = qty2.depth();
+    let qty2: Qty = data2.into();
+    assert_eq!(qty2.inner.len(), 1);
+
+    let mut vector = qty2.inner[0].clone().to_vec();
     assert_eq!(vector.len(), 3);
     // println!("{vector:?}");
 
-    Qty::simplify(&mut vector, 1);
+    Number::simplify(&mut vector, 1);
 
     assert_eq!(vector.len(), 2);
     assert_eq!(vector[0].0, Decimal::from(100));
@@ -499,7 +927,7 @@ mod tests {
       "uom": UUID_NIL.to_json(),
     };
 
-    let qty0 = Qty::from_json(&data0).unwrap();
+    let qty0: Qty = data0.into();
     // println!("{qty0:?}");
 
     let data1 = object! {
@@ -507,13 +935,14 @@ mod tests {
       "uom": UUID_NIL.to_json(),
     };
 
-    let qty1 = Qty::from_json(&data1).unwrap();
+    let qty1: Qty = data1.into();
     // println!("{qty1:?}");
 
     let res0 = qty0 + qty1;
-    // println!("res= {res0:?}");
+    // println!("res0= {res0:?}");
 
-    assert_eq!(res0[0].number, Decimal::from(5));
+    assert_eq!(res0.inner.len(), 1);
+    assert_eq!(res0.inner[0].number, Decimal::from(5));
 
     let data2 = object! {
       "number": 1,
@@ -524,7 +953,7 @@ mod tests {
       },
     };
 
-    let qty2 = Qty::from_json(&data2).unwrap();
+    let qty2: Qty = data2.into();
     // println!("{qty2:?}");
 
     let data3 = object! {
@@ -536,71 +965,79 @@ mod tests {
       },
     };
 
-    let qty3 = Qty::from_json(&data3).unwrap();
+    let qty3: Qty = data3.into();
     // println!("{qty3:?}");
 
     let res1 = qty2 + qty3;
-    // println!("res= {res1:?}");
+    // println!("res1= {res1:?}");
 
-    assert_eq!(res1[0].number, Decimal::from(2));
+    assert_eq!(res1.inner.len(), 1);
+    assert_eq!(res1.inner[0].number, Decimal::from(2));
+    assert_eq!(res1.inner[0].name.named().unwrap().number, Decimal::from(10));
   }
 
   #[test]
   fn add_failure() {
+    let u0 = Uuid::new_v4();
+    let u1 = Uuid::new_v4();
+    let u2 = Uuid::new_v4();
+
     // different uuids
     let data0 = object! {
       "number": 2,
-      "uom": UUID_NIL.to_json(),
+      "uom": u0.to_json(),
     };
 
-    let qty0 = Qty::from_json(&data0).unwrap();
+    let qty0: Qty = data0.into();
     // println!("{qty0:?}");
 
     let data1 = object! {
       "number": 2,
-      "uom": UUID_MAX.to_json(),
+      "uom": u1.to_json(),
     };
 
-    let qty1 = Qty::from_json(&data1).unwrap();
+    let qty1: Qty = data1.into();
     // println!("{qty1:?}");
 
     let res0 = qty0 + qty1;
     // println!("res= {res0:?}");
 
-    assert_eq!(res0[0].number, Decimal::from(2));
-    assert_eq!(res0[1].number, Decimal::from(2));
+    assert_eq!(res0.inner.len(), 2);
+    assert_eq!(res0.inner[0].number, Decimal::from(2));
+    assert_eq!(res0.inner[1].number, Decimal::from(2));
 
     // different numbers
     let data2 = object! {
       "number": 1,
       "uom": object! {
         "number": 10,
-        "uom": UUID_NIL.to_json(),
-        "in": UUID_MAX.to_json(),
+        "uom": u1.to_json(),
+        "in": u0.to_json(),
       },
     };
 
-    let qty2 = Qty::from_json(&data2).unwrap();
+    let qty2: Qty = data2.into();
     // println!("{qty2:?}");
 
     let data3 = object! {
       "number": 1,
       "uom": object! {
         "number": 11,
-        "uom": UUID_NIL.to_json(),
-        "in": UUID_MAX.to_json(),
+        "uom": u1.to_json(),
+        "in": u0.to_json(),
       },
     };
 
-    let qty3 = Qty::from_json(&data3).unwrap();
+    let qty3: Qty = data3.into();
     // println!("{qty3:?}");
 
     let res1 = qty2 + qty3;
 
     // println!("res= {res1:?}");
 
-    assert_eq!(res1[0].number, Decimal::from(1));
-    assert_eq!(res1[1].number, Decimal::from(1));
+    assert_eq!(res1.inner.len(), 2);
+    assert_eq!(res1.inner[0].number, Decimal::from(1));
+    assert_eq!(res1.inner[1].number, Decimal::from(1));
 
     // different numbers
     let data4 = object! {
@@ -609,14 +1046,14 @@ mod tests {
         "number": 10,
         "uom": object! {
           "number": 100,
-          "uom": UUID_NIL.to_json(),
-          "in": UUID_NIL.to_json(),
+          "uom": u2.to_json(),
+          "in": u1.to_json(),
         },
-        "in": UUID_MAX.to_json(),
+        "in": u0.to_json(),
       },
     };
 
-    let qty4 = Qty::from_json(&data4).unwrap();
+    let qty4: Qty = data4.into();
     // println!("{qty4:?}");
 
     let data5 = object! {
@@ -625,21 +1062,22 @@ mod tests {
         "number": 10,
         "uom": object! {
           "number": 99,
-          "uom": UUID_NIL.to_json(),
-          "in": UUID_NIL.to_json(),
+          "uom": u2.to_json(),
+          "in": u1.to_json(),
         },
-        "in": UUID_MAX.to_json(),
+        "in": u0.to_json(),
       },
     };
 
-    let qty5 = Qty::from_json(&data5).unwrap();
+    let qty5: Qty = data5.into();
     // println!("{qty5:?}");
 
     let res2 = qty4 + qty5;
     // println!("res= {res2:?}");
 
-    assert_eq!(res2[0].number, Decimal::from(2));
-    assert_eq!(res2[1].number, Decimal::from(2));
+    assert_eq!(res2.inner.len(), 2);
+    assert_eq!(res2.inner[0].number, Decimal::from(2));
+    assert_eq!(res2.inner[1].number, Decimal::from(2));
   }
 
   #[test]
@@ -657,7 +1095,7 @@ mod tests {
       },
     };
 
-    let qty0 = Qty::from_json(&data0).unwrap();
+    let qty0: Qty = data0.into();
     // println!("{qty0:?}");
 
     let data1 = object! {
@@ -665,14 +1103,14 @@ mod tests {
       "uom": u0.to_json(),
     };
 
-    let qty1 = Qty::from_json(&data1).unwrap();
+    let qty1: Qty = data1.into();
     // println!("{qty1:?}");
 
-    let res0 = (qty0 - qty1).unwrap();
+    let res0 = qty0 - qty1;
     // println!("res= {res0:?}");
 
-    assert_eq!(res0.len(), 1);
-    assert_eq!(res0[0].number, Decimal::from(8));
+    assert_eq!(res0.inner.len(), 1);
+    assert_eq!(res0.inner[0].number, Decimal::from(8));
 
     let data2 = object! {
       "number": 2,
@@ -687,7 +1125,7 @@ mod tests {
       },
     };
 
-    let qty2 = Qty::from_json(&data2).unwrap();
+    let qty2: Qty = data2.into();
     // println!("{qty2:?}");
 
     let data3 = object! {
@@ -699,22 +1137,22 @@ mod tests {
       },
     };
 
-    let qty3 = Qty::from_json(&data3).unwrap();
+    let qty3: Qty = data3.into();
     // println!("{qty3:?}");
 
-    let res1 = (qty2 - qty3).unwrap();
+    let res1 = qty2 - qty3;
     // println!("res= {res1:?}");
 
-    assert_eq!(res1.len(), 2);
-    assert_eq!(res1[0].number, Decimal::from(5));
+    assert_eq!(res1.inner.len(), 2);
+    assert_eq!(res1.inner[0].number, Decimal::from(5));
 
-    let qty3 = res1[1].clone();
+    let qty3 = res1.inner[1].clone();
     assert_eq!(qty3.number, Decimal::from(1));
 
-    let qty3_inner = qty3.name.qty().unwrap();
+    let qty3_inner = qty3.name.named().unwrap();
     assert_eq!(qty3_inner.number, Decimal::from(10));
 
-    let qty3_inner_inner = qty3_inner.name.qty().unwrap();
+    let qty3_inner_inner = qty3_inner.name.named().unwrap();
     assert_eq!(qty3_inner_inner.number, Decimal::from(100));
   }
 
@@ -729,7 +1167,7 @@ mod tests {
       "uom": u0.to_json(),
     };
 
-    let qty0 = Qty::from_json(&data0).unwrap();
+    let qty0: Qty = data0.into();
     // println!("{qty0:?}");
 
     let data1 = object! {
@@ -737,15 +1175,15 @@ mod tests {
       "uom": u1.to_json(),
     };
 
-    let qty1 = Qty::from_json(&data1).unwrap();
+    let qty1: Qty = data1.into();
     // println!("{qty1:?}");
 
-    let res0 = (qty0 - qty1).unwrap();
+    let res0 = qty0 - qty1;
     // println!("res= {res0:?}");
 
-    assert_eq!(res0.len(), 2);
-    assert_eq!(res0[0].number, Decimal::from(3));
-    assert_eq!(res0[1].number, Decimal::from(-2));
+    assert_eq!(res0.inner.len(), 2);
+    assert_eq!(res0.inner[0].number, Decimal::from(3));
+    assert_eq!(res0.inner[1].number, Decimal::from(-2));
 
     let data2 = object! {
       "number": 2,
@@ -760,7 +1198,7 @@ mod tests {
       },
     };
 
-    let qty2 = Qty::from_json(&data2).unwrap();
+    let qty2: Qty = data2.into();
     // println!("{qty2:?}");
 
     let data3 = object! {
@@ -772,14 +1210,309 @@ mod tests {
       },
     };
 
-    let qty3 = Qty::from_json(&data3).unwrap();
+    let qty3: Qty = data3.into();
     // println!("{qty3:?}");
 
-    let res1 = (qty2 - qty3).unwrap();
+    let res1 = qty2 - qty3;
     // println!("res= {res1:?}");
 
-    assert_eq!(res1.len(), 2);
-    assert_eq!(res1[0].number, Decimal::from(2));
-    assert_eq!(res1[1].number, Decimal::from(-5));
+    assert_eq!(res1.inner.len(), 2);
+    assert_eq!(res1.inner[0].number, Decimal::from(2));
+    assert_eq!(res1.inner[1].number, Decimal::from(-5));
+  }
+
+  #[test]
+  fn sub_neg_result() {
+    let u0 = Uuid::new_v4();
+    let u1 = Uuid::new_v4();
+    let u2 = Uuid::new_v4();
+
+    let data0 = object! {
+      "number": 2,
+      "uom": u0.to_json(),
+    };
+
+    let qty0: Qty = data0.into();
+    // println!("{qty0:?}");
+
+    let data1 = object! {
+      "number": 3,
+      "uom": u0.to_json(),
+    };
+
+    let qty1: Qty = data1.into();
+    // println!("{qty1:?}");
+
+    let res0 = qty0 - qty1;
+    // println!("res0= {res0:?}");
+
+    assert_eq!(res0.inner.len(), 1);
+    assert_eq!(res0.inner[0].number, Decimal::from(-1));
+
+    let data2 = array![
+      object! {
+        "number": 3,
+        "uom": u0.to_json(),
+      },
+      object! {
+        "number": 4,
+        "uom": u0.to_json(),
+      },
+    ];
+
+    let qty2: Qty = data2.into();
+    // println!("{qty0:?}");
+
+    let data3 = object! {
+      "number": 5,
+      "uom": u0.to_json(),
+    };
+
+    let qty3: Qty = data3.into();
+    // println!("{qty1:?}");
+
+    let res1 = qty2 - qty3;
+    // println!("res1= {res1:?}");
+
+    assert_eq!(res1.inner.len(), 1);
+    assert_eq!(res1.inner[0].number, Decimal::from(2));
+  }
+
+  #[test]
+  fn lowering() {
+    let u0 = Uuid::new_v4();
+    let u1 = Uuid::new_v4();
+    let u2 = Uuid::new_v4();
+
+    let data0 = object! {
+      "number": 2,
+      "uom": object! {
+        "number": 10,
+        "uom": object! {
+          "number": 100,
+          "uom": u2.to_json(),
+          "in": u1.to_json(),
+        },
+        "in": u0.to_json(),
+      },
+    };
+
+    let qty0: Qty = data0.into();
+
+    let data1 = object! {
+      "number": 20,
+      "uom": object! {
+        "number": 100,
+        "uom": u2.to_json(),
+        "in": u1.to_json(),
+      },
+    };
+
+    let qty1: Qty = data1.into();
+
+    // 10 u1 x 100 u2
+    let uom = qty0.inner[0].name.named().unwrap().name;
+
+    let lower = qty0.lowering(uom).unwrap();
+    println!("lower {lower:?}");
+
+    assert_eq!(qty1.inner[0], lower);
+  }
+
+  #[test]
+  fn common() {
+    let u0 = Uuid::new_v4();
+    let u1 = Uuid::new_v4();
+    let u2 = Uuid::new_v4();
+
+    // two structs with depth == 0
+    let data0 = object! {
+      "number": 1,
+      "uom": u2.to_json(),
+    };
+
+    let qty0: Qty = data0.into();
+
+    let data1 = object! {
+      "number": 1,
+      "uom": u2.to_json(),
+    };
+
+    let qty1: Qty = data1.into();
+
+    let common0 = qty0.common(&qty1).unwrap();
+    // println!("common0 {common0:?}");
+
+    assert_eq!(common0, qty0.inner[0].name);
+
+    // one struct with depth == 0 and one with depth > 0
+    let data2 = object! {
+      "number": 1,
+      "uom": u2.to_json(),
+    };
+
+    let qty2: Qty = data2.into();
+
+    let data3 = object! {
+      "number": 2,
+      "uom": object! {
+        "number": 10,
+        "uom": object! {
+          "number": 100,
+          "uom": u2.to_json(),
+          "in": u1.to_json(),
+        },
+        "in": u0.to_json(),
+      },
+    };
+
+    let qty3: Qty = data3.into();
+
+    let common1 = qty2.common(&qty3).unwrap();
+    // println!("common1 {common1:?}");
+
+    assert_eq!(common1, qty2.inner[0].name);
+
+    // two structs with depth > 0
+    let data4 = object! {
+      "number": 2,
+      "uom": object! {
+        "number": 10,
+        "uom": object! {
+          "number": 100,
+          "uom": u2.to_json(),
+          "in": u1.to_json(),
+        },
+        "in": u0.to_json(),
+      },
+    };
+
+    let qty4: Qty = data4.into();
+
+    let data5 = object! {
+      "number": 20,
+      "uom": object! {
+        "number": 100,
+        "uom": u2.to_json(),
+        "in": u1.to_json(),
+      },
+
+    };
+
+    let qty5: Qty = data5.into();
+
+    let common2 = qty4.common(&qty5).unwrap();
+    // println!("common2 {common2:?}");
+
+    assert_eq!(common2, qty5.inner[0].name);
+  }
+
+  #[test]
+  fn depth() {
+    let u0 = Uuid::new_v4();
+    let u1 = Uuid::new_v4();
+    let u2 = Uuid::new_v4();
+
+    let data0 = object! {
+      "number": 1,
+      "uom": u0.to_json(),
+    };
+
+    let qty0: Qty = data0.into();
+
+    let depth0 = qty0.inner[0].name.depth();
+    // println!("depth0 {depth0}");
+
+    assert_eq!(depth0, 0);
+
+    let data1 = object! {
+      "number": 20,
+      "uom": object! {
+        "number": 100,
+        "uom": u2.to_json(),
+        "in": u1.to_json(),
+      },
+    };
+
+    let qty1: Qty = data1.into();
+
+    let depth1 = qty1.inner[0].name.depth();
+    // println!("depth1 {depth1}");
+
+    assert_eq!(depth1, 1);
+
+    let data2 = object! {
+      "number": 2,
+      "uom": object! {
+        "number": 10,
+        "uom": object! {
+          "number": 100,
+          "uom": u2.to_json(),
+          "in": u1.to_json(),
+        },
+        "in": u0.to_json(),
+      },
+    };
+
+    let qty2: Qty = data2.into();
+
+    let depth2 = qty2.inner[0].name.depth();
+    // println!("depth2 {depth2}");
+
+    assert_eq!(depth2, 2);
+  }
+
+  #[test]
+  fn mul() {
+    let u0 = Uuid::new_v4();
+    let u1 = Uuid::new_v4();
+    let u2 = Uuid::new_v4();
+
+    let data0 = object! {
+      "number": 2,
+      "uom": object! {
+        "number": 10,
+        "uom": object! {
+          "number": 100,
+          "uom": u2.to_json(),
+          "in": u1.to_json(),
+        },
+        "in": u0.to_json(),
+      },
+    };
+
+    let qty0: Qty = data0.into();
+
+    let res = qty0.inner[0].clone() * Decimal::from(2);
+    // println!("mul {res:?}");
+
+    assert_eq!(res, Decimal::from(4000));
+  }
+
+  #[test]
+  fn div() {
+    let u0 = Uuid::new_v4();
+    let u1 = Uuid::new_v4();
+    let u2 = Uuid::new_v4();
+
+    let data0 = object! {
+      "number": 1,
+      "uom": object! {
+        "number": 10,
+        "uom": object! {
+          "number": 100,
+          "uom": u2.to_json(),
+          "in": u1.to_json(),
+        },
+        "in": u0.to_json(),
+      },
+    };
+
+    let qty0: Qty = data0.into();
+
+    let res = Decimal::from(2000) / qty0.inner[0].clone();
+    // println!("div {res:?}");
+
+    assert_eq!(res, Decimal::from(2));
   }
 }
