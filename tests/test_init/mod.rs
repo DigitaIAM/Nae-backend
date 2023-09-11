@@ -27,7 +27,7 @@ const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
 #[cfg(test)]
 pub fn init() -> (TempDir, Settings, AnimoDB) {
-  std::env::set_var("RUST_LOG", "off"); // debug,tantivy=off // actix_web=debug,nae_backend=debug
+  std::env::set_var("RUST_LOG", "debug"); // debug,tantivy=off // actix_web=debug,nae_backend=debug
   env_logger::init();
   // let _ = env_logger::builder().is_test(true).try_init();
 

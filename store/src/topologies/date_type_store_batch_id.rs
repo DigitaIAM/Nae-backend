@@ -7,7 +7,7 @@ use crate::{
 
 use crate::ordered_topology::OrderedTopology;
 
-use crate::aggregations::new_get_aggregations;
+use crate::aggregations::get_aggregations;
 use crate::batch::Batch;
 use crate::elements::Goods;
 use crate::operations::Op;
@@ -366,7 +366,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
 
     let ops = self.get_ops_for_storage(storage, first_day_current_month(from_date), till_date)?;
 
-    let items = new_get_aggregations(balances, ops, from_date);
+    let items = get_aggregations(balances, ops, from_date);
 
     Ok(Report { from_date, till_date, items })
   }

@@ -444,9 +444,7 @@ pub trait OrderedTopology {
       InternalOperation::Inventory(b, d, m) => {
         let mut cost = d.cost;
         let op = if m == &Mode::Auto {
-          if let Some(common) = balance.qty.common(&d.qty) {
-            cost = balance.clone().price(common.clone()).cost(d.qty.clone(), common);
-          }
+          cost = d.qty.cost(balance);
 
           Op {
             id: op.id,
@@ -467,23 +465,19 @@ pub trait OrderedTopology {
           op.clone()
         };
 
-        (op, BalanceForGoods { qty: balance.qty.clone() + d.qty.clone(), cost: balance.cost - cost })
+        (op, BalanceForGoods { qty: &balance.qty + &d.qty, cost: balance.cost - cost })
       },
-      InternalOperation::Receive(q, c) => (
-        op.clone(),
-        BalanceForGoods { qty: balance.qty.clone() + q.clone(), cost: balance.cost + *c },
-      ),
+      InternalOperation::Receive(q, c) => {
+        (op.clone(), BalanceForGoods { qty: &balance.qty + &q, cost: balance.cost + *c })
+      },
       InternalOperation::Issue(q, c, m) => {
         let mut cost = *c;
         let op = if m == &Mode::Auto {
           cost = if balance.qty == *q {
             balance.cost
           } else {
-            if let Some(common) = balance.qty.common(q) {
-              balance.clone().price(common.clone()).cost(q.clone(), common)
-            } else {
-              Cost::ZERO
-            }
+            // balance.clone().price(common.clone()).cost(q.clone(), common)
+            q.cost(balance)
           };
           Op {
             id: op.id,
@@ -500,7 +494,7 @@ pub trait OrderedTopology {
           op.clone()
         };
 
-        (op, BalanceForGoods { qty: balance.qty.clone() - q.clone(), cost: balance.cost - cost })
+        (op, BalanceForGoods { qty: &balance.qty - &q, cost: balance.cost - cost })
       },
     }
   }
@@ -739,10 +733,11 @@ impl<'a> PropagationFront<'a> {
 
     let mut stock_balance = BalanceForGoods::default();
     for (_batch, balance) in balance_before_operation.iter() {
-      if balance.qty.is_positive() {
-        stock_balance.qty += &balance.qty;
-        stock_balance.cost += balance.cost;
-      }
+      // we need all balances (including negative) for stock
+      // if balance.qty.is_positive() {
+      stock_balance.qty += &balance.qty;
+      stock_balance.cost += balance.cost;
+      // }
     }
 
     let diff_balance = op.op.apply(&stock_balance);
@@ -790,7 +785,8 @@ impl<'a> PropagationFront<'a> {
           new.dependant = vec![];
           new.batch = batch;
           let cost = if let Some(common) = balance.qty.common(&qty) {
-            balance.price(common.clone()).cost(qty.abs(), common)
+            // balance.price(common.clone()).cost(qty.abs(), common)
+            qty.abs().cost(&balance)
           } else {
             Cost::ZERO
           };
@@ -845,8 +841,15 @@ impl<'a> PropagationFront<'a> {
     let mut new_dependant: Vec<Dependant> = vec![];
 
     for (batch, balance) in balance_before_operation {
+      let price = if let Some(price) = qty.price(&balance) {
+        price
+      } else {
+        continue;
+      };
+
       if !balance.qty.is_positive() || batch == Batch::no() {
         continue;
+        // TODO >= for qty
       } else if qty >= balance.qty {
         let mut new = op.clone();
         new.is_dependent = true;
@@ -869,11 +872,7 @@ impl<'a> PropagationFront<'a> {
         new.is_dependent = true;
         new.dependant = vec![];
         new.batch = batch;
-        let cost = if let Some(common) = balance.qty.common(&qty) {
-          balance.price(common.clone()).cost(qty.clone(), common)
-        } else {
-          Cost::ZERO
-        };
+        let cost = &qty * price;
         new.op = InternalOperation::Issue(qty.clone(), cost, Mode::Auto);
         log::debug!("NEW_OP full: qty {qty:?} balance {balance:?} op {new:#?}");
 
@@ -892,9 +891,9 @@ impl<'a> PropagationFront<'a> {
       }
     }
 
-    // log::debug!("issue qty left {qty}");
+    log::debug!("issue qty left {qty:?}");
 
-    if qty.is_positive() {
+    if !qty.is_zero() {
       let mut new = op.clone();
       new.is_dependent = true;
       new.dependant = vec![];

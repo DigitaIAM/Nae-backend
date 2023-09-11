@@ -165,20 +165,20 @@ impl Op {
     let operation = match op["type"].as_str() {
       Some("inventory") => InternalOperation::Inventory(
         BalanceForGoods {
-          qty: op["balance"].clone().into(),
+          qty: op["balance"].clone().try_into()?,
           cost: op["balance"]["cost"].number().into(),
         },
         BalanceDelta {
-          qty: op["delta"]["qty"].clone().into(),
+          qty: op["delta"]["qty"].clone().try_into()?,
           cost: op["delta"]["cost"].number().into(),
         },
         mode,
       ),
       Some("receive") => {
-        InternalOperation::Receive(op["qty"].clone().into(), op["cost"].number().into())
+        InternalOperation::Receive(op["qty"].clone().try_into()?, op["cost"].number().into())
       },
       Some("issue") => {
-        InternalOperation::Issue(op["qty"].clone().into(), op["cost"].number().into(), mode)
+        InternalOperation::Issue(op["qty"].clone().try_into()?, op["cost"].number().into(), mode)
       },
       _ => return Err(WHError::new(&format!("unknown operation type {}", op["type"]))),
     };
@@ -525,14 +525,11 @@ impl InternalOperation {
   pub fn apply(&self, balance: &BalanceForGoods) -> BalanceDelta {
     match self {
       InternalOperation::Inventory(b, _, m) => {
-        let qty = b.qty.clone() - balance.qty.clone();
+        let qty = &b.qty - &balance.qty;
 
         let cost = if m == &Mode::Auto {
-          if let Some(common) = balance.qty.common(&qty) {
-            balance.clone().price(common.clone()).cost(qty.clone(), common)
-          } else {
-            Cost::ZERO
-          }
+          // balance.clone().price(common.clone()).cost(qty.clone(), common)
+          qty.cost(balance)
         } else {
           b.cost - balance.cost
         };
@@ -577,7 +574,7 @@ impl ToJson for InternalOperation {
         }
       },
       InternalOperation::Receive(q, c) => {
-        let q: JsonValue = q.clone().into();
+        let q: JsonValue = q.into();
         object! {
           type: "receive",
           qty: q,
@@ -585,7 +582,7 @@ impl ToJson for InternalOperation {
         }
       },
       InternalOperation::Issue(q, c, m) => {
-        let q: JsonValue = q.clone().into();
+        let q: JsonValue = q.into();
         object! {
           type: "issue",
           qty: q,

@@ -159,7 +159,7 @@ pub fn receive_data(
   log::debug!("BEFOR: {:?}", before.dump());
   log::debug!("AFTER: {:?}", after.dump());
 
-  let before = match json_to_ops(app, wid, &before, ctx, stack, |id| {
+  let before = match json_to_ops(app, wid, &before, ctx, |id| {
     if let Some((b, _)) = stack.get(&id) {
       Some(b.clone())
     } else {
@@ -179,7 +179,7 @@ pub fn receive_data(
     },
   };
 
-  let mut after = match json_to_ops(app, wid, &after, ctx, stack, |id| {
+  let mut after = match json_to_ops(app, wid, &after, ctx, |id| {
     if let Some((_, a)) = stack.get(&id) {
       Some(a.clone())
     } else {
@@ -330,10 +330,15 @@ where
 
   let op = match type_of_operation {
     OpType::Inventory => {
-      let qty: Qty = data["qty"].clone().into();
+      let qty: Qty = match data["qty"].clone().try_into() {
+        Ok(q) => q,
+        Err(_) => return Ok(ops),
+      };
+
       let cost = data["cost"]["number"].number_or_none();
 
-      if qty.inner().is_empty() && cost.is_none() {
+      // "if qty.is_none()" removed because check is in match of try_into() now
+      if cost.is_none() {
         return Ok(ops);
       } else {
         let (cost, mode) =
@@ -345,24 +350,31 @@ where
       }
     },
     OpType::Receive => {
-      let qty: Qty = data["qty"].clone().into();
+      let qty: Qty = match data["qty"].clone().try_into() {
+        Ok(q) => q,
+        Err(_) => return Ok(ops),
+      };
       // let qty = match ctx_str[..] {
       //   ["production", "produce"] => data["qty"].number_or_none(),
       //   _ => data["qty"]["number"].number_or_none(),
       // };
       let cost = data["cost"]["number"].number_or_none();
 
-      if qty.inner().is_empty() && cost.is_none() {
+      if cost.is_none() {
         return Ok(ops);
       } else {
         InternalOperation::Receive(qty, cost.unwrap_or_default().into())
       }
     },
     OpType::Transfer | OpType::Dispatch => {
-      let qty: Qty = data["qty"].clone().into();
+      let qty: Qty = match data["qty"].clone().try_into() {
+        Ok(q) => q,
+        Err(_) => return Ok(ops),
+      };
+
       let cost = data["cost"]["number"].number_or_none();
 
-      if qty.inner().is_empty() && cost.is_none() {
+      if cost.is_none() {
         return Ok(ops);
       } else {
         let (cost, mode) =

@@ -5,7 +5,7 @@ use crate::{
   error::WHError,
 };
 
-use crate::aggregations::new_get_aggregations;
+use crate::aggregations::get_aggregations;
 use crate::batch::Batch;
 use crate::elements::Goods;
 use crate::elements::{UUID_MAX, UUID_NIL};
@@ -295,7 +295,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
 
     let ops = self.get_ops_for_storage(storage, first_day_current_month(from_date), till_date)?;
 
-    let items = new_get_aggregations(balances, ops, from_date);
+    let items = get_aggregations(balances, ops, from_date);
 
     Ok(Report { from_date, till_date, items })
     // Err(WHError::new("test"))
