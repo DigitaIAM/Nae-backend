@@ -145,7 +145,17 @@ impl Service for MemoriesInFiles {
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
         .filter(|o| show_deleted(&ctx) || o[_STATUS].string() != *"deleted")
-        .filter(|o| filters.entries().all(|(n, v)| &o[n] == v))
+        .filter(|o| {
+          filters.entries().all(|(n, v)| {
+            if n == "$starts-with" {
+              v.entries().all(|(n, v)| {
+                o[n].as_str().map(|s| s.starts_with(v.as_str().unwrap_or(""))).unwrap_or(false)
+              })
+            } else {
+              &o[n] == v
+            }
+          })
+        })
         .map(|o| {
           total += 1;
           o
@@ -185,20 +195,32 @@ impl Service for MemoriesInFiles {
       }
     }
 
+    fn get_records(
+      app: &impl GetLinks,
+      id: Uuid,
+      ctx: &Vec<String>,
+      ws: &Workspace,
+      filters: &Vec<(&str, &JsonValue)>,
+    ) -> Result<Vec<JsonValue>, Error> {
+      let links = app.links().get_source_links_for_ctx(id, ctx)?;
+
+      let result: Vec<JsonValue> = links
+        .iter()
+        .map(|uuid| uuid.resolve_to_json_object(ws))
+        .filter(|o| o.is_object())
+        .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
+        .filter(|o| o[_STATUS].string() != *"deleted")
+        .collect();
+
+      // println!("get_records: {result:?}");
+
+      Ok(result)
+    }
+
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
       for order in &mut list {
         let order_uuid = order[_UUID].uuid()?;
-
-        let mut materials_produced = self.app.links().get_source_links_for_ctx(
-          order_uuid,
-          &vec!["production".into(), "material".into(), "produced".into()],
-        )?;
-
-        let materials_used = self.app.links().get_source_links_for_ctx(
-          order_uuid,
-          &vec!["production".into(), "material".into(), "used".into()],
-        )?;
 
         let produced = self
           .app
@@ -232,13 +254,13 @@ impl Service for MemoriesInFiles {
 
         let mut sum_used_materials: HashMap<String, Decimal> = HashMap::new();
 
-        let materials_used: Vec<JsonValue> = materials_used
-          .iter()
-          .map(|uuid| uuid.resolve_to_json_object(&ws))
-          .filter(|o| o.is_object())
-          .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
-          .filter(|o| o[_STATUS].string() != *"deleted")
-          .collect();
+        let materials_used = get_records(
+          &self.app,
+          order_uuid,
+          &vec!["production".into(), "material".into(), "used".into()],
+          &ws,
+          &filters,
+        )?;
 
         let mut sum_used = Decimal::ZERO;
 
@@ -263,13 +285,13 @@ impl Service for MemoriesInFiles {
 
         let mut sum_produced_materials: HashMap<String, Decimal> = HashMap::new();
 
-        let materials_produced: Vec<JsonValue> = materials_produced
-          .iter()
-          .map(|uuid| uuid.resolve_to_json_object(&ws))
-          .filter(|o| o.is_object())
-          .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
-          .filter(|o| o[_STATUS].string() != *"deleted")
-          .collect();
+        let materials_produced = get_records(
+          &self.app,
+          order_uuid,
+          &vec!["production".into(), "material".into(), "produced".into()],
+          &ws,
+          &filters,
+        )?;
 
         let mut sum_produced = Decimal::ZERO;
 
