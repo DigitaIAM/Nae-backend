@@ -252,7 +252,7 @@ impl Service for MemoriesInFiles {
 
         let filters = vec![("document", &order[_ID])];
 
-        let mut sum_used_materials: HashMap<String, Decimal> = HashMap::new();
+        let mut sum_used_materials: HashMap<String, (JsonValue, Decimal)> = HashMap::new();
 
         let materials_used = get_records(
           &self.app,
@@ -269,21 +269,20 @@ impl Service for MemoriesInFiles {
 
           let goods = material_used["goods"].clone();
 
-          *sum_used_materials.entry(goods["name"].string()).or_insert(Decimal::ZERO) += qty;
+          (*sum_used_materials.entry(goods["name"].string()).or_insert((goods, Decimal::ZERO))).1 += qty;
 
           sum_used += qty;
         }
 
         let used: Vec<JsonValue> = sum_used_materials
           .into_iter()
-          .map(|(k, v)| {
-            let mut o = object!();
-            o[k] = v.to_json();
-            o
+          .map(|(_k, mut v)| {
+            v.0["used"] = v.1.to_json();
+            v.0
           })
           .collect();
 
-        let mut sum_produced_materials: HashMap<String, Decimal> = HashMap::new();
+        let mut sum_produced_materials: HashMap<String, (JsonValue, Decimal)> = HashMap::new();
 
         let materials_produced = get_records(
           &self.app,
@@ -300,39 +299,36 @@ impl Service for MemoriesInFiles {
 
           let goods = material_produced["goods"].clone();
 
-          *sum_produced_materials.entry(goods["name"].string()).or_insert(Decimal::ZERO) += qty;
+          (*sum_produced_materials.entry(goods["_id"].string()).or_insert((goods, Decimal::ZERO))).1 += qty;
 
           sum_produced += qty;
         }
 
         let produced: Vec<JsonValue> = sum_produced_materials
           .into_iter()
-          .map(|(k, v)| {
-            let mut o = object!();
-            o[k] = v.to_json();
-            o
+          .map(|(_k, mut v)| {
+            v.0["produced"] = v.1.to_json();
+            v.0
           })
           .collect();
 
-        let delta = sum_produced - sum_used;
+        let delta = sum_produced + sum - sum_used;
 
         order["_material"] = object! {
           "used": used,
           "produced": produced,
         };
 
-        if !sum_used.is_zero() || !sum_produced.is_zero() {
-          order["_material"]
-            .insert(
-              "sum",
-              object! {
-                "used": sum_used.to_json(),
-                "produced": sum_produced.to_json(),
-                "delta": delta.to_json()
-              },
-            )
-            .map_err(|e| Error::GeneralError(e.to_string()))?;
-        }
+        order["_material"]
+          .insert(
+            "sum",
+            object! {
+              "used": sum_used.to_json(),
+              "produced": sum_produced.to_json(),
+              "delta": delta.to_json()
+            },
+          )
+          .map_err(|e| Error::GeneralError(e.to_string()))?;
       }
     }
 
