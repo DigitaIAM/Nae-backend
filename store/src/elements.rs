@@ -352,7 +352,7 @@ where
     OpType::Receive => {
       let qty: Qty = match data["qty"].clone().try_into() {
         Ok(q) => q,
-        Err(_) => return Ok(ops),
+        Err(e) => { log::debug!("Qty error: {e:?}"); return Ok(ops); },
       };
       // let qty = match ctx_str[..] {
       //   ["production", "produce"] => data["qty"].number_or_none(),
@@ -360,7 +360,9 @@ where
       // };
       let cost = data["cost"]["number"].number_or_none();
 
-      if cost.is_none() {
+      if ctx == &vec!["production".to_owned(), "produce".to_owned()] {
+        InternalOperation::Receive(qty, Cost::ZERO)
+      } else if  cost.is_none() {
         return Ok(ops);
       } else {
         InternalOperation::Receive(qty, cost.unwrap_or_default().into())
@@ -369,7 +371,7 @@ where
     OpType::Transfer | OpType::Dispatch => {
       let qty: Qty = match data["qty"].clone().try_into() {
         Ok(q) => q,
-        Err(_) => return Ok(ops),
+        Err(e) => { log::debug!("Qty error: {e:?}"); return Ok(ops); },
       };
 
       let cost = data["cost"]["number"].number_or_none();

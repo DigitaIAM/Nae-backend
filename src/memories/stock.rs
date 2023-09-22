@@ -206,6 +206,9 @@ where
     .map(|id| (id.resolve_to_json_object(ws), id))
     .map(|(mut o, id)| {
       let cost = map.remove(&id).unwrap_or_default();
+      if name == "_balance" {
+        // TODO cost.enrich
+      }
       o[name] = cost.to_json();
       o["_category"] = cat.into();
       o

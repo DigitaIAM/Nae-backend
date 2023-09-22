@@ -52,6 +52,7 @@ use animo::memory::Memory;
 use inventory::service::Inventory;
 use service::utils::json::JsonParams;
 use service::Services;
+use store::qty::Qty;
 use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
 #[derive(StructOpt, Debug)]
@@ -118,6 +119,50 @@ async fn reindex(
 
       // delete batch from document if it exists
       after.remove("batch");
+
+      // update qty structure
+      let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+
+      match ctx_str[..] {
+        ["warehouse", "dispatch"] | ["warehouse", "inventory"] | ["warehouse", "receive"] | ["warehouse", "transfer"] => {
+          let qty = &after["qty"];
+
+          match <JsonValue as TryInto<Qty>>::try_into(qty.clone()) {
+            Ok(q) => { println!("_qty {q:?}") }, // nothing to do
+            Err(_) => {
+              if qty["number"].is_null() { } // nothing to do
+
+              if !qty["uom"].is_object() {
+              let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+
+              let goods = match app.service("memories").get(
+                service::Context::local(),
+                after["goods"].string(),
+                params.clone(),
+              ) {
+                Ok(uom) => uom,
+                Err(e) => { println!("goods_error: {e}, after: {after:?}"); continue; },
+              };
+              // println!("_goods {goods:?}");
+
+                let uom = match app.service("memories").get(
+                  service::Context::local(),
+                  goods["uom"].string(),
+                  params.clone(),
+                ) {
+                  Ok(uom) => uom,
+                  Err(e) => { println!("uom_error {e}"); continue; },
+                };
+                // println!("_uom {uom:?}");
+
+              after["qty"]["uom"] = uom["_uuid"].clone();
+              // println!("_new_uom {:?}", after["qty"]["uom"]);
+              }
+            },
+          }
+        },
+        _ => { }, // nothing to do
+      }
 
       text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
 

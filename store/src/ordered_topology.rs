@@ -767,7 +767,7 @@ impl<'a> PropagationFront<'a> {
       for (batch, balance) in balance_before_operation {
         if !balance.qty.is_positive() || batch == Batch::no() {
           continue;
-        } else if qty.abs() >= balance.qty {
+        } else if qty.abs().is_greater_or_equal(&balance.qty)? {
           let mut new = op.clone();
           new.is_dependent = true;
           new.dependant = vec![];
@@ -779,7 +779,7 @@ impl<'a> PropagationFront<'a> {
           self.insert(new)?;
 
           qty += &balance.qty; // qty is always negative here
-        } else if qty.abs() < balance.qty {
+        } else {
           let mut new = op.clone();
           new.is_dependent = true;
           new.dependant = vec![];
@@ -850,7 +850,7 @@ impl<'a> PropagationFront<'a> {
       if !balance.qty.is_positive() || batch == Batch::no() {
         continue;
         // TODO >= for qty
-      } else if qty >= balance.qty {
+      } else if qty.is_greater_or_equal(&balance.qty)? {
         let mut new = op.clone();
         new.is_dependent = true;
         new.dependant = vec![];
