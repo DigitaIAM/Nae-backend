@@ -228,7 +228,7 @@ impl Service for MemoriesInFiles {
           .get_source_links_for_ctx(order_uuid, &vec!["production".into(), "produce".into()])?;
 
         let mut boxes = 0_u32;
-        let sum: Decimal = produced
+        let sum_produced: Decimal = produced
           .iter()
           .map(|uuid| uuid.resolve_to_json_object(&ws))
           .filter(|o| o.is_object())
@@ -241,7 +241,7 @@ impl Service for MemoriesInFiles {
           .sum();
 
         // TODO rolls - kg, caps - piece
-        order["produced"] = object! { "piece": sum.to_json(), "box": boxes.to_string() };
+        order["produced"] = object! { "piece": sum_produced.to_json(), "box": boxes.to_string() };
 
         // workaround: ignore all areas except "экструдер"
         let area = order["area"].string().resolve_to_json_object(&ws);
@@ -252,7 +252,7 @@ impl Service for MemoriesInFiles {
 
         let filters = vec![("document", &order[_ID])];
 
-        let mut sum_used_materials: HashMap<String, Decimal> = HashMap::new();
+        let mut sum_used_materials: HashMap<String, (JsonValue, Decimal)> = HashMap::new();
 
         let materials_used = get_records(
           &self.app,
@@ -262,28 +262,27 @@ impl Service for MemoriesInFiles {
           &filters,
         )?;
 
-        let mut sum_used = Decimal::ZERO;
+        let mut sum_material_used = Decimal::ZERO;
 
         for material_used in materials_used {
           let qty = material_used["qty"]["number"].number();
 
           let goods = material_used["goods"].clone();
 
-          *sum_used_materials.entry(goods["name"].string()).or_insert(Decimal::ZERO) += qty;
+          (*sum_used_materials.entry(goods["name"].string()).or_insert((goods, Decimal::ZERO))).1 += qty;
 
-          sum_used += qty;
+          sum_material_used += qty;
         }
 
         let used: Vec<JsonValue> = sum_used_materials
           .into_iter()
-          .map(|(k, v)| {
-            let mut o = object!();
-            o[k] = v.to_json();
-            o
+          .map(|(_k, mut v)| {
+            v.0["used"] = v.1.to_json();
+            v.0
           })
           .collect();
 
-        let mut sum_produced_materials: HashMap<String, Decimal> = HashMap::new();
+        let mut sum_produced_materials: HashMap<String, (JsonValue, Decimal)> = HashMap::new();
 
         let materials_produced = get_records(
           &self.app,
@@ -293,46 +292,43 @@ impl Service for MemoriesInFiles {
           &filters,
         )?;
 
-        let mut sum_produced = Decimal::ZERO;
+        let mut sum_material_produced = Decimal::ZERO;
 
         for material_produced in materials_produced {
           let qty = material_produced["qty"]["number"].number();
 
           let goods = material_produced["goods"].clone();
 
-          *sum_produced_materials.entry(goods["name"].string()).or_insert(Decimal::ZERO) += qty;
+          (*sum_produced_materials.entry(goods["_id"].string()).or_insert((goods, Decimal::ZERO))).1 += qty;
 
-          sum_produced += qty;
+          sum_material_produced += qty;
         }
 
         let produced: Vec<JsonValue> = sum_produced_materials
           .into_iter()
-          .map(|(k, v)| {
-            let mut o = object!();
-            o[k] = v.to_json();
-            o
+          .map(|(_k, mut v)| {
+            v.0["produced"] = v.1.to_json();
+            v.0
           })
           .collect();
 
-        let delta = sum_produced - sum_used;
+        let delta = sum_material_produced + sum_produced - sum_material_used;
 
         order["_material"] = object! {
           "used": used,
           "produced": produced,
         };
 
-        if !sum_used.is_zero() || !sum_produced.is_zero() {
-          order["_material"]
-            .insert(
-              "sum",
-              object! {
-                "used": sum_used.to_json(),
-                "produced": sum_produced.to_json(),
-                "delta": delta.to_json()
-              },
-            )
-            .map_err(|e| Error::GeneralError(e.to_string()))?;
-        }
+        order["_material"]
+          .insert(
+            "sum",
+            object! {
+              "used": sum_material_used.to_json(),
+              "produced": sum_material_produced.to_json(),
+              "delta": delta.to_json()
+            },
+          )
+          .map_err(|e| Error::GeneralError(e.to_string()))?;
       }
     }
 

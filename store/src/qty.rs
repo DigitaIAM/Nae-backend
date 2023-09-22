@@ -2,7 +2,6 @@ use crate::balance::{BalanceForGoods, Cost, Price};
 use crate::elements::{ToJson, UUID_NIL};
 use crate::error::WHError;
 use actix_web::body::MessageBody;
-use blake2::digest::typenum::IsGreaterOrEqual;
 use json::{object, JsonValue};
 use rust_decimal::prelude::{ToPrimitive, Zero};
 use rust_decimal::Decimal;
@@ -195,8 +194,14 @@ impl TryInto<Number<Uom>> for JsonValue {
       return Err(WHError::new("JsonValue is not an object/is empty"));
     }
 
-    if self["number"].is_null() || self["uom"].is_null() {
+    let uom = &self["uom"];
+
+    if self["number"].is_null() || uom.is_null() {
       return Err(WHError::new("Incomplete data"));
+    }
+
+    if !uom.is_object() && uom.uuid_or_none().is_none() {
+      return Err(WHError::new("Wrong data (id instead of uuid) or null"));
     }
 
     let mut data = &self;
@@ -476,12 +481,6 @@ impl Div<Number<Uom>> for Decimal {
   }
 }
 
-// impl IsGreaterOrEqual for Number<Uom> {
-//   type Output = bool;
-//
-//   fn is_greater_or_equal(self, rhs: Self) -> Self::Output {}
-// }
-
 impl Qty {
   pub fn new(inner: Vec<Number<Uom>>) -> Self {
     Qty { inner }
@@ -605,6 +604,18 @@ impl Qty {
       } else {
         None
       }
+    }
+  }
+
+  pub(crate) fn is_greater_or_equal(&self, rhs: &Self) -> Result<bool, WHError> {
+    let common = self.common(&rhs);
+
+    if let Some(uom) = common {
+      let left = self.lowering(&uom).unwrap().number;
+      let right = rhs.lowering(&uom).unwrap().number;
+      Ok(left >= right)
+    } else {
+      Err(WHError::new("two Qty don't have common part"))
     }
   }
 }
@@ -1424,6 +1435,25 @@ mod tests {
     // println!("lower2 {lower2:?}");
 
     assert_eq!(lower2.is_none(), true);
+
+    let data4 = object! {
+      "number": 10,
+      "uom": object! {
+        "number": 99,
+        "uom": u2.to_json(),
+        "in": u1.to_json(),
+        },
+    };
+
+    let qty4: Qty = data4.try_into().unwrap();
+
+    // u0
+    let uom = qty4.inner[0].clone().name;
+
+    let lower3 = qty4.lowering(&uom);
+    // println!("lower3 {lower3:?}");
+
+    assert_eq!(qty4.inner[0], lower3.unwrap());
   }
 
   #[test]
