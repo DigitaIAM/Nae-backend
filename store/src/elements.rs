@@ -376,7 +376,7 @@ where
 
       let cost = data["cost"]["number"].number_or_none();
 
-      if (qty.is_empty() || qty.is_zero()) && cost.is_none() {
+      if qty.is_zero() && cost.is_none() {
         return Ok(ops);
       } else {
         let (cost, mode) =
