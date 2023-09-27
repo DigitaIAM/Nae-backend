@@ -277,8 +277,8 @@ impl Op {
   pub(crate) fn can_delete(&self) -> bool {
     match &self.op {
       InternalOperation::Inventory(..) => false,
-      InternalOperation::Receive(q, c) => q.is_empty() && c.is_zero(),
-      InternalOperation::Issue(q, c, _) => q.is_empty() && c.is_zero(),
+      InternalOperation::Receive(q, c) => q.is_zero() && c.is_zero(),
+      InternalOperation::Issue(q, c, _) => q.is_zero() && c.is_zero(),
     }
   }
 
@@ -432,12 +432,7 @@ impl OpMutation {
       if let Some((after, _)) = self.after.as_ref() {
         let before: BalanceDelta = before.clone().into();
         let after: BalanceDelta = after.clone().into();
-
-        if after == before {
-          BalanceDelta::default()
-        } else {
           after - before
-        }
       } else {
         let before: BalanceDelta = before.clone().into();
 
@@ -558,8 +553,8 @@ impl InternalOperation {
   pub(crate) fn is_zero(&self) -> bool {
     match self {
       InternalOperation::Inventory(_q, _c, _) => false,
-      InternalOperation::Receive(q, c) => q.is_empty() && c.is_zero(),
-      InternalOperation::Issue(q, c, _) => q.is_empty() && c.is_zero(),
+      InternalOperation::Receive(q, c) => q.is_zero() && c.is_zero(),
+      InternalOperation::Issue(q, c, _) => q.is_zero() && c.is_zero(),
     }
   }
 }
