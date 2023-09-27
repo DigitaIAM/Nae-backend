@@ -15,21 +15,23 @@ impl Enrich for JsonValue {
     let mut data = self.clone();
 
     // workaround for 'qty: {number: 5, uom: {number: 10, uom: uom/2023-04-07T07:56:50.249Z, in: uom/2023-04-07T07:57:02.154Z}}'
-    if !data["qty"].is_empty() {
-      let mut processing = &mut data["qty"];
-      while processing.is_object() {
-        if let Some(uom) = processing["in"].as_str() {
-          processing["in"] = uom.resolve_to_json_object(ws);
-        }
+    if data["qty"].is_array() && !data["qty"].is_empty() {
+      for element in data["qty"].members_mut() {
+        let mut processing = element;
+        while processing.is_object() {
+          if let Some(uom) = processing["in"].as_str() {
+            processing["in"] = uom.resolve_to_json_object(ws);
+          }
 
-        let node = &processing["uom"];
-        if let Some(uom) = node.as_str() {
-          processing["uom"] = uom.resolve_to_json_object(ws);
-          break;
-        } else if node.is_object() {
-          processing = &mut processing["uom"];
-        } else {
-          break;
+          let node = &processing["uom"];
+          if let Some(uom) = node.as_str() {
+            processing["uom"] = uom.resolve_to_json_object(ws);
+            break;
+          } else if node.is_object() {
+            processing = &mut processing["uom"];
+          } else {
+            break;
+          }
         }
       }
     }

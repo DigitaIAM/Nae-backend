@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use store::batch::Batch;
 use store::elements::dt;
 use store::error::WHError;
@@ -5,6 +6,7 @@ use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
+use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 
@@ -23,6 +25,8 @@ fn store_test_get_wh_ops() -> Result<(), WHError> {
   let id1 = Uuid::from_u128(101);
   let id2 = Uuid::from_u128(102);
 
+  let uom = Uuid::new_v4();
+
   let ops = vec![
     OpMutation::new(
       id1,
@@ -32,7 +36,9 @@ fn store_test_get_wh_ops() -> Result<(), WHError> {
       G1,
       party.clone(),
       None,
-      Some(InternalOperation::Receive(2.into(), 2000.into())),
+      Some(InternalOperation::Receive(
+        Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+        2000.into())),
     ),
     OpMutation::new(
       id2,
@@ -42,7 +48,9 @@ fn store_test_get_wh_ops() -> Result<(), WHError> {
       G1,
       party.clone(),
       None,
-      Some(InternalOperation::Receive(1.into(), 1000.into())),
+      Some(InternalOperation::Receive(
+        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
+        1000.into())),
     ),
   ];
 

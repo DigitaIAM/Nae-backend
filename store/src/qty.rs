@@ -507,12 +507,22 @@ impl Qty {
     true
   }
 
-  pub fn is_zero(&self) -> bool {
+  pub fn is_empty(&self) -> bool {
     if self.inner.is_empty() {
       true
     } else {
       false
     }
+  }
+
+  pub fn is_zero(&self) -> bool {
+    let mut result = true;
+    for qty in &self.inner {
+      if !qty.number.is_zero() {
+        result = false;
+      }
+    }
+    result
   }
 
   pub(crate) fn lowering(&self, name: &Uom) -> Option<Number<Uom>> {
@@ -579,7 +589,7 @@ impl Qty {
   }
 
   pub(crate) fn cost(&self, balance: &BalanceForGoods) -> Cost {
-    if self.is_zero() {
+    if self.is_empty() {
       Cost::ZERO
     } else {
       if let Some(common) = self.common(&balance.qty) {
@@ -596,7 +606,7 @@ impl Qty {
   }
 
   pub(crate) fn price(&self, balance: &BalanceForGoods) -> Option<Price> {
-    if self.is_zero() {
+    if self.is_empty() {
       None
     } else {
       if let Some(common) = self.common(&balance.qty) {

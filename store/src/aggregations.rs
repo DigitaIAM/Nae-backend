@@ -4,7 +4,6 @@ use crate::elements::{
   time_to_naive_string, Goods, KeyValueStore, Mode, ReturnType, Store, ToJson, WHError,
 };
 use crate::operations::{InternalOperation, Op, OpMutation};
-use crate::qty::Uom;
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
 use std::collections::BTreeMap;
@@ -234,11 +233,14 @@ impl Agregation for AgregationStoreGoods {
         self.receive.cost += cost;
       },
       InternalOperation::Issue(qty, cost, mode) => {
+        log::debug!("fn_apply_operation: self.issue {:?}\nqty {:?}", self.issue, qty);
         self.issue.qty -= qty;
+        // TODO 0.0001 left if 10/3
         if mode == &Mode::Auto {
           let balance = self.open_balance.clone() + self.receive.clone();
           // let cost = balance.price(name.clone()).cost(qty.clone(), name);
           let cost = qty.cost(&balance);
+          log::debug!("fn_apply_operation: cost {cost:?}\nqty {:?}", self.issue.qty);
           self.issue.cost -= cost;
         } else {
           self.issue.cost -= cost;
@@ -366,6 +368,7 @@ pub(crate) fn get_aggregations(
   operations: Vec<Op>,
   start_date: DateTime<Utc>,
 ) -> (AggregationStore, Vec<AgregationStoreGoods>) {
+  log::debug!("fn_get_aggregations: balances {balances:?}\noperations {operations:?}");
   let key = |store: &Store, goods: &Goods, batch: &Batch| -> Vec<u8> {
     [].iter()
       .chain(store.as_bytes().iter())
