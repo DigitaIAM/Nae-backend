@@ -12,20 +12,20 @@ use store::qty::{Number, Qty};
 const G1: Uuid = Uuid::from_u128(1);
 
 #[test]
-fn store_test_issue_remainder() {
+fn store_test_issue_partly() {
   // std::env::set_var("RUST_LOG", "debug");
   // env_logger::init();
 
-  let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_issue_remainder");
+  let tmp_dir = TempDir::new().unwrap();
 
   let wh = WHStorage::open(&tmp_dir.path()).unwrap();
   let mut db = wh.database;
 
-  let start_d = dt("2022-10-10").expect("test_issue_remainder");
-  let end_d = dt("2022-10-11").expect("test_issue_remainder");
+  let start_d = dt("2022-10-10").unwrap();
+  let end_d = dt("2022-10-11").unwrap();
   let w1 = Uuid::new_v4();
 
-  let doc = Batch { id: Uuid::new_v4(), date: start_d };
+  let batch = Batch { id: Uuid::new_v4(), date: start_d };
 
   let id1 = Uuid::from_u128(101);
   let id2 = Uuid::from_u128(102);
@@ -40,11 +40,11 @@ fn store_test_issue_remainder() {
       w1,
       None,
       G1,
-      doc.clone(),
+      batch.clone(),
       None,
       Some(InternalOperation::Receive(
         Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
-        10.into())),
+        9.into())),
     ),
     OpMutation::new(
       id2,
@@ -52,23 +52,10 @@ fn store_test_issue_remainder() {
       w1,
       None,
       G1,
-      doc.clone(),
+      Batch::no(),
       None,
       Some(InternalOperation::Issue(
         Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
-        0.into(),
-        Mode::Auto)),
-    ),
-    OpMutation::new(
-      id3,
-      start_d,
-      w1,
-      None,
-      G1,
-      doc.clone(),
-      None,
-      Some(InternalOperation::Issue(
-        Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
         0.into(),
         Mode::Auto)),
     ),
@@ -76,24 +63,23 @@ fn store_test_issue_remainder() {
 
   db.record_ops(&ops).unwrap();
 
-  // println!("HELLO: {:#?}", res.items.1);
-
   let res = db.get_report_for_storage(w1, start_d, end_d).unwrap();
+  println!("res= {:#?}", res.items.1);
 
   let agr = AgregationStoreGoods {
     store: Some(w1),
     goods: Some(G1),
-    batch: Some(doc.clone()),
+    batch: Some(batch.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta {
       qty: Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
-      cost: 10.into() },
+      cost: 9.into() },
     issue: BalanceDelta {
-      qty: Qty::new(vec![Number::new(Decimal::from(-3), uom, None)]),
-      cost: (-10).into() },
+      qty: Qty::new(vec![Number::new(Decimal::from(-1), uom, None)]),
+      cost: (-3).into() },
     close_balance: BalanceForGoods {
-      qty: Qty::new(vec![Number::new(Decimal::from(0), uom, None)]),
-      cost: 0.into() },
+      qty: Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+      cost: 6.into() },
   };
 
   assert_eq!(agr, res.items.1[0]);

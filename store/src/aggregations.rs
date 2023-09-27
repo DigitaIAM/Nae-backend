@@ -233,14 +233,18 @@ impl Agregation for AgregationStoreGoods {
         self.receive.cost += cost;
       },
       InternalOperation::Issue(qty, cost, mode) => {
-        log::debug!("fn_apply_operation: self.issue {:?}\nqty {:?}", self.issue, qty);
         self.issue.qty -= qty;
-        // TODO 0.0001 left if 10/3
         if mode == &Mode::Auto {
           let balance = self.open_balance.clone() + self.receive.clone();
-          // let cost = balance.price(name.clone()).cost(qty.clone(), name);
-          let cost = qty.cost(&balance);
-          log::debug!("fn_apply_operation: cost {cost:?}\nqty {:?}", self.issue.qty);
+          let cost = match self.issue.qty.abs().is_greater_or_equal(&balance.qty) {
+            Ok(res) => {
+              match res {
+                true => balance.cost - self.issue.cost.abs(),
+                false => qty.cost(&balance),
+              }
+            }
+            Err(_) => qty.cost(&balance),
+          };
           self.issue.cost -= cost;
         } else {
           self.issue.cost -= cost;
