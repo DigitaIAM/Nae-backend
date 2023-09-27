@@ -72,6 +72,10 @@ impl Cost {
   pub const fn is_zero(&self) -> bool {
     self.0.is_zero()
   }
+
+  pub fn abs(&self) -> Self {
+    Cost(self.0.abs())
+  }
 }
 
 impl ToJson for Cost {
@@ -166,7 +170,7 @@ impl BalanceForGoods {
   }
 
   pub fn is_zero(&self) -> bool {
-    self.qty.is_empty() && self.cost.is_zero()
+    (self.qty.is_empty() || self.qty.is_zero()) && self.cost.is_zero()
   }
 
   pub fn delta(&self, other: &BalanceForGoods) -> BalanceDelta {

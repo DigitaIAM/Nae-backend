@@ -13,8 +13,8 @@ const G2: Uuid = Uuid::from_u128(2);
 
 #[test]
 fn store_test_receive_ops() {
-  std::env::set_var("RUST_LOG", "debug");
-  env_logger::init();
+  // std::env::set_var("RUST_LOG", "debug");
+  // env_logger::init();
 
   let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
 

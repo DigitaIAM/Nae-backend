@@ -433,7 +433,11 @@ impl OpMutation {
         let before: BalanceDelta = before.clone().into();
         let after: BalanceDelta = after.clone().into();
 
-        after - before
+        if after == before {
+          BalanceDelta::default()
+        } else {
+          after - before
+        }
       } else {
         let before: BalanceDelta = before.clone().into();
 
