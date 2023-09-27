@@ -162,7 +162,7 @@ impl Agregation for AggregationStore {
     }
   }
 
-  fn apply_operation(&mut self, op: &Op) {
+  fn apply_operation(&mut self, _op: &Op) {
     // match &op.op {
     //   InternalOperation::Inventory(_, d, _) => {
     //     self.receive += d.cost;
@@ -215,13 +215,12 @@ impl Agregation for AgregationStoreGoods {
     }
   }
 
-  fn apply_operation(&mut self, op: &Op) {
+    fn apply_operation(&mut self, op: &Op) {
     match &op.op {
       InternalOperation::Inventory(_b, d, mode) => {
         self.issue.qty += &d.qty;
         if mode == &Mode::Auto {
           let balance = self.open_balance.clone() + self.receive.clone();
-          // let cost = balance.price(name.clone()).cost(d.qty.clone(), name);
           let cost = d.qty.cost(&balance);
           self.issue.cost += cost;
         } else {
@@ -235,16 +234,11 @@ impl Agregation for AgregationStoreGoods {
       InternalOperation::Issue(qty, cost, mode) => {
         self.issue.qty -= qty;
         if mode == &Mode::Auto {
-          let balance = self.open_balance.clone() + self.receive.clone();
-          let cost = match self.issue.qty.abs().is_greater_or_equal(&balance.qty) {
-            Ok(res) => {
-              match res {
-                true => balance.cost - self.issue.cost.abs(),
-                false => qty.cost(&balance),
-              }
-            }
-            Err(_) => qty.cost(&balance),
-          };
+          let balance = if !self.close_balance.is_zero() {
+            self.close_balance.clone()
+          } else {
+            self.open_balance.clone() + self.receive.clone() };
+          let cost = if qty == &balance.qty { balance.cost } else { qty.cost(&balance) };
           self.issue.cost -= cost;
         } else {
           self.issue.cost -= cost;

@@ -57,7 +57,7 @@ impl Cost {
   pub const ERROR: Cost = Cost(Decimal::NEGATIVE_ONE);
 
   pub fn price(&self, qty: &Qty, name: &Uom) -> Price {
-    if qty.is_empty() {
+    if qty.is_zero() {
       Price::ZERO
     } else {
       if let Some(lower) = qty.lowering(name) {
@@ -71,10 +71,6 @@ impl Cost {
 
   pub const fn is_zero(&self) -> bool {
     self.0.is_zero()
-  }
-
-  pub fn abs(&self) -> Self {
-    Cost(self.0.abs())
   }
 }
 
@@ -170,7 +166,7 @@ impl BalanceForGoods {
   }
 
   pub fn is_zero(&self) -> bool {
-    (self.qty.is_empty() || self.qty.is_zero()) && self.cost.is_zero()
+    self.qty.is_zero() && self.cost.is_zero()
   }
 
   pub fn delta(&self, other: &BalanceForGoods) -> BalanceDelta {
@@ -283,7 +279,7 @@ pub struct BalanceDelta {
 
 impl BalanceDelta {
   pub(crate) fn is_zero(&self) -> bool {
-    self.qty.is_empty() && self.cost.is_zero()
+    self.qty.is_zero() && self.cost.is_zero()
   }
 
   pub(crate) fn new() -> Self {

@@ -750,7 +750,7 @@ impl<'a> PropagationFront<'a> {
 
     let mut new_dependant: Vec<Dependant> = vec![];
 
-    if diff_balance.qty.is_empty() && diff_balance.cost == Cost::ZERO {
+    if diff_balance.qty.is_zero() && diff_balance.cost == Cost::ZERO {
     } else if diff_balance.qty.is_positive() {
       let batch = Batch { id: op.id, date: op.date };
       let mut new = op.clone();
@@ -804,7 +804,7 @@ impl<'a> PropagationFront<'a> {
           qty -= &q;
         }
 
-        if qty.is_empty() {
+        if qty.is_zero() {
           break;
         }
       }
@@ -895,7 +895,7 @@ impl<'a> PropagationFront<'a> {
 
     log::debug!("issue qty left {qty:?}");
 
-    if !qty.is_empty() {
+    if !qty.is_zero() {
       let mut new = op.clone();
       new.is_dependent = true;
       new.dependant = vec![];

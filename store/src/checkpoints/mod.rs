@@ -108,7 +108,9 @@ pub trait CheckpointTopology {
 
       let mut balance = self.get_balance(&key)?;
       log::debug!("balance on {check_point_date} {:#?} before operation {balance:?}", op.date);
-      balance += op.to_delta(); // TODO: will fail at inventory operation
+      if op.before != op.after {
+        balance += op.to_delta(); // TODO: will fail at inventory operation
+      }
       log::debug!("{:?} > {balance:?}", op.to_delta());
 
       if balance.is_zero() {
