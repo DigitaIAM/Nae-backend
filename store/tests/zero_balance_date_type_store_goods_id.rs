@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use store::aggregations::AgregationStoreGoods;
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
@@ -6,6 +7,7 @@ use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
+use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 
@@ -24,8 +26,17 @@ fn store_test_zero_balance_date_type_store_goods_id() {
   let id1 = Uuid::from_u128(101);
   let id2 = Uuid::from_u128(102);
 
+  let uom = Uuid::new_v4();
+
   let ops = vec![
-    OpMutation::receive_new(id1, start_d, w1, G1, party.clone(), 3.into(), 3000.into()),
+    OpMutation::receive_new(
+      id1,
+      start_d,
+      w1,
+      G1,
+      party.clone(),
+      Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
+      3000.into()),
     OpMutation::new(
       id2,
       start_d,
@@ -34,7 +45,10 @@ fn store_test_zero_balance_date_type_store_goods_id() {
       G1,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(3.into(), 3000.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(
+        Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
+        3000.into(),
+        Mode::Manual)),
     ),
   ];
 
@@ -47,9 +61,16 @@ fn store_test_zero_balance_date_type_store_goods_id() {
     goods: Some(G1),
     batch: Some(party.clone()),
     open_balance: BalanceForGoods::default(),
-    receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
-    issue: BalanceDelta { qty: (-3).into(), cost: (-3000).into() },
-    close_balance: BalanceForGoods::default(),
+    receive: BalanceDelta {
+      qty: Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
+      cost: 3000.into() },
+    issue: BalanceDelta {
+      qty: Qty::new(vec![Number::new(Decimal::from(-3), uom, None)]),
+      cost: (-3000).into() },
+    close_balance: BalanceForGoods {
+      qty: Qty::new(vec![Number::new(Decimal::from(0), uom, None)]),
+      cost: 0.into()
+    },
   };
 
   assert_eq!(res.items.1[0], agr);

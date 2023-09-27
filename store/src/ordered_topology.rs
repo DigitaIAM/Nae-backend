@@ -217,6 +217,7 @@ pub trait OrderedTopology {
         (pf.distribution_issue(op)?, true)
       } else {
         let (old, op, new) = self.calculate_op(db, &mut pf, op)?;
+        log::debug!("old_balance: {old:?} vs new_balance: {new:?}");
         (op, !old.delta(&new).is_zero())
       };
 
@@ -367,7 +368,9 @@ pub trait OrderedTopology {
   ) -> Result<(BalanceForGoods, Op, BalanceForGoods), WHError> {
     // calculate balance
     let before_balance: BalanceForGoods = self.balance_before(&op)?; // Vec<(Batch, BalanceForGoods)>
+    log::debug!("before evaluating: old balance {before_balance:?}");
     let (calculated_op, new_balance) = self.evaluate(&before_balance, &op);
+    log::debug!("after evaluating: calculated_op {calculated_op:?}\nnew_balance{new_balance:?}");
 
     let (before_op, current_balance) = if let Some((o, b)) = self.get(&op)? {
       // if no changes exit
@@ -747,7 +750,7 @@ impl<'a> PropagationFront<'a> {
 
     let mut new_dependant: Vec<Dependant> = vec![];
 
-    if diff_balance.qty.is_zero() && diff_balance.cost == Cost::ZERO {
+    if diff_balance.qty.is_empty() && diff_balance.cost == Cost::ZERO {
     } else if diff_balance.qty.is_positive() {
       let batch = Batch { id: op.id, date: op.date };
       let mut new = op.clone();
@@ -801,7 +804,7 @@ impl<'a> PropagationFront<'a> {
           qty -= &q;
         }
 
-        if qty.is_zero() {
+        if qty.is_empty() {
           break;
         }
       }
@@ -849,7 +852,6 @@ impl<'a> PropagationFront<'a> {
 
       if !balance.qty.is_positive() || batch == Batch::no() {
         continue;
-        // TODO >= for qty
       } else if qty.is_greater_or_equal(&balance.qty)? {
         let mut new = op.clone();
         new.is_dependent = true;
@@ -893,7 +895,7 @@ impl<'a> PropagationFront<'a> {
 
     log::debug!("issue qty left {qty:?}");
 
-    if !qty.is_zero() {
+    if !qty.is_empty() {
       let mut new = op.clone();
       new.is_dependent = true;
       new.dependant = vec![];

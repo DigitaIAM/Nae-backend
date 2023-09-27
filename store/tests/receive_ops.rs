@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use store::balance::{Balance, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::{dt, Mode};
@@ -5,12 +6,16 @@ use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
+use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 const G2: Uuid = Uuid::from_u128(2);
 
 #[test]
 fn store_test_receive_ops() {
+  std::env::set_var("RUST_LOG", "debug");
+  env_logger::init();
+
   let tmp_dir = TempDir::new().expect("Can't create tmp dir in test_get_wh_balance");
 
   let mut wh = WHStorage::open(&tmp_dir.path()).unwrap();
@@ -26,8 +31,18 @@ fn store_test_receive_ops() {
   let id3 = Uuid::from_u128(103);
   let id4 = Uuid::from_u128(104);
 
+  let uom = Uuid::new_v4();
+
   let ops = vec![
-    OpMutation::receive_new(id1, op_d, w1, G1, party.clone(), 3.into(), 3000.into()),
+    OpMutation::receive_new(
+      id1,
+      op_d,
+      w1,
+      G1,
+      party.clone(),
+      Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
+      3000.into()
+    ),
     OpMutation::new(
       id2,
       op_d,
@@ -36,7 +51,10 @@ fn store_test_receive_ops() {
       G1,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(
+        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
+        1000.into(),
+        Mode::Manual)),
     ),
     OpMutation::new(
       id3,
@@ -46,7 +64,10 @@ fn store_test_receive_ops() {
       G2,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(
+        Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+        2000.into(),
+        Mode::Manual)),
     ),
     OpMutation::new(
       id4,
@@ -56,18 +77,22 @@ fn store_test_receive_ops() {
       G2,
       party.clone(),
       None,
-      Some(InternalOperation::Receive(2.into(), 2000.into())),
+      Some(InternalOperation::Receive(
+        Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+        2000.into())),
     ),
   ];
 
-  db.record_ops(&ops).expect("test_receive_ops");
+  db.record_ops(&ops).unwrap();
 
   let balance = vec![Balance {
     date: check_d,
     store: w1,
     goods: G1,
     batch: party,
-    number: BalanceForGoods { qty: 2.into(), cost: 2000.into() },
+    number: BalanceForGoods {
+      qty: Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+      cost: 2000.into() },
   }];
 
   for checkpoint_topology in db.checkpoint_topologies.iter() {

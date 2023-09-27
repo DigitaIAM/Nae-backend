@@ -1,4 +1,3 @@
-use core::str::FromStr;
 use rocksdb::IteratorMode;
 use rust_decimal::Decimal;
 use store::batch::Batch;
@@ -9,6 +8,7 @@ use store::topologies::store_date_type_batch_id::StoreDateTypeBatchId;
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
+use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 const G2: Uuid = Uuid::from_u128(2);
@@ -30,6 +30,8 @@ fn store_test_op_iter() {
   let id3 = Uuid::from_u128(103);
   let id4 = Uuid::from_u128(104);
 
+  let uom = Uuid::new_v4();
+
   let ops = vec![
     OpMutation::new(
       id3,
@@ -39,7 +41,9 @@ fn store_test_op_iter() {
       G2,
       party.clone(),
       None,
-      Some(InternalOperation::Receive(1.into(), 1000.into())),
+      Some(InternalOperation::Receive(
+        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
+        1000.into())),
     ),
     OpMutation::new(
       id4,
@@ -49,7 +53,9 @@ fn store_test_op_iter() {
       G2,
       party.clone(),
       None,
-      Some(InternalOperation::Receive(1.into(), 1000.into())),
+      Some(InternalOperation::Receive(
+        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
+        1000.into())),
     ),
     OpMutation::new(
       id1,
@@ -59,7 +65,10 @@ fn store_test_op_iter() {
       G3,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(
+        Qty::new(vec![Number::new(Decimal::try_from("0.5").unwrap(), uom, None)]),
+        1500.into(),
+        Mode::Manual)),
     ),
     OpMutation::new(
       id2,
@@ -69,7 +78,10 @@ fn store_test_op_iter() {
       G3,
       party.clone(),
       None,
-      Some(InternalOperation::Issue(Decimal::from_str("0.5").unwrap(), 1500.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(
+        Qty::new(vec![Number::new(Decimal::try_from("0.5").unwrap(), uom, None)]),
+        1500.into(),
+        Mode::Manual)),
     ),
   ];
 

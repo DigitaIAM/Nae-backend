@@ -278,6 +278,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       let (d, s, g, b) = self.key_to_data(k.to_vec())?;
 
       if g == goods {
+        log::debug!("fn_balances_for_store_goods: balance {balance:?}\nbatch {b:?}");
         balances.insert(b, balance);
       }
     }

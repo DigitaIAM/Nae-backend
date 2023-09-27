@@ -1,4 +1,4 @@
-use crate::memories::Resolve;
+use crate::memories::{Enrich, Resolve};
 use crate::storage::organizations::Workspace;
 use json::JsonValue;
 use service::utils::json::JsonParams;
@@ -205,11 +205,11 @@ where
     .into_iter()
     .map(|id| (id.resolve_to_json_object(ws), id))
     .map(|(mut o, id)| {
-      let cost = map.remove(&id).unwrap_or_default();
+      let mut cost = map.remove(&id).unwrap_or_default().to_json();
       if name == "_balance" {
-        // TODO cost.enrich
+        cost = cost.enrich(ws);
       }
-      o[name] = cost.to_json();
+      o[name] = cost;
       o["_category"] = cat.into();
       o
     })
