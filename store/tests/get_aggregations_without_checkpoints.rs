@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use store::aggregations::AgregationStoreGoods;
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
@@ -7,6 +8,7 @@ use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
+use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 const G2: Uuid = Uuid::from_u128(2);
@@ -29,6 +31,8 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
   let id3 = Uuid::from_u128(103);
   let id4 = Uuid::from_u128(104);
 
+  let uom = Uuid::new_v4();
+
   let ops = vec![
     OpMutation::new(
       id1,
@@ -38,7 +42,10 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
       G1,
       doc1.clone(),
       None,
-      Some(InternalOperation::Receive(3.into(), 3000.into())),
+      Some(InternalOperation::Receive(
+        Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
+        3000.into())
+      ),
     ),
     OpMutation::new(
       id2,
@@ -48,7 +55,9 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
       G1,
       doc1.clone(),
       None,
-      Some(InternalOperation::Issue(1.into(), 1000.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(
+        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
+        1000.into(), Mode::Manual)),
     ),
     OpMutation::new(
       id3,
@@ -58,7 +67,10 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
       G2,
       doc2.clone(),
       None,
-      Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
+      Some(InternalOperation::Issue(
+        Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+        2000.into(),
+        Mode::Manual)),
     ),
     OpMutation::new(
       id4,
@@ -68,7 +80,9 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
       G2,
       doc2.clone(),
       None,
-      Some(InternalOperation::Receive(2.into(), 2000.into())),
+      Some(InternalOperation::Receive(
+        Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+        2000.into())),
     ),
   ];
 
@@ -80,18 +94,30 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
       goods: Some(G1),
       batch: Some(doc1.clone()),
       open_balance: BalanceForGoods::default(),
-      receive: BalanceDelta { qty: 3.into(), cost: 3000.into() },
-      issue: BalanceDelta { qty: (-1).into(), cost: (-1000).into() },
-      close_balance: BalanceForGoods { qty: 2.into(), cost: 2000.into() },
+      receive: BalanceDelta {
+        qty: Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
+        cost: 3000.into() },
+      issue: BalanceDelta {
+        qty: Qty::new(vec![Number::new(Decimal::from(-1), uom, None)]),
+        cost: (-1000).into() },
+      close_balance: BalanceForGoods {
+        qty: Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+        cost: 2000.into() },
     },
     AgregationStoreGoods {
       store: Some(w1),
       goods: Some(G2),
       batch: Some(doc2.clone()),
       open_balance: BalanceForGoods::default(),
-      receive: BalanceDelta { qty: 2.into(), cost: 2000.into() },
-      issue: BalanceDelta { qty: (-2).into(), cost: (-2000).into() },
-      close_balance: BalanceForGoods::default(),
+      receive: BalanceDelta {
+        qty: Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+        cost: 2000.into() },
+      issue: BalanceDelta {
+        qty: Qty::new(vec![Number::new(Decimal::from(-2), uom, None)]),
+        cost: (-2000).into() },
+      close_balance: BalanceForGoods {
+        qty: Qty::new(vec![Number::new(Decimal::from(0), uom, None)]),
+        cost: 0.into() },
     },
   ];
 
@@ -99,7 +125,7 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
 
   assert_eq!(agregations, res.items.1);
 
-  tmp_dir.close().expect("Can't close tmp dir in store_test_get_wh_balance");
+  tmp_dir.close().unwrap();
 
   Ok(())
 }

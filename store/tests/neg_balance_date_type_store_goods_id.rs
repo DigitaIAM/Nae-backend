@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use store::aggregations::AgregationStoreGoods;
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
@@ -6,6 +7,7 @@ use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
+use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 
@@ -23,6 +25,8 @@ fn store_test_neg_balance_date_type_store_goods_id() {
 
   let id1 = Uuid::from_u128(101);
 
+  let uom = Uuid::new_v4();
+
   let ops = vec![OpMutation::new(
     id1,
     op_d,
@@ -31,7 +35,10 @@ fn store_test_neg_balance_date_type_store_goods_id() {
     G1,
     party.clone(),
     None,
-    Some(InternalOperation::Issue(2.into(), 2000.into(), Mode::Manual)),
+    Some(InternalOperation::Issue(
+      Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+      2000.into(),
+      Mode::Manual)),
   )];
 
   db.record_ops(&ops).expect("test_get_neg_balance");
@@ -42,8 +49,12 @@ fn store_test_neg_balance_date_type_store_goods_id() {
     batch: Some(party.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta::default(),
-    issue: BalanceDelta { qty: (-2).into(), cost: (-2000).into() },
-    close_balance: BalanceForGoods { qty: (-2).into(), cost: (-2000).into() },
+    issue: BalanceDelta {
+      qty: Qty::new(vec![Number::new(Decimal::from(-2), uom, None)]),
+      cost: (-2000).into() },
+    close_balance: BalanceForGoods {
+      qty: Qty::new(vec![Number::new(Decimal::from(-2), uom, None)]),
+      cost: (-2000).into() },
   };
 
   let res = db.get_report_for_storage(w1, op_d, check_d).unwrap();

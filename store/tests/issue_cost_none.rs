@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use store::aggregations::AgregationStoreGoods;
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
@@ -6,6 +7,7 @@ use store::operations::{InternalOperation, OpMutation};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
+use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 
@@ -25,6 +27,8 @@ fn store_test_issue_cost_none() {
   let id1 = Uuid::from_u128(101);
   let id2 = Uuid::from_u128(102);
 
+  let uom = Uuid::new_v4();
+
   let ops = vec![
     OpMutation::new(
       id1,
@@ -34,7 +38,9 @@ fn store_test_issue_cost_none() {
       G1,
       doc.clone(),
       None,
-      Some(InternalOperation::Receive(4.into(), 2000.into())),
+      Some(InternalOperation::Receive(
+        Qty::new(vec![Number::new(Decimal::from(4), uom, None)]),
+        2000.into())),
     ),
     OpMutation::new(
       id2,
@@ -44,7 +50,10 @@ fn store_test_issue_cost_none() {
       G1,
       doc.clone(),
       None,
-      Some(InternalOperation::Issue(1.into(), 0.into(), Mode::Auto)),
+      Some(InternalOperation::Issue(
+        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
+        0.into(),
+        Mode::Auto)),
     ),
   ];
 
@@ -57,12 +66,18 @@ fn store_test_issue_cost_none() {
     goods: Some(G1),
     batch: Some(doc.clone()),
     open_balance: BalanceForGoods::default(),
-    receive: BalanceDelta { qty: 4.into(), cost: 2000.into() },
-    issue: BalanceDelta { qty: (-1).into(), cost: (-500).into() },
-    close_balance: BalanceForGoods { qty: 3.into(), cost: 1500.into() },
+    receive: BalanceDelta {
+      qty: Qty::new(vec![Number::new(Decimal::from(4), uom, None)]),
+      cost: 2000.into() },
+    issue: BalanceDelta {
+      qty: Qty::new(vec![Number::new(Decimal::from(-1), uom, None)]),
+      cost: (-500).into() },
+    close_balance: BalanceForGoods {
+      qty: Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
+      cost: 1500.into() },
   };
 
   assert_eq!(agr, res.items.1[0]);
 
-  tmp_dir.close().expect("Can't remove tmp dir in test_issue_cost_none");
+  tmp_dir.close().unwrap();
 }
