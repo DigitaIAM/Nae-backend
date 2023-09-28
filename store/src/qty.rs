@@ -509,15 +509,15 @@ impl Qty {
 
   pub fn is_zero(&self) -> bool {
     if self.inner.is_empty() {
-      return true;
+      true
     } else {
       for qty in &self.inner {
         if !qty.number.is_zero() {
           return false;
         }
       }
+      true
     }
-    true
   }
 
   pub(crate) fn lowering(&self, name: &Uom) -> Option<Number<Uom>> {
@@ -654,6 +654,16 @@ impl Add for &Qty {
           vector.inner.push(result);
           index = i;
           break;
+        } else if !left.is_negative() && right.is_negative() {
+          let right = -(right.clone());
+          if let Some(_common) = left.common(&right) {
+            let result = left.clone() - right;
+            for item in result.inner {
+              vector.inner.push(item);
+            }
+            index = i;
+            break;
+          }
         }
       }
       if index != usize::MAX {
@@ -1062,6 +1072,94 @@ mod tests {
     assert_eq!(res1.inner.len(), 1);
     assert_eq!(res1.inner[0].number, Decimal::from(2));
     assert_eq!(res1.inner[0].name.named().unwrap().number, Decimal::from(10));
+  }
+
+  #[test]
+  fn neg_add() {
+    // (+) + (-)
+    let data0 = object! {
+      "number": 1,
+      "uom": object! {
+        "number": 10,
+        "uom": UUID_NIL.to_json(),
+        "in": UUID_MAX.to_json(),
+      },
+    };
+
+    let qty0: Qty = data0.try_into().unwrap();
+    // println!("{qty0:?}");
+
+    let data1 = object! {
+      "number": -2,
+      "uom": UUID_NIL.to_json(),
+    };
+
+    let qty1: Qty = data1.try_into().unwrap();
+    // println!("{qty1:?}");
+
+    let res0 = &qty0 + &qty1;
+    // println!("res0= {res0:?}");
+
+    assert_eq!(res0.inner.len(), 1);
+    assert_eq!(res0.inner[0].number, Decimal::from(8));
+
+    // (-) + (-)
+    let data2 = object! {
+      "number": -1,
+      "uom": object! {
+        "number": 10,
+        "uom": UUID_NIL.to_json(),
+        "in": UUID_MAX.to_json(),
+      },
+    };
+
+    let qty2: Qty = data2.try_into().unwrap();
+    // println!("{qty2:?}");
+
+    let data3 = object! {
+      "number": -2,
+      "uom": UUID_NIL.to_json(),
+    };
+
+    let qty3: Qty = data3.try_into().unwrap();
+    // println!("{qty3:?}");
+
+    let res1_0 = &qty2 + &qty3;
+    // println!("res1_0= {res1_0:?}");
+
+    assert_eq!(res1_0.inner.len(), 2);
+    assert_eq!(res1_0.inner[0].number, Decimal::from(-1));
+    assert_eq!(res1_0.inner[0].name.named().unwrap().number, Decimal::from(10));
+    assert_eq!(res1_0.inner[1].number, Decimal::from(-2));
+
+    let res1_1 = &qty3 + &qty3;
+    println!("res1_1= {res1_1:?}");
+
+    assert_eq!(res1_1.inner.len(), 1);
+    assert_eq!(res1_1.inner[0].number, Decimal::from(-4));
+
+    // (-) + (+)
+    let data4 = object! {
+      "number": 5,
+      "uom": UUID_NIL.to_json(),
+    };
+
+    let qty4: Qty = data4.try_into().unwrap();
+    // println!("{qty4:?}");
+
+    let res2_0 = &qty2 + &qty4;
+    // println!("res2_0= {res2_0:?}");
+
+    assert_eq!(res2_0.inner.len(), 2);
+    assert_eq!(res2_0.inner[0].number, Decimal::from(-1));
+    assert_eq!(res2_0.inner[0].name.named().unwrap().number, Decimal::from(10));
+    assert_eq!(res2_0.inner[1].number, Decimal::from(5));
+
+    let res2_1 = &qty3 + &qty4;
+    // println!("res2_1= {res2_1:?}");
+
+    assert_eq!(res2_1.inner.len(), 1);
+    assert_eq!(res2_1.inner[0].number, Decimal::from(3));
   }
 
   #[test]
