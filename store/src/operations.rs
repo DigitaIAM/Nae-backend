@@ -428,7 +428,9 @@ impl OpMutation {
   }
 
   pub(crate) fn to_delta(&self) -> BalanceDelta {
-    if let Some((before, _)) = self.before.as_ref() {
+    if self.before == self.after {
+      BalanceDelta::default()
+    } else if let Some((before, _)) = self.before.as_ref() {
       if let Some((after, _)) = self.after.as_ref() {
         let before: BalanceDelta = before.clone().into();
         let after: BalanceDelta = after.clone().into();
