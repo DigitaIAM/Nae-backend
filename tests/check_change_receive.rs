@@ -1,6 +1,7 @@
 mod test_init;
 use crate::test_init::{goods, init, receive, store, DocumentCreation};
 use chrono::Utc;
+use json::array;
 use json::object;
 use json::JsonValue;
 use nae_backend::commutator::Application;
@@ -41,7 +42,8 @@ async fn check_change_receive() {
   let s3 = store(&app, "s3");
   let g1 = goods(&app, "g1");
 
-  let u1 = Uuid::new_v4();
+  let uom0 = Uuid::new_v4();
+  let uom1 = Uuid::new_v4();
 
   // create receive document
   let receiveDoc = object! {
@@ -58,7 +60,7 @@ async fn check_change_receive() {
   let mut receiveOp = object! {
     document: d1["_id"].to_string(),
     goods: g1.to_string(),
-    qty: object! {number: "3.0", uom: u1.to_json()},
+    qty: array! [ object! {"number": "1", "uom": { "number": "3.0", "uom": uom0.to_json(), "in": uom1.to_json() }} ],
     cost: object! {number: "0.3"},
   };
 
@@ -73,7 +75,7 @@ async fn check_change_receive() {
     date: "2023-01-03",
     from: s2.to_string(),
     into: s3.to_string(),
-    number: "1",
+    number: "2",
   };
 
   log::debug!("CREATE TRANSFER HEAD 2023-01-03 S2 > S3");
@@ -83,8 +85,8 @@ async fn check_change_receive() {
   let transferOp = object! {
     document: d2["_id"].to_string(),
     goods: g1.to_string(),
-    qty: object! {number: "3.0", uom: u1.to_json()},
-    cost: object! {number: "0.3"},
+    qty: array! [ object! { "number": "3.0", "uom": uom0.to_json() } ],
+    // cost: object! {number: "0.1"},
   };
 
   log::debug!("CREATE TRANSFER OPERATION 2023-01-03 S2 > S3");
@@ -94,7 +96,9 @@ async fn check_change_receive() {
 
   // change receive
   log::debug!("CHANGE RECEIVE OPERATION QTY 3.0 > 4.0");
-  receiveOp["qty"] = object! {number: "4.0", uom: u1.to_json()};
+  receiveOp["qty"] = array![
+    object! {"number": "1", "uom": { "number": "4.0", "uom": uom0.to_json(), "in": uom1.to_json() }}
+  ];
   receiveOp["cost"] = object! {number: "0.4"};
 
   let d3 = receive_op.update(&app, r1["_id"].string(), receiveOp);
@@ -114,11 +118,12 @@ async fn check_change_receive() {
   log::debug!("s2: {s2:#?}");
   log::debug!("s3: {s3:#?}");
 
-  // assert_eq!(balances.get(&s1), None);
-  //
-  // assert_eq!(balances[&s2][&g1][&r1_batch].qty, Decimal::from(1));
-  // assert_eq!(balances[&s2][&g1][&r1_batch].cost, Decimal::from_str("0.1").unwrap().into());
-  //
-  // assert_eq!(balances[&s3][&g1][&r1_batch].qty, Decimal::from(3));
-  // assert_eq!(balances[&s3][&g1][&r1_batch].cost, Decimal::from_str("0.3").unwrap().into());
+  assert_eq!(balances.get(&s1), None);
+
+  assert_eq!(balances[&s2][&g1][&r1_batch].qty.inner().len(), 1);
+  assert_eq!(balances[&s2][&g1][&r1_batch].qty.inner()[0].number(), Decimal::from(1));
+  assert_eq!(balances[&s2][&g1][&r1_batch].cost, Decimal::from_str("0.1").unwrap().into());
+
+  assert_eq!(balances[&s3][&g1][&r1_batch].qty.inner()[0].number(), Decimal::from(3));
+  assert_eq!(balances[&s3][&g1][&r1_batch].cost, Decimal::from_str("0.3").unwrap().into());
 }
