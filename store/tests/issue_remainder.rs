@@ -1,13 +1,13 @@
 use rust_decimal::Decimal;
 use store::aggregations::AgregationStoreGoods;
-use store::balance::{BalanceDelta, BalanceForGoods};
+use store::balance::{BalanceDelta, BalanceForGoods, Cost};
 use store::batch::Batch;
 use store::elements::{dt, Mode};
 use store::operations::{InternalOperation, OpMutation};
+use store::qty::{Number, Qty};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
-use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 
@@ -31,7 +31,9 @@ fn store_test_issue_remainder() {
   let id2 = Uuid::from_u128(102);
   let id3 = Uuid::from_u128(103);
 
-  let uom = Uuid::new_v4();
+  let uom0 = Uuid::new_v4();
+  let uom1 = Uuid::new_v4();
+  let inner = Some(Box::new(Number::new(Decimal::from(3), uom1, None)));
 
   let ops = vec![
     OpMutation::new(
@@ -43,8 +45,9 @@ fn store_test_issue_remainder() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
-        10.into())),
+        Qty::new(vec![Number::new(Decimal::from(1), uom0, inner.clone())]),
+        10.into(),
+      )),
     ),
     OpMutation::new(
       id2,
@@ -55,9 +58,10 @@ fn store_test_issue_remainder() {
       doc.clone(),
       None,
       Some(InternalOperation::Issue(
-        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
+        Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
         0.into(),
-        Mode::Auto)),
+        Mode::Auto,
+      )),
     ),
     OpMutation::new(
       id3,
@@ -68,9 +72,10 @@ fn store_test_issue_remainder() {
       doc.clone(),
       None,
       Some(InternalOperation::Issue(
-        Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
+        Qty::new(vec![Number::new(Decimal::from(2), uom1, None)]),
         0.into(),
-        Mode::Auto)),
+        Mode::Auto,
+      )),
     ),
   ];
 
@@ -86,14 +91,14 @@ fn store_test_issue_remainder() {
     batch: Some(doc.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta {
-      qty: Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
-      cost: 10.into() },
+      qty: Qty::new(vec![Number::new(Decimal::from(1), uom0, inner)]),
+      cost: 10.into(),
+    },
     issue: BalanceDelta {
-      qty: Qty::new(vec![Number::new(Decimal::from(-3), uom, None)]),
-      cost: (-10).into() },
-    close_balance: BalanceForGoods {
-      qty: Qty::new(vec![Number::new(Decimal::from(0), uom, None)]),
-      cost: 0.into() },
+      qty: Qty::new(vec![Number::new(Decimal::from(-3), uom1, None)]),
+      cost: Cost::from(Decimal::from(-10)),
+    },
+    close_balance: BalanceForGoods::default(),
   };
 
   assert_eq!(agr, res.items.1[0]);

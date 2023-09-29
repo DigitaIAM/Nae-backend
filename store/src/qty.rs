@@ -268,7 +268,7 @@ impl Number<Uom> {
     }
   }
 
-  pub(crate) fn number(&self) -> Decimal {
+  pub fn number(&self) -> Decimal {
     self.number
   }
 
@@ -690,7 +690,24 @@ impl AddAssign<&Qty> for Qty {
 impl Sub for &Qty {
   type Output = Qty;
 
+  // TODO fn sub(self, rhs: Self) -> Self::Output {
+  // take two mutable vectors
+  // go from the end of rhs and end of self (minimal qtys)
+  // if there is common part, make an operation
+  // if left.depth() > right.depth() bring result to left depth
+  // push result to the left (instead of an old element)
+  // if some amount left at right qty, push it to the right instead of an old element, pop last element from the left (it became zero)
+  // }
+
   fn sub(self, rhs: Self) -> Self::Output {
+    if self.is_zero() && rhs.is_zero() {
+      return Qty::default();
+    } else if self.is_zero() {
+      return -rhs.clone();
+    } else if rhs.is_zero() {
+      return self.clone();
+    }
+
     let mut result = Qty { inner: Vec::new() };
     let mut vec_left = self.inner.clone();
     let mut vec_right = rhs.inner.clone();
@@ -720,9 +737,9 @@ impl Sub for &Qty {
       let mut index = usize::MAX;
       let mut right = right.clone();
       for (i, left) in vec_left.iter().enumerate() {
-        if i == vec_left.len() - 1 && right.is_negative() {
-          right = -right
-        }
+        // if i == vec_left.len() - 1 && right.is_negative() {
+        //   right = -right
+        // }
         if left.name == right.name {
           if find_difference(&mut index, i, left, &mut right, &mut result.inner) {
             break;
@@ -1019,452 +1036,6 @@ mod tests {
   }
 
   #[test]
-  fn add_success() {
-    let data0 = object! {
-      "number": 2,
-      "uom": UUID_NIL.to_json(),
-    };
-
-    let qty0: Qty = data0.try_into().unwrap();
-    // println!("{qty0:?}");
-
-    let data1 = object! {
-      "number": 3,
-      "uom": UUID_NIL.to_json(),
-    };
-
-    let qty1: Qty = data1.try_into().unwrap();
-    // println!("{qty1:?}");
-
-    let res0 = &qty0 + &qty1;
-    // println!("res0= {res0:?}");
-
-    assert_eq!(res0.inner.len(), 1);
-    assert_eq!(res0.inner[0].number, Decimal::from(5));
-
-    let data2 = object! {
-      "number": 1,
-      "uom": object! {
-        "number": 10,
-        "uom": UUID_NIL.to_json(),
-        "in": UUID_MAX.to_json(),
-      },
-    };
-
-    let qty2: Qty = data2.try_into().unwrap();
-    // println!("{qty2:?}");
-
-    let data3 = object! {
-      "number": 1,
-      "uom": object! {
-        "number": 10,
-        "uom": UUID_NIL.to_json(),
-        "in": UUID_MAX.to_json(),
-      },
-    };
-
-    let qty3: Qty = data3.try_into().unwrap();
-    // println!("{qty3:?}");
-
-    let res1 = &qty2 + &qty3;
-    // println!("res1= {res1:?}");
-
-    assert_eq!(res1.inner.len(), 1);
-    assert_eq!(res1.inner[0].number, Decimal::from(2));
-    assert_eq!(res1.inner[0].name.named().unwrap().number, Decimal::from(10));
-  }
-
-  #[test]
-  fn neg_add() {
-    // (+) + (-)
-    let data0 = object! {
-      "number": 1,
-      "uom": object! {
-        "number": 10,
-        "uom": UUID_NIL.to_json(),
-        "in": UUID_MAX.to_json(),
-      },
-    };
-
-    let qty0: Qty = data0.try_into().unwrap();
-    // println!("{qty0:?}");
-
-    let data1 = object! {
-      "number": -2,
-      "uom": UUID_NIL.to_json(),
-    };
-
-    let qty1: Qty = data1.try_into().unwrap();
-    // println!("{qty1:?}");
-
-    let res0 = &qty0 + &qty1;
-    // println!("res0= {res0:?}");
-
-    assert_eq!(res0.inner.len(), 1);
-    assert_eq!(res0.inner[0].number, Decimal::from(8));
-
-    // (-) + (-)
-    let data2 = object! {
-      "number": -1,
-      "uom": object! {
-        "number": 10,
-        "uom": UUID_NIL.to_json(),
-        "in": UUID_MAX.to_json(),
-      },
-    };
-
-    let qty2: Qty = data2.try_into().unwrap();
-    // println!("{qty2:?}");
-
-    let data3 = object! {
-      "number": -2,
-      "uom": UUID_NIL.to_json(),
-    };
-
-    let qty3: Qty = data3.try_into().unwrap();
-    // println!("{qty3:?}");
-
-    let res1_0 = &qty2 + &qty3;
-    // println!("res1_0= {res1_0:?}");
-
-    assert_eq!(res1_0.inner.len(), 2);
-    assert_eq!(res1_0.inner[0].number, Decimal::from(-1));
-    assert_eq!(res1_0.inner[0].name.named().unwrap().number, Decimal::from(10));
-    assert_eq!(res1_0.inner[1].number, Decimal::from(-2));
-
-    let res1_1 = &qty3 + &qty3;
-    println!("res1_1= {res1_1:?}");
-
-    assert_eq!(res1_1.inner.len(), 1);
-    assert_eq!(res1_1.inner[0].number, Decimal::from(-4));
-
-    // (-) + (+)
-    let data4 = object! {
-      "number": 5,
-      "uom": UUID_NIL.to_json(),
-    };
-
-    let qty4: Qty = data4.try_into().unwrap();
-    // println!("{qty4:?}");
-
-    let res2_0 = &qty2 + &qty4;
-    // println!("res2_0= {res2_0:?}");
-
-    assert_eq!(res2_0.inner.len(), 2);
-    assert_eq!(res2_0.inner[0].number, Decimal::from(-1));
-    assert_eq!(res2_0.inner[0].name.named().unwrap().number, Decimal::from(10));
-    assert_eq!(res2_0.inner[1].number, Decimal::from(5));
-
-    let res2_1 = &qty3 + &qty4;
-    // println!("res2_1= {res2_1:?}");
-
-    assert_eq!(res2_1.inner.len(), 1);
-    assert_eq!(res2_1.inner[0].number, Decimal::from(3));
-  }
-
-  #[test]
-  fn add_failure() {
-    let u0 = Uuid::new_v4();
-    let u1 = Uuid::new_v4();
-    let u2 = Uuid::new_v4();
-
-    // different uuids
-    let data0 = object! {
-      "number": 2,
-      "uom": u0.to_json(),
-    };
-
-    let qty0: Qty = data0.try_into().unwrap();
-    // println!("{qty0:?}");
-
-    let data1 = object! {
-      "number": 2,
-      "uom": u1.to_json(),
-    };
-
-    let qty1: Qty = data1.try_into().unwrap();
-    // println!("{qty1:?}");
-
-    let res0 = &qty0 + &qty1;
-    // println!("res= {res0:?}");
-
-    assert_eq!(res0.inner.len(), 2);
-    assert_eq!(res0.inner[0].number, Decimal::from(2));
-    assert_eq!(res0.inner[1].number, Decimal::from(2));
-
-    // different numbers
-    let data2 = object! {
-      "number": 1,
-      "uom": object! {
-        "number": 10,
-        "uom": u1.to_json(),
-        "in": u0.to_json(),
-      },
-    };
-
-    let qty2: Qty = data2.try_into().unwrap();
-    // println!("{qty2:?}");
-
-    let data3 = object! {
-      "number": 1,
-      "uom": object! {
-        "number": 11,
-        "uom": u1.to_json(),
-        "in": u0.to_json(),
-      },
-    };
-
-    let qty3: Qty = data3.try_into().unwrap();
-    // println!("{qty3:?}");
-
-    let res1 = &qty2 + &qty3;
-
-    // println!("res= {res1:?}");
-
-    assert_eq!(res1.inner.len(), 2);
-    assert_eq!(res1.inner[0].number, Decimal::from(1));
-    assert_eq!(res1.inner[1].number, Decimal::from(1));
-
-    // different numbers
-    let data4 = object! {
-      "number": 2,
-      "uom": object! {
-        "number": 10,
-        "uom": object! {
-          "number": 100,
-          "uom": u2.to_json(),
-          "in": u1.to_json(),
-        },
-        "in": u0.to_json(),
-      },
-    };
-
-    let qty4: Qty = data4.try_into().unwrap();
-    // println!("{qty4:?}");
-
-    let data5 = object! {
-      "number": 2,
-      "uom": object! {
-        "number": 10,
-        "uom": object! {
-          "number": 99,
-          "uom": u2.to_json(),
-          "in": u1.to_json(),
-        },
-        "in": u0.to_json(),
-      },
-    };
-
-    let qty5: Qty = data5.try_into().unwrap();
-    // println!("{qty5:?}");
-
-    let res2 = &qty4 + &qty5;
-    // println!("res= {res2:?}");
-
-    assert_eq!(res2.inner.len(), 2);
-    assert_eq!(res2.inner[0].number, Decimal::from(2));
-    assert_eq!(res2.inner[1].number, Decimal::from(2));
-  }
-
-  #[test]
-  fn sub_success() {
-    let u0 = Uuid::new_v4();
-    let u1 = Uuid::new_v4();
-    let u2 = Uuid::new_v4();
-
-    let data0 = object! {
-      "number": 1,
-      "uom": object! {
-        "number": 10,
-        "uom": u0.to_json(),
-        "in": u1.to_json(),
-      },
-    };
-
-    let qty0: Qty = data0.try_into().unwrap();
-    // println!("{qty0:?}");
-
-    let data1 = object! {
-      "number": 2,
-      "uom": u0.to_json(),
-    };
-
-    let qty1: Qty = data1.try_into().unwrap();
-    // println!("{qty1:?}");
-
-    let res0 = &qty0 - &qty1;
-    // println!("res= {res0:?}");
-
-    assert_eq!(res0.inner.len(), 1);
-    assert_eq!(res0.inner[0].number, Decimal::from(8));
-
-    let data2 = object! {
-      "number": 2,
-      "uom": object! {
-        "number": 10,
-        "uom": object! {
-          "number": 100,
-          "uom": u2.to_json(),
-          "in": u1.to_json(),
-        },
-        "in": u0.to_json(),
-      },
-    };
-
-    let qty2: Qty = data2.try_into().unwrap();
-    // println!("{qty2:?}");
-
-    let data3 = object! {
-      "number": 5,
-      "uom": object! {
-        "number": 100,
-        "uom": u2.to_json(),
-        "in": u1.to_json(),
-      },
-    };
-
-    let qty3: Qty = data3.try_into().unwrap();
-    // println!("{qty3:?}");
-
-    let res1 = &qty2 - &qty3;
-    // println!("res= {res1:?}");
-
-    assert_eq!(res1.inner.len(), 2);
-    assert_eq!(res1.inner[0].number, Decimal::from(5));
-
-    let qty3 = res1.inner[1].clone();
-    assert_eq!(qty3.number, Decimal::from(1));
-
-    let qty3_inner = qty3.name.named().unwrap();
-    assert_eq!(qty3_inner.number, Decimal::from(10));
-
-    let qty3_inner_inner = qty3_inner.name.named().unwrap();
-    assert_eq!(qty3_inner_inner.number, Decimal::from(100));
-  }
-
-  #[test]
-  fn sub_failure() {
-    let u0 = Uuid::new_v4();
-    let u1 = Uuid::new_v4();
-    let u2 = Uuid::new_v4();
-
-    let data0 = object! {
-      "number": 3,
-      "uom": u0.to_json(),
-    };
-
-    let qty0: Qty = data0.try_into().unwrap();
-    // println!("{qty0:?}");
-
-    let data1 = object! {
-      "number": 2,
-      "uom": u1.to_json(),
-    };
-
-    let qty1: Qty = data1.try_into().unwrap();
-    // println!("{qty1:?}");
-
-    let res0 = &qty0 - &qty1;
-    // println!("res= {res0:?}");
-
-    assert_eq!(res0.inner.len(), 2);
-    assert_eq!(res0.inner[0].number, Decimal::from(3));
-    assert_eq!(res0.inner[1].number, Decimal::from(-2));
-
-    let data2 = object! {
-      "number": 2,
-      "uom": object! {
-        "number": 10,
-        "uom": object! {
-          "number": 100,
-          "uom": u2.to_json(),
-          "in": u1.to_json(),
-        },
-        "in": u0.to_json(),
-      },
-    };
-
-    let qty2: Qty = data2.try_into().unwrap();
-    // println!("{qty2:?}");
-
-    let data3 = object! {
-      "number": 5,
-      "uom": object! {
-        "number": 99,
-        "uom": u2.to_json(),
-        "in": u1.to_json(),
-      },
-    };
-
-    let qty3: Qty = data3.try_into().unwrap();
-    // println!("{qty3:?}");
-
-    let res1 = &qty2 - &qty3;
-    // println!("res= {res1:?}");
-
-    assert_eq!(res1.inner.len(), 2);
-    assert_eq!(res1.inner[0].number, Decimal::from(2));
-    assert_eq!(res1.inner[1].number, Decimal::from(-5));
-  }
-
-  #[test]
-  fn sub_neg_result() {
-    let u0 = Uuid::new_v4();
-    let u1 = Uuid::new_v4();
-    let u2 = Uuid::new_v4();
-
-    let data0 = object! {
-      "number": 2,
-      "uom": u0.to_json(),
-    };
-
-    let qty0: Qty = data0.try_into().unwrap();
-    // println!("{qty0:?}");
-
-    let data1 = object! {
-      "number": 3,
-      "uom": u0.to_json(),
-    };
-
-    let qty1: Qty = data1.try_into().unwrap();
-    // println!("{qty1:?}");
-
-    let res0 = &qty0 - &qty1;
-    // println!("res0= {res0:?}");
-
-    assert_eq!(res0.inner.len(), 1);
-    assert_eq!(res0.inner[0].number, Decimal::from(-1));
-
-    let data2 = array![
-      object! {
-        "number": 3,
-        "uom": u0.to_json(),
-      },
-      object! {
-        "number": 4,
-        "uom": u0.to_json(),
-      },
-    ];
-
-    let qty2: Qty = data2.try_into().unwrap();
-    // println!("{qty0:?}");
-
-    let data3 = object! {
-      "number": 5,
-      "uom": u0.to_json(),
-    };
-
-    let qty3: Qty = data3.try_into().unwrap();
-    // println!("{qty1:?}");
-
-    let res1 = &qty2 - &qty3;
-    // println!("res1= {res1:?}");
-
-    assert_eq!(res1.inner.len(), 1);
-    assert_eq!(res1.inner[0].number, Decimal::from(2));
-  }
-
-  #[test]
   fn lowering() {
     let u0 = Uuid::new_v4();
     let u1 = Uuid::new_v4();
@@ -1754,5 +1325,427 @@ mod tests {
     // println!("div {res:?}");
 
     assert_eq!(res, Decimal::from(2));
+  }
+
+  fn check_add(left: Qty, right: Qty, check: Qty) {
+    let result = &left + &right;
+
+    assert_eq!(result.inner.len(), check.inner.len());
+    for i in 0..check.inner.len() {
+      assert_eq!(result.inner[i].number, check.inner[i].number);
+      assert_eq!(result.inner[i].name, check.inner[i].name);
+    }
+  }
+  #[test]
+  fn add() {
+    let uom0 = Uuid::new_v4();
+    let uom1 = Uuid::new_v4();
+    let uom2 = Uuid::new_v4();
+
+    // 2 + 3 = 5
+    check_add(
+      Qty::new(vec![Number::new(Decimal::from(2), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(3), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(5), uom0, None)]),
+    );
+
+    // 1 + 0 = 1
+    check_add(
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(0), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+    );
+
+    // 1 + "void" = 1
+    check_add(
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::default(),
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+    );
+
+    // 1 of 10 + 1 of 10 = 2 of 10
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(2),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+    );
+
+    // (1 of 10) + (-2) = -8
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(Decimal::from(-2), uom1, None)]),
+      Qty::new(vec![Number::new(Decimal::from(8), uom1, None)]),
+    );
+
+    // (-1) + (-1) = -2
+    check_add(
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(-2), uom0, None)]),
+    );
+
+    // (-1) + (2) = 1
+    check_add(
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(2), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+    );
+
+    // (-1 of 10) + (-2) = [-1 of 10, -2]
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(Decimal::from(-2), uom1, None)]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-1),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-2), uom1, None),
+      ]),
+    );
+
+    // (-1 of 10) + (5) = [-1 of 10, 5]
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(Decimal::from(5), uom1, None)]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-1),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+    );
+
+    // 1 uom0 + 1 uom1 = [1 uom0, 1 uom1]
+    check_add(
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
+      Qty::new(vec![
+        Number::new(Decimal::from(1), uom0, None),
+        Number::new(Decimal::from(1), uom1, None),
+      ]),
+    );
+
+    // 1 of 10 + 1 of 11 = [1 of 10, 1 of 11]
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(11), uom1, None))),
+      )]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(1),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(
+          Decimal::from(1),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(11), uom1, None))),
+        ),
+      ]),
+    );
+
+    // 2 of 10 of 100 + 2 of 10 of 99 = [2 of 10 of 100, 2 of 10 of 99]
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(2),
+        uom0,
+        Some(Box::new(Number::new(
+          Decimal::from(10),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+        ))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(2),
+        uom0,
+        Some(Box::new(Number::new(
+          Decimal::from(10),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(99), uom2, None))),
+        ))),
+      )]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(2),
+          uom0,
+          Some(Box::new(Number::new(
+            Decimal::from(10),
+            uom1,
+            Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+          ))),
+        ),
+        Number::new(
+          Decimal::from(2),
+          uom0,
+          Some(Box::new(Number::new(
+            Decimal::from(10),
+            uom1,
+            Some(Box::new(Number::new(Decimal::from(99), uom2, None))),
+          ))),
+        ),
+      ]),
+    );
+  }
+
+  fn check_sub(left: Qty, right: Qty, check: Qty) {
+    let result = &left - &right;
+    println!("check_sub {result:?}");
+
+    assert_eq!(result.inner.len(), check.inner.len());
+    for i in 0..check.inner.len() {
+      assert_eq!(result.inner[i].number, check.inner[i].number);
+      assert_eq!(result.inner[i].name, check.inner[i].name);
+    }
+  }
+
+  #[test]
+  fn sub() {
+    let uom0 = Uuid::new_v4();
+    let uom1 = Uuid::new_v4();
+    let uom2 = Uuid::new_v4();
+
+    // 3 - 1 = 2
+    check_sub(
+      Qty::new(vec![Number::new(Decimal::from(3), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(2), uom0, None)]),
+    );
+
+    // 1 - 1 = 0
+    check_sub(
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::default(),
+    );
+
+    // 2 - 3 = -1
+    check_sub(
+      Qty::new(vec![Number::new(Decimal::from(2), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(3), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+    );
+
+    // 1 - 0 = 1
+    check_sub(
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(0), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+    );
+
+    // 1 - "void" = 1
+    check_sub(
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::default(),
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+    );
+
+    // 1 of 10 - 2 = 8
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(Decimal::from(2), uom1, None)]),
+      Qty::new(vec![Number::new(Decimal::from(8), uom1, None)]),
+    );
+
+    // 2 of 10 of 100 - 6 of 100 = [1 of 10 of 100, 4 of 100] TODO wrong order ?
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(2),
+        uom0,
+        Some(Box::new(Number::new(
+          Decimal::from(10),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+        ))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(6),
+        uom1,
+        Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+      )]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(4),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+        ),
+        Number::new(
+          Decimal::from(1),
+          uom0,
+          Some(Box::new(Number::new(
+            Decimal::from(10),
+            uom1,
+            Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+          ))),
+        ),
+      ]),
+    );
+
+    // 1 uom0 - 1 uom1 = [1 uom0, -1 uom1]
+    check_sub(
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
+      Qty::new(vec![
+        Number::new(Decimal::from(1), uom0, None),
+        Number::new(Decimal::from(-1), uom1, None),
+      ]),
+    );
+
+    // 2 of 10 of 100 - 5 of 99 = [2 of 10 of 100, -5 of 99]
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(2),
+        uom0,
+        Some(Box::new(Number::new(
+          Decimal::from(10),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+        ))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(5),
+        uom1,
+        Some(Box::new(Number::new(Decimal::from(99), uom2, None))),
+      )]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(2),
+          uom0,
+          Some(Box::new(Number::new(
+            Decimal::from(10),
+            uom1,
+            Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+          ))),
+        ),
+        Number::new(
+          Decimal::from(-5),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(99), uom2, None))),
+        ),
+      ]),
+    );
+
+    // TODO FAILED TESTS
+    // (-1) - (-1) = 0
+    check_sub(
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+      Qty::default(),
+    );
+
+    // (1) - (-1) = 2
+    check_sub(
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(2), uom0, None)]),
+    );
+
+    // (-1) - (1) = -2
+    check_sub(
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(-2), uom0, None)]),
+    );
+
+    // (-1 of 10) - (-1 of 10) = 0
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::default(),
+    );
+
+    // (1 of 10) - (-1 of 10) = 2 of 10
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(2),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+    );
+
+    // (-1 of 10) - (1 of 10) = -2 of 10
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-2),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+    );
+
+    // [3, 4] - 5 = 2
+    check_sub(
+      Qty::new(vec![
+        Number::new(Decimal::from(3), uom0, None),
+        Number::new(Decimal::from(4), uom0, None),
+      ]),
+      Qty::new(vec![Number::new(Decimal::from(5), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(2), uom0, None)]),
+    );
   }
 }

@@ -2,6 +2,7 @@ mod test_init;
 
 use crate::test_init::{goods, init, receive, store, DocumentCreation};
 use chrono::Utc;
+use json::array;
 use json::object;
 use json::JsonValue;
 use nae_backend::commutator::Application;
@@ -17,6 +18,7 @@ use store::elements::dt;
 use store::elements::ToJson;
 use store::GetWarehouse;
 use tantivy::HasLen;
+use uuid::Uuid;
 use values::constants::_UUID;
 use values::ID;
 
@@ -41,6 +43,8 @@ async fn check_change_transfer() {
   let s3 = store(&app, "s3");
   let g1 = goods(&app, "g1");
 
+  let uom = Uuid::new_v4();
+
   // create receive document
   let receiveDoc = object! {
     date: "2023-01-02",
@@ -56,7 +60,7 @@ async fn check_change_transfer() {
   let receiveOp = object! {
     document: d1["_id"].to_string(),
     goods: g1.to_string(),
-    qty: object! {number: "3.0"},
+    qty: array! [ object! {number: "3.0", "uom": uom.to_json()} ],
     cost: object! {number: "0.3"},
   };
 
@@ -81,7 +85,7 @@ async fn check_change_transfer() {
   let mut transferOp = object! {
     document: d2["_id"].to_string(),
     goods: g1.to_string(),
-    qty: object! {number: "3.0"},
+    qty: array! [ object! {number: "3.0", "uom": uom.to_json()} ],
     cost: object! {number: "0.3"},
   };
 
@@ -91,7 +95,7 @@ async fn check_change_transfer() {
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
 
   // change transfer
-  transferOp["qty"] = object! {number: "2.0"};
+  transferOp["qty"] = array![object! {number: "2.0", "uom": uom.to_json()}];
 
   log::debug!("UPDATE TRANSFER HEAD 2023-01-03 > 2022-12-15 S2 > S3");
   let d3 = transfer_op.update(&app, t1["_id"].string(), transferOp);
@@ -105,17 +109,17 @@ async fn check_change_transfer() {
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
 
-  // log::debug!("balances: {balances:#?}");
-  //
-  // log::debug!("s1: {s1:#?}");
-  // log::debug!("s2: {s2:#?}");
-  // log::debug!("s3: {s3:#?}");
+  log::debug!("balances: {balances:#?}");
+
+  log::debug!("s1: {s1:#?}");
+  log::debug!("s2: {s2:#?}");
+  log::debug!("s3: {s3:#?}");
 
   assert_eq!(balances.get(&s1), None);
 
-  assert_eq!(balances[&s2][&g1][&r1_batch].qty, Decimal::from(1));
+  assert_eq!(balances[&s2][&g1][&r1_batch].qty.inner()[0].number(), Decimal::from(1));
   assert_eq!(balances[&s2][&g1][&r1_batch].cost, Decimal::from_str("0.1").unwrap().into());
 
-  assert_eq!(balances[&s3][&g1][&r1_batch].qty, Decimal::from(2));
+  assert_eq!(balances[&s3][&g1][&r1_batch].qty.inner()[0].number(), Decimal::from(2));
   assert_eq!(balances[&s3][&g1][&r1_batch].cost, Decimal::from_str("0.2").unwrap().into());
 }

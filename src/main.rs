@@ -126,66 +126,67 @@ async fn reindex(
 
       let qty = &after["qty"];
 
-      let goods = |ctx_str: Vec<&str>, data: &JsonValue, params: JsonValue| -> Result<JsonValue, WHError> {
-        let goods_id = match ctx_str[..] {
-          ["production", "produce"] => {
-            let document = match app.service("memories").get(
-              service::Context::local(),
-              data["document"].string(),
-              params.clone(),
-            ) {
-              Ok(doc) => doc,
+      let goods =
+        |ctx_str: Vec<&str>, data: &JsonValue, params: JsonValue| -> Result<JsonValue, WHError> {
+          let goods_id = match ctx_str[..] {
+            ["production", "produce"] => {
+              let document = match app.service("memories").get(
+                service::Context::local(),
+                data["document"].string(),
+                params.clone(),
+              ) {
+                Ok(doc) => doc,
+                Err(e) => {
+                  return Err(WHError::new(e.to_string().as_str()));
+                },
+              };
+              log::debug!("_doc {document:?}");
+
+              let product = match app.service("memories").get(
+                service::Context::local(),
+                document["product"].string(),
+                params.clone(),
+              ) {
+                Ok(p) => p,
+                Err(e) => {
+                  return Err(WHError::new(e.to_string().as_str()));
+                },
+              };
+              log::debug!("_product {product:?}");
+
+              product["goods"].string()
+            },
+            _ => data["goods"].string(),
+          };
+
+          let goods =
+            match app.service("memories").get(service::Context::local(), goods_id, params.clone()) {
+              Ok(g) => g,
               Err(e) => {
                 return Err(WHError::new(e.to_string().as_str()));
               },
             };
-            log::debug!("_doc {document:?}");
 
-            let product = match app.service("memories").get(
-              service::Context::local(),
-              document["product"].string(),
-              params.clone(),
-            ) {
-              Ok(p) => p,
-              Err(e) => {
-                return Err(WHError::new(e.to_string().as_str()));
-              },
-            };
-            log::debug!("_product {product:?}");
-
-            product["goods"].string()
-          },
-          _ => {
-            data["goods"].string()
-          },
+          Ok(goods)
         };
-
-        let goods = match app.service("memories").get(
-          service::Context::local(),
-          goods_id,
-          params.clone(),
-        ) {
-          Ok(g) => g,
-          Err(e) => {
-            return Err(WHError::new(e.to_string().as_str()));
-          },
-        };
-
-        Ok(goods)
-      };
 
       if !qty.is_null() {
         match <JsonValue as TryInto<Qty>>::try_into(qty.clone()) {
-          Ok(q) => { println!("_qty {q:?}") }, // nothing to do
+          Ok(q) => {
+            println!("_qty {q:?}")
+          }, // nothing to do
           Err(_) => {
-            if qty["number"].is_null() { } // nothing to do
+            if qty["number"].is_null() {} // nothing to do
 
             if !qty["uom"].is_object() {
               let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
 
               let goods = match goods(ctx_str, &after, params.clone()) {
                 Ok(g) => g,
-                Err(e) => { println!("goods_error: {e:?}, after: {after:?}"); continue; }
+                Err(e) => {
+                  println!("goods_error: {e:?}, after: {after:?}");
+                  continue;
+                },
               };
               // println!("_goods {goods:?}");
 
@@ -195,7 +196,10 @@ async fn reindex(
                 params.clone(),
               ) {
                 Ok(uom) => uom,
-                Err(e) => { println!("uom_error {e}"); continue; },
+                Err(e) => {
+                  println!("uom_error {e}");
+                  continue;
+                },
               };
               // println!("_uom {uom:?}");
 
@@ -275,7 +279,7 @@ async fn server(settings: Arc<Settings>, app: Application, com: Addr<Commutator>
 }
 
 async fn startup() -> io::Result<()> {
-  // std::env::set_var("RUST_LOG", "debug,actix_web=debug,actix_server=debug");
+  std::env::set_var("RUST_LOG", "debug,actix_web=debug,actix_server=debug");
   env_logger::init();
 
   let opt = Opt::from_args();
