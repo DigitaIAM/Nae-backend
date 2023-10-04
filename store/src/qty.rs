@@ -213,16 +213,34 @@ impl TryInto<Number<Uom>> for JsonValue {
     while data.is_object() {
       let uom = &data["uom"];
       let mut tmp = Number { number: Decimal::ZERO, name: Uom::In(UUID_NIL, None) };
-      if uom.is_object() {
+
+      if !uom.is_object() || !uom["_uuid"].is_null() {
+        let uom_uuid = if let Some(uuid) = uom.uuid_or_none() {
+          uuid
+        } else if let Some(uuid) = uom["_uuid"].uuid_or_none() {
+          uuid
+        } else {
+          return Err(WHError::new("No uuid for 'uom'"));
+        };
+
+        head.name = Uom::In(uom_uuid, None);
+        break;
+      } else {
         tmp.number = uom["number"].number();
         tmp.name = Uom::In(UUID_NIL, None);
-        head.name = Uom::In(uom["in"].uuid().unwrap_or_default(), Some(Box::new(tmp)));
+        let in_uuid = if let Some(uuid) = uom["in"].uuid_or_none() {
+          uuid
+        } else if let Some(uuid) = uom["in"]["_uuid"].uuid_or_none() {
+          uuid
+        } else {
+          return Err(WHError::new("No uuid for 'in'"));
+        };
+
+        head.name = Uom::In(in_uuid, Some(Box::new(tmp)));
         head = match &mut head.name {
           Uom::In(_, ref mut qty) => qty.as_mut().unwrap(),
           _ => unreachable!(),
         };
-      } else {
-        head.name = Uom::In(uom.uuid().unwrap_or_default(), None);
       }
       data = uom;
     }
@@ -396,6 +414,77 @@ impl Number<Uom> {
 
     None
   }
+
+  pub(crate) fn lowering(&self, name: &Uom) -> Option<Number<Uom>> {
+    if &self.name == name {
+      return Some(self.clone());
+    }
+
+    let mut result = Number::new(Decimal::ZERO, name.uuid(), name.named());
+
+    let mut tmp = self.clone();
+
+    while let Some(mut inner_qty) = tmp.named() {
+      inner_qty.number *= tmp.number;
+
+      if &inner_qty.name == name {
+        result.number += inner_qty.number;
+        break;
+      }
+
+      if inner_qty.named().is_none() {
+        return None;
+      }
+
+      tmp = *inner_qty;
+    }
+
+    Some(result)
+  }
+
+  fn elevate(&self, bigger: &Self) -> Qty {
+    let mut result = Qty::new(vec![]);
+
+    if self.name.depth() >= bigger.name.depth() {
+      result.inner.push(self.clone());
+      return result;
+    }
+
+    let mut tmp = bigger.clone();
+    while let Some(inner) = tmp.named() {
+      if self.name == inner.name {
+        if self.number.abs() < inner.number.abs() {
+          result.inner.push(self.clone());
+        } else {
+          let amount = (self.number / inner.number).trunc();
+          let new_number = Number::new(amount, tmp.uuid(), tmp.named());
+
+          if (amount / tmp.number) >= Decimal::ONE {
+            let mut upper_numbers = new_number.elevate(bigger).inner;
+            // println!("upper_numbers {upper_numbers:?}");
+            result.inner.append(&mut upper_numbers);
+          } else {
+            result.inner.push(new_number);
+          }
+
+          let differ = self.number - inner.number * amount;
+          if !differ.is_zero() {
+            result.inner.push(Number::new(differ, inner.uuid(), inner.named()));
+          }
+        }
+        break;
+      }
+
+      tmp = *inner;
+    }
+
+    if result.inner.is_empty() {
+      result.inner.push(self.clone());
+    }
+
+    // log::debug!("result = {result:?}");
+    result
+  }
 }
 
 impl Neg for Number<Uom> {
@@ -406,7 +495,7 @@ impl Neg for Number<Uom> {
   }
 }
 
-impl Sub for Number<Uom> {
+impl Sub for &Number<Uom> {
   type Output = Qty;
 
   fn sub(self, rhs: Self) -> Self::Output {
@@ -418,7 +507,7 @@ impl Sub for Number<Uom> {
       // compare name and number parts if it's not the last value
       if index + 1 < left.len() && index + 1 < right.len() {
         if l != r {
-          return Qty { inner: vec![self, -rhs] };
+          return Qty { inner: vec![self.clone(), -(rhs.clone())] };
         }
         index += 1;
       } else {
@@ -426,7 +515,7 @@ impl Sub for Number<Uom> {
         let (_, left_id) = l;
         let (_, right_id) = r;
         if left_id != right_id {
-          return Qty { inner: vec![self, -rhs] };
+          return Qty { inner: vec![self.clone(), -(rhs.clone())] };
         }
       }
     }
@@ -523,33 +612,17 @@ impl Qty {
   pub(crate) fn lowering(&self, name: &Uom) -> Option<Number<Uom>> {
     let mut result = Number::new(Decimal::ZERO, name.uuid(), name.named());
 
-    'outer: for qty in &self.inner {
-      if name.depth() > qty.name.depth() {
-        return None;
-      }
-
-      if &qty.name == name {
-        result.number += qty.number;
-        continue;
-      }
-      let mut tmp = qty.clone();
-      while let Some(mut inner_qty) = tmp.named() {
-        inner_qty.number *= tmp.number;
-
-        if &inner_qty.name == name {
-          result.number += inner_qty.number;
-          continue 'outer;
-        }
-
-        if inner_qty.named().is_none() {
-          return None;
-        }
-
-        tmp = *inner_qty;
+    for qty in &self.inner {
+      if let Some(sum) = qty.lowering(name) {
+        result.number += sum.number;
       }
     }
 
-    Some(result)
+    if !result.number.is_zero() {
+      Some(result)
+    } else {
+      None
+    }
   }
 
   pub(crate) fn abs(&self) -> Self {
@@ -569,8 +642,12 @@ impl Qty {
     for left in &self.inner {
       for right in &rhs.inner {
         if let Some(common) = left.common(&right) {
-          // TODO replace unwrap?
-          if result.is_none() || common.depth() >= result.clone().unwrap().depth() {
+          if let Some(res) = &result {
+            // we must write a minimal uom from qty, otherwise cost will not calculate correctly
+            if common.depth() < res.depth() {
+              result = Some(common);
+            }
+          } else {
             result = Some(common);
           }
         }
@@ -584,7 +661,7 @@ impl Qty {
   }
 
   pub(crate) fn cost(&self, balance: &BalanceForGoods) -> Cost {
-    if self.is_zero() {
+    if self.is_zero() || balance.is_zero() {
       Cost::ZERO
     } else {
       if let Some(common) = self.common(&balance.qty) {
@@ -641,42 +718,55 @@ impl Add for &Qty {
   type Output = Qty;
 
   fn add(self, rhs: Self) -> Self::Output {
-    let mut vector = Qty { inner: Vec::new() };
+    if self.is_zero() && rhs.is_zero() {
+      return Qty::default();
+    } else if self.is_zero() {
+      return rhs.clone();
+    } else if rhs.is_zero() {
+      return self.clone();
+    }
 
-    let mut rhs = rhs.inner.clone();
+    let mut left = self.inner.clone();
+    let mut right = rhs.inner.clone();
 
-    for left in &self.inner {
-      let mut index = usize::MAX;
-      for (i, right) in rhs.iter().enumerate() {
-        if left.name == right.name {
-          let mut result = left.clone();
-          result.number += right.number;
-          vector.inner.push(result);
-          index = i;
-          break;
-        } else if !left.is_negative() && right.is_negative() {
-          let right = -(right.clone());
-          if let Some(_common) = left.common(&right) {
-            let result = left.clone() - right;
-            for item in result.inner {
-              vector.inner.push(item);
+    'right: while let Some(right_last) = right.pop() {
+      let mut tmp_left = left.clone();
+
+      for left_last in tmp_left.iter().rev() {
+        if let Some(common) = left_last.common(&right_last) {
+          if let (Some(low_left), Some(low_right)) =
+            (left_last.lowering(&common), right_last.lowering(&common))
+          {
+            let result = low_left.number + low_right.number;
+
+            left.pop();
+            // workaround to elevate result as high as possible
+            let elevate_number =
+              if left_last.name.depth() > right_last.name.depth() { left_last } else { &right_last };
+
+            if result > Decimal::ZERO {
+              let mut upper_numbers =
+                Number::new(result, low_left.uuid(), low_left.named()).elevate(elevate_number);
+              left.append(&mut upper_numbers.inner);
+            } else if result < Decimal::ZERO {
+              let mut upper_numbers =
+                Number::new(result, low_right.uuid(), low_right.named()).elevate(elevate_number);
+              right.append(&mut upper_numbers.inner);
             }
-            index = i;
-            break;
+
+            // if there are no more values to add to, move everything from right to left and finish
+            if left.is_empty() {
+              left.append(&mut right);
+              break 'right;
+            } else {
+              continue 'right;
+            }
           }
         }
       }
-      if index != usize::MAX {
-        rhs.remove(index);
-      } else {
-        vector.inner.push(left.clone());
-      }
+      left.push(right_last);
     }
-
-    for right in rhs {
-      vector.inner.push(right);
-    }
-    vector
+    Qty::new(left)
   }
 }
 
@@ -690,15 +780,6 @@ impl AddAssign<&Qty> for Qty {
 impl Sub for &Qty {
   type Output = Qty;
 
-  // TODO fn sub(self, rhs: Self) -> Self::Output {
-  // take two mutable vectors
-  // go from the end of rhs and end of self (minimal qtys)
-  // if there is common part, make an operation
-  // if left.depth() > right.depth() bring result to left depth
-  // push result to the left (instead of an old element)
-  // if some amount left at right qty, push it to the right instead of an old element, pop last element from the left (it became zero)
-  // }
-
   fn sub(self, rhs: Self) -> Self::Output {
     if self.is_zero() && rhs.is_zero() {
       return Qty::default();
@@ -708,83 +789,40 @@ impl Sub for &Qty {
       return self.clone();
     }
 
-    let mut result = Qty { inner: Vec::new() };
-    let mut vec_left = self.inner.clone();
-    let mut vec_right = rhs.inner.clone();
-    let mut untouched_left: Option<Number<Uom>> = None;
+    let mut left = self.inner.clone();
+    let mut right = rhs.inner.clone();
 
-    let mut find_difference = |index: &mut usize,
-                               i,
-                               left: &Number<Uom>,
-                               right: &mut Number<Uom>,
-                               inner: &mut Vec<Number<Uom>>| {
-      *index = i;
-      let mut diff = left.clone() - right.clone();
-      if !left.is_negative() && diff.is_negative() {
-        for qty in diff.inner {
-          if qty.is_negative() {
-            *right = qty;
-            return false;
-          }
-        }
-      } else {
-        inner.append(&mut diff.inner);
-      }
-      true
-    };
+    'right: while let Some(right_last) = right.pop() {
+      let mut tmp_left = left.clone();
 
-    for right in vec_right {
-      let mut index = usize::MAX;
-      let mut right = right.clone();
-      for (i, left) in vec_left.iter().enumerate() {
-        // if i == vec_left.len() - 1 && right.is_negative() {
-        //   right = -right
-        // }
-        if left.name == right.name {
-          if find_difference(&mut index, i, left, &mut right, &mut result.inner) {
-            break;
-          } else {
-            continue;
-          }
-        } else {
-          untouched_left = Some(left.clone());
-          if let Some(left_inner) = left.named() {
-            if left_inner.name == right.name {
-              if find_difference(&mut index, i, left, &mut right, &mut result.inner) {
-                break;
-              } else {
-                continue;
-              }
+      for mut left_last in &mut tmp_left.iter().rev() {
+        if right_last.name.depth() > left_last.name.depth() {
+          continue;
+        } else if let Some(common) = left_last.common(&right_last) {
+          if let (Some(low_left), Some(low_right)) =
+            (left_last.lowering(&common), right_last.lowering(&common))
+          {
+            let result = low_left.number - low_right.number;
+
+            left.pop();
+            if result > Decimal::ZERO {
+              let mut upper_numbers =
+                Number::new(result, low_left.uuid(), low_left.named()).elevate(&left_last);
+              left.append(&mut upper_numbers.inner);
+            } else if result < Decimal::ZERO {
+              let mut upper_numbers =
+                Number::new(-result, low_right.uuid(), low_right.named()).elevate(&left_last);
+              right.append(&mut upper_numbers.inner);
             }
-          } else if let Some(right_inner) = right.named() {
-            if left.name == right_inner.name {
-              if find_difference(&mut index, i, left, &mut right, &mut result.inner) {
-                break;
-              } else {
-                continue;
-              }
-            }
+            continue 'right;
           }
         }
       }
-
-      if index != usize::MAX {
-        vec_left.remove(index);
-        if right.is_negative() {
-          if vec_left.is_empty() {
-            result.inner.push(right.clone());
-          } else {
-            result.inner.push(-right.clone());
-          }
-        }
-      } else {
-        if let Some(untouched) = &untouched_left {
-          result.inner.push(untouched.clone());
-        }
-        result.inner.push(-right.clone());
-      }
+      // if didn't find any value to subtract from the left, push opposite value from right to left
+      left.push(-right_last);
     }
-    result
+
+    Qty::new(left)
   }
 }
 
@@ -843,7 +881,7 @@ impl TryInto<Qty> for JsonValue {
 
 #[cfg(test)]
 mod tests {
-  use crate::elements::{ToJson, UUID_MAX, UUID_NIL};
+  use crate::elements::ToJson;
   use crate::error::WHError;
   use crate::qty::{Number, Qty, Uom};
   use json::{array, object, JsonValue};
@@ -925,6 +963,32 @@ mod tests {
     let u0 = Uuid::new_v4();
     let u1 = Uuid::new_v4();
     let u2 = Uuid::new_v4();
+
+    // check 'enrich' data
+    let data00 = array![object! {
+      "number": 1,
+      "uom": object! {
+        "number": 3,
+        "uom": object! { "_uuid": u1.to_json() },
+        "in": object! { "_uuid": u0.to_json() },
+      },
+    }];
+
+    let qty00: Qty = data00.clone().try_into().unwrap();
+    println!("qty00 {qty00:?}");
+
+    let json00: JsonValue = (&qty00).into();
+
+    let compare00 = array![object! {
+      "number": "1",
+      "uom": object! {
+        "number": "3",
+        "uom": u1.to_json(),
+        "in": u0.to_json(),
+      },
+    }];
+
+    assert_eq!(compare00, json00);
 
     let data0 = array![object! {
       "number": Decimal::from(1).to_json(),
@@ -1036,7 +1100,31 @@ mod tests {
   }
 
   #[test]
-  fn lowering() {
+  fn number_lowering() {
+    let uom0 = Uuid::new_v4();
+    let uom1 = Uuid::new_v4();
+    let uom2 = Uuid::new_v4();
+
+    let data0 = Number::new(
+      Decimal::from(2),
+      uom0,
+      Some(Box::new(Number::new(
+        Decimal::from(10),
+        uom1,
+        Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+      ))),
+    );
+
+    let name = Uom::In(uom2, None);
+
+    let lower = data0.lowering(&name).unwrap();
+
+    assert_eq!(lower.number, Decimal::from(2000));
+    assert_eq!(lower.name, name);
+  }
+
+  #[test]
+  fn qty_lowering() {
     let u0 = Uuid::new_v4();
     let u1 = Uuid::new_v4();
     let u2 = Uuid::new_v4();
@@ -1135,6 +1223,15 @@ mod tests {
     let u0 = Uuid::new_v4();
     let u1 = Uuid::new_v4();
     let u2 = Uuid::new_v4();
+
+    let qty00 = Qty::new(vec![Number::new(
+      Decimal::from(1),
+      u0,
+      Some(Box::new(Number::new(Decimal::from(11), u1, None))),
+    )]);
+
+    let common00 = qty00.common(&qty00).unwrap();
+    println!("common00 {common00:?}");
 
     // two structs with depth == 0
     let data0 = object! {
@@ -1327,8 +1424,98 @@ mod tests {
     assert_eq!(res, Decimal::from(2));
   }
 
+  #[test]
+  fn elevation() {
+    let uom0 = Uuid::new_v4();
+    let uom1 = Uuid::new_v4();
+    let uom2 = Uuid::new_v4();
+
+    let data0 = Number::new(
+      Decimal::from(2),
+      uom0,
+      Some(Box::new(Number::new(
+        Decimal::from(10),
+        uom1,
+        Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+      ))),
+    );
+
+    let data1 = Number::new(
+      Decimal::from(150),
+      uom1,
+      Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+    );
+
+    let result0 = data1.elevate(&data0);
+    // println!("result0 {result0:?}");
+
+    let compare0 = Qty::new(vec![Number::new(
+      Decimal::from(15),
+      uom0,
+      Some(Box::new(Number::new(
+        Decimal::from(10),
+        uom1,
+        Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+      ))),
+    )]);
+
+    assert_eq!(result0.inner.len(), 1);
+    assert_eq!(result0, compare0);
+
+    let data2 = Number::new(Decimal::from(1200), uom2, None);
+
+    let result1 = data2.elevate(&data0);
+    // println!("result1 {result1:?}");
+
+    let compare1 = Qty::new(vec![
+      Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(
+          Decimal::from(10),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+        ))),
+      ),
+      Number::new(
+        Decimal::from(2),
+        uom1,
+        Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+      ),
+    ]);
+
+    assert_eq!(result1.inner.len(), 2);
+    assert_eq!(result1, compare1);
+
+    // negative number
+
+    let data3 = Number::new(
+      Decimal::from(1),
+      uom1,
+      Some(Box::new(Number::new(Decimal::from(10), uom2, None))),
+    );
+
+    let data4 = Number::new(Decimal::from(-11), uom2, None);
+
+    let result2 = data4.elevate(&data3);
+    // println!("result2 {result2:?}");
+
+    let compare2 = Qty::new(vec![
+      Number::new(
+        Decimal::from(-1),
+        uom1,
+        Some(Box::new(Number::new(Decimal::from(10), uom2, None))),
+      ),
+      Number::new(Decimal::from(-1), uom2, None),
+    ]);
+
+    assert_eq!(result2.inner.len(), 2);
+    assert_eq!(result2, compare2);
+  }
+
   fn check_add(left: Qty, right: Qty, check: Qty) {
     let result = &left + &right;
+    println!("check_add {result:?}");
 
     assert_eq!(result.inner.len(), check.inner.len());
     for i in 0..check.inner.len() {
@@ -1363,6 +1550,20 @@ mod tests {
       Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
     );
 
+    // (-1) + (-1) = -2
+    check_add(
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(-2), uom0, None)]),
+    );
+
+    // (-1) + (2) = 1
+    check_add(
+      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(2), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+    );
+
     // 1 of 10 + 1 of 10 = 2 of 10
     check_add(
       Qty::new(vec![Number::new(
@@ -1382,7 +1583,75 @@ mod tests {
       )]),
     );
 
-    // (1 of 10) + (-2) = -8
+    // (1 of 10) + (-1 of 10) = 0
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::default(),
+    );
+
+    // (-1 of 10) + (1 of 10) = 0
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::default(),
+    );
+
+    // (-1 of 10) + (-1 of 10) = (-2 of 10)
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-2),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+    );
+
+    // 1 of 10 + (-2 of 10) = -1 of 10
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-2),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+    );
+
+    // (1 of 10) + (-2) = 8
     check_add(
       Qty::new(vec![Number::new(
         Decimal::from(1),
@@ -1391,20 +1660,6 @@ mod tests {
       )]),
       Qty::new(vec![Number::new(Decimal::from(-2), uom1, None)]),
       Qty::new(vec![Number::new(Decimal::from(8), uom1, None)]),
-    );
-
-    // (-1) + (-1) = -2
-    check_add(
-      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
-      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
-      Qty::new(vec![Number::new(Decimal::from(-2), uom0, None)]),
-    );
-
-    // (-1) + (2) = 1
-    check_add(
-      Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
-      Qty::new(vec![Number::new(Decimal::from(2), uom0, None)]),
-      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
     );
 
     // (-1 of 10) + (-2) = [-1 of 10, -2]
@@ -1425,7 +1680,7 @@ mod tests {
       ]),
     );
 
-    // (-1 of 10) + (5) = [-1 of 10, 5]
+    // (-1 of 10) + (5) = -5
     check_add(
       Qty::new(vec![Number::new(
         Decimal::from(-1),
@@ -1433,14 +1688,7 @@ mod tests {
         Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
       )]),
       Qty::new(vec![Number::new(Decimal::from(5), uom1, None)]),
-      Qty::new(vec![
-        Number::new(
-          Decimal::from(-1),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-        ),
-        Number::new(Decimal::from(5), uom1, None),
-      ]),
+      Qty::new(vec![Number::new(Decimal::from(-5), uom1, None)]),
     );
 
     // 1 uom0 + 1 uom1 = [1 uom0, 1 uom1]
@@ -1520,6 +1768,38 @@ mod tests {
         ),
       ]),
     );
+
+    // [-7 of 10, -3 of 10] + [2 of 10, 5] = [-7 of 10, -5]
+    // check_add(
+    //   Qty::new(vec![
+    //     Number::new(
+    //       Decimal::from(-7),
+    //       uom0,
+    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+    //     ),
+    //     Number::new(
+    //       Decimal::from(-3),
+    //       uom0,
+    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+    //     ),
+    //   ]),
+    //   Qty::new(vec![
+    //     Number::new(
+    //       Decimal::from(2),
+    //       uom0,
+    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+    //     ),
+    //     Number::new(Decimal::from(5), uom1, None),
+    //   ]),
+    //   Qty::new(vec![
+    //     Number::new(
+    //       Decimal::from(-7),
+    //       uom0,
+    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+    //     ),
+    //     Number::new(Decimal::from(-5), uom1, None),
+    //   ]),
+    // );
   }
 
   fn check_sub(left: Qty, right: Qty, check: Qty) {
@@ -1538,6 +1818,39 @@ mod tests {
     let uom0 = Uuid::new_v4();
     let uom1 = Uuid::new_v4();
     let uom2 = Uuid::new_v4();
+
+    // 2 of 10 - 5 = [1 of 10, 5]
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(2),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(Decimal::from(5), uom1, None)]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(1),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+    );
+
+    // 1 of 10 - 20 = (-1 of 10)
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(Decimal::from(20), uom1, None)]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+    );
 
     // 3 - 1 = 2
     check_sub(
@@ -1585,7 +1898,7 @@ mod tests {
       Qty::new(vec![Number::new(Decimal::from(8), uom1, None)]),
     );
 
-    // 2 of 10 of 100 - 6 of 100 = [1 of 10 of 100, 4 of 100] TODO wrong order ?
+    // 2 of 10 of 100 - 6 of 100 = [1 of 10 of 100, 4 of 100]
     check_sub(
       Qty::new(vec![Number::new(
         Decimal::from(2),
@@ -1603,11 +1916,6 @@ mod tests {
       )]),
       Qty::new(vec![
         Number::new(
-          Decimal::from(4),
-          uom1,
-          Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
-        ),
-        Number::new(
           Decimal::from(1),
           uom0,
           Some(Box::new(Number::new(
@@ -1615,6 +1923,11 @@ mod tests {
             uom1,
             Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
           ))),
+        ),
+        Number::new(
+          Decimal::from(4),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
         ),
       ]),
     );
@@ -1663,7 +1976,6 @@ mod tests {
       ]),
     );
 
-    // TODO FAILED TESTS
     // (-1) - (-1) = 0
     check_sub(
       Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
@@ -1736,6 +2048,21 @@ mod tests {
         uom0,
         Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
       )]),
+    );
+
+    // (1 of 10) - (1 of 10) = 0
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::default(),
     );
 
     // [3, 4] - 5 = 2

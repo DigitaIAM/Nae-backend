@@ -107,6 +107,10 @@ pub fn goods(app: &Application, name: &str) -> Uuid {
   create(app, name, vec!["warehouse", "goods"])
 }
 
+pub fn uom(app: &Application, name: &str) -> Uuid {
+  create(app, name, vec!["uom"])
+}
+
 pub fn receive(
   app: &Application,
   date: &str,

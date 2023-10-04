@@ -86,12 +86,12 @@ fn store_test_parties_date_type_store_goods_id() {
       batch: Some(doc1.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta {
-        qty: Qty::new(vec![Number::new(Decimal::from(3), uom0, None)]),
+        qty: Qty::new(vec![Number::new(Decimal::from(3), uom0, inner.clone())]),
         cost: 3000.into(),
       },
       issue: BalanceDelta::default(),
       close_balance: BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(3), uom0, None)]),
+        qty: Qty::new(vec![Number::new(Decimal::from(3), uom0, inner.clone())]),
         cost: 3000.into(),
       },
     },
@@ -101,15 +101,15 @@ fn store_test_parties_date_type_store_goods_id() {
       batch: Some(doc2.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta {
-        qty: Qty::new(vec![Number::new(Decimal::from(4), uom0, None)]),
+        qty: Qty::new(vec![Number::new(Decimal::from(4), uom0, inner.clone())]),
         cost: 2000.into(),
       },
       issue: BalanceDelta {
-        qty: Qty::new(vec![Number::new(Decimal::from(-1), uom0, None)]),
+        qty: Qty::new(vec![Number::new(Decimal::from(-1), uom0, inner.clone())]),
         cost: (-500).into(),
       },
       close_balance: BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(3), uom0, None)]),
+        qty: Qty::new(vec![Number::new(Decimal::from(3), uom0, inner)]),
         cost: 1500.into(),
       },
     },

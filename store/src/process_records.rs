@@ -295,7 +295,7 @@ pub fn process_record(
   let mut data = object! {
     document: document["_id"].clone(),
     goods: item["_id"].clone(),
-    qty: object! { number: qty.to_json(), uom: uom["_id"].clone() },
+    qty: object! { number: qty.to_json(), uom: uom["_uuid"].clone() },
   };
 
   if let Some(cell_from) = cell_from {

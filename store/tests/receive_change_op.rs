@@ -4,10 +4,10 @@ use store::balance::{Balance, BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::dt;
 use store::operations::{InternalOperation, OpMutation};
+use store::qty::{Number, Qty};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
-use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 
@@ -26,7 +26,9 @@ fn store_test_receive_change_op() {
 
   let id1 = Uuid::from_u128(101);
 
-  let uom = Uuid::new_v4();
+  let uom0 = Uuid::new_v4();
+  let uom1 = Uuid::new_v4();
+  let inner = Some(Box::new(Number::new(Decimal::from(3), uom1, None)));
 
   let ops_old = vec![
     OpMutation::new(
@@ -38,8 +40,9 @@ fn store_test_receive_change_op() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
-        10.into())),
+        Qty::new(vec![Number::new(Decimal::from(3), uom0, inner.clone())]),
+        10.into(),
+      )),
     ),
     OpMutation::new(
       id1,
@@ -50,8 +53,9 @@ fn store_test_receive_change_op() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
-        30.into())),
+        Qty::new(vec![Number::new(Decimal::from(1), uom0, inner.clone())]),
+        30.into(),
+      )),
     ),
   ];
 
@@ -63,8 +67,9 @@ fn store_test_receive_change_op() {
     goods: G1,
     batch: doc.clone(),
     number: BalanceForGoods {
-      qty: Qty::new(vec![Number::new(Decimal::from(4), uom, None)]),
-      cost: 40.into() },
+      qty: Qty::new(vec![Number::new(Decimal::from(4), uom0, inner.clone())]),
+      cost: 40.into(),
+    },
   };
 
   let mut old_checkpoints = db
@@ -83,11 +88,13 @@ fn store_test_receive_change_op() {
     G1,
     doc.clone(),
     Some(InternalOperation::Receive(
-      Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
-      10.into())),
+      Qty::new(vec![Number::new(Decimal::from(3), uom0, inner.clone())]),
+      10.into(),
+    )),
     Some(InternalOperation::Receive(
-      Qty::new(vec![Number::new(Decimal::from(4), uom, None)]),
-      100.into())),
+      Qty::new(vec![Number::new(Decimal::from(4), uom0, inner.clone())]),
+      100.into(),
+    )),
   )];
 
   db.record_ops(&ops_new).expect("test_receive_change_op");
@@ -98,8 +105,9 @@ fn store_test_receive_change_op() {
     goods: G1,
     batch: doc.clone(),
     number: BalanceForGoods {
-      qty: Qty::new(vec![Number::new(Decimal::from(5), uom, None)]),
-      cost: 130.into() },
+      qty: Qty::new(vec![Number::new(Decimal::from(5), uom0, inner.clone())]),
+      cost: 130.into(),
+    },
   };
 
   let mut new_checkpoints = db
@@ -116,13 +124,15 @@ fn store_test_receive_change_op() {
     goods: Some(G1),
     batch: Some(doc.clone()),
     open_balance: BalanceForGoods {
-      qty: Qty::new(vec![Number::new(Decimal::from(5), uom, None)]),
-      cost: 130.into() },
+      qty: Qty::new(vec![Number::new(Decimal::from(5), uom0, inner.clone())]),
+      cost: 130.into(),
+    },
     receive: BalanceDelta::default(),
     issue: BalanceDelta::default(),
     close_balance: BalanceForGoods {
-      qty: Qty::new(vec![Number::new(Decimal::from(5), uom, None)]),
-      cost: 130.into() },
+      qty: Qty::new(vec![Number::new(Decimal::from(5), uom0, inner.clone())]),
+      cost: 130.into(),
+    },
   };
 
   assert_eq!(res.items.1[0], agr);

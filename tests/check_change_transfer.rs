@@ -16,6 +16,7 @@ use std::sync::Arc;
 use store::batch::Batch;
 use store::elements::dt;
 use store::elements::ToJson;
+use store::qty::{Number, Qty};
 use store::GetWarehouse;
 use tantivy::HasLen;
 use uuid::Uuid;
@@ -43,7 +44,7 @@ async fn check_change_transfer() {
   let s3 = store(&app, "s3");
   let g1 = goods(&app, "g1");
 
-  let uom = Uuid::new_v4();
+  let uom0 = Uuid::new_v4();
 
   // create receive document
   let receiveDoc = object! {
@@ -57,10 +58,13 @@ async fn check_change_transfer() {
   let d1 = receive_doc.create(&app, receiveDoc.clone());
 
   // create receive operation
+  let qty0: JsonValue = (&Qty::new(vec![Number::new(Decimal::from(3), uom0, None)])).into();
+
   let receiveOp = object! {
     document: d1["_id"].to_string(),
     goods: g1.to_string(),
-    qty: array! [ object! {number: "3.0", "uom": uom.to_json()} ],
+    // qty: array! [ object! {number: "3.0", "uom": uom.to_json()} ],
+    qty: qty0,
     cost: object! {number: "0.3"},
   };
 
@@ -82,10 +86,13 @@ async fn check_change_transfer() {
   let d2 = transfer_doc.create(&app, transferDoc.clone());
 
   // create transfer operation
+  let qty1: JsonValue = (&Qty::new(vec![Number::new(Decimal::from(3), uom0, None)])).into();
+
   let mut transferOp = object! {
     document: d2["_id"].to_string(),
     goods: g1.to_string(),
-    qty: array! [ object! {number: "3.0", "uom": uom.to_json()} ],
+    // qty: array! [ object! {number: "3.0", "uom": uom.to_json()} ],
+    qty: qty1,
     cost: object! {number: "0.3"},
   };
 
@@ -95,7 +102,10 @@ async fn check_change_transfer() {
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
 
   // change transfer
-  transferOp["qty"] = array![object! {number: "2.0", "uom": uom.to_json()}];
+  let qty2: JsonValue = (&Qty::new(vec![Number::new(Decimal::from(2), uom0, None)])).into();
+
+  // transferOp["qty"] = array![object! {number: "2.0", "uom": uom.to_json()}];
+  transferOp["qty"] = qty2;
 
   log::debug!("UPDATE TRANSFER HEAD 2023-01-03 > 2022-12-15 S2 > S3");
   let d3 = transfer_op.update(&app, t1["_id"].string(), transferOp);

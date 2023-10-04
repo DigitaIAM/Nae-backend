@@ -4,10 +4,10 @@ use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::{dt, Mode};
 use store::operations::{InternalOperation, OpMutation};
+use store::qty::{Number, Qty};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
-use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 const G2: Uuid = Uuid::from_u128(2);
@@ -25,7 +25,9 @@ fn store_test_report() {
   let w1 = Uuid::new_v4();
   let party = Batch { id: Uuid::new_v4(), date: start_d };
 
-  let uom = Uuid::new_v4();
+  let uom0 = Uuid::new_v4();
+  let uom1 = Uuid::new_v4();
+  let inner = Some(Box::new(Number::new(Decimal::from(3), uom1, None)));
 
   let ops = vec![
     OpMutation::new(
@@ -37,8 +39,9 @@ fn store_test_report() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![Number::new(Decimal::from(4), uom, None)]),
-        4000.into())),
+        Qty::new(vec![Number::new(Decimal::from(4), uom0, inner.clone())]),
+        4000.into(),
+      )),
     ),
     OpMutation::new(
       Uuid::new_v4(),
@@ -49,8 +52,9 @@ fn store_test_report() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
-        6000.into())),
+        Qty::new(vec![Number::new(Decimal::from(2), uom0, inner.clone())]),
+        6000.into(),
+      )),
     ),
     OpMutation::new(
       Uuid::new_v4(),
@@ -61,8 +65,9 @@ fn store_test_report() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
-        1000.into())),
+        Qty::new(vec![Number::new(Decimal::from(1), uom0, inner.clone())]),
+        1000.into(),
+      )),
     ),
     OpMutation::new(
       Uuid::new_v4(),
@@ -73,8 +78,9 @@ fn store_test_report() {
       party.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
-        1000.into())),
+        Qty::new(vec![Number::new(Decimal::from(1), uom0, inner.clone())]),
+        1000.into(),
+      )),
     ),
     OpMutation::new(
       Uuid::new_v4(),
@@ -85,9 +91,10 @@ fn store_test_report() {
       party.clone(),
       None,
       Some(InternalOperation::Issue(
-        Qty::new(vec![Number::new(Decimal::try_from("0.5").unwrap(), uom, None)]),
+        Qty::new(vec![Number::new(Decimal::try_from("0.5").unwrap(), uom0, inner.clone())]),
         1500.into(),
-        Mode::Manual)),
+        Mode::Manual,
+      )),
     ),
     OpMutation::new(
       Uuid::new_v4(),
@@ -98,9 +105,10 @@ fn store_test_report() {
       party.clone(),
       None,
       Some(InternalOperation::Issue(
-        Qty::new(vec![Number::new(Decimal::try_from("0.5").unwrap(), uom, None)]),
+        Qty::new(vec![Number::new(Decimal::try_from("0.5").unwrap(), uom0, inner.clone())]),
         1500.into(),
-        Mode::Manual)),
+        Mode::Manual,
+      )),
     ),
   ];
 
@@ -120,13 +128,15 @@ fn store_test_report() {
       goods: Some(G1),
       batch: Some(party.clone()),
       open_balance: BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(4), uom, None)]),
-        cost: 4000.into() },
+        qty: Qty::new(vec![Number::new(Decimal::from(4), uom0, inner.clone())]),
+        cost: 4000.into(),
+      },
       receive: BalanceDelta::default(),
       issue: BalanceDelta::default(),
       close_balance: BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(4), uom, None)]),
-        cost: 4000.into() },
+        qty: Qty::new(vec![Number::new(Decimal::from(4), uom0, inner.clone())]),
+        cost: 4000.into(),
+      },
     },
     AgregationStoreGoods {
       store: Some(w1),
@@ -134,27 +144,32 @@ fn store_test_report() {
       batch: Some(party.clone()),
       open_balance: BalanceForGoods::default(),
       receive: BalanceDelta {
-        qty: Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
-        cost: 2000.into() },
+        qty: Qty::new(vec![Number::new(Decimal::from(2), uom0, inner.clone())]),
+        cost: 2000.into(),
+      },
       issue: BalanceDelta::default(),
       close_balance: BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
-        cost: 2000.into() },
+        qty: Qty::new(vec![Number::new(Decimal::from(2), uom0, inner.clone())]),
+        cost: 2000.into(),
+      },
     },
     AgregationStoreGoods {
       store: Some(w1),
       goods: Some(G3),
       batch: Some(party.clone()),
       open_balance: BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(2), uom, None)]),
-        cost: 6000.into() },
+        qty: Qty::new(vec![Number::new(Decimal::from(2), uom0, inner.clone())]),
+        cost: 6000.into(),
+      },
       receive: BalanceDelta::default(),
       issue: BalanceDelta {
-        qty: Qty::new(vec![Number::new(Decimal::from(-1), uom, None)]),
-        cost: (-3000).into() },
+        qty: Qty::new(vec![Number::new(Decimal::from(-1), uom0, inner.clone())]),
+        cost: (-3000).into(),
+      },
       close_balance: BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
-        cost: 3000.into() },
+        qty: Qty::new(vec![Number::new(Decimal::from(1), uom0, inner)]),
+        cost: 3000.into(),
+      },
     },
   ];
 

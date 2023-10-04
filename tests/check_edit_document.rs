@@ -8,19 +8,23 @@ use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::test_init::uom;
 use crate::test_init::{
   create_record, goods, init, receive, store, transfer, update, DocumentCreation,
 };
+use json::JsonValue;
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
+use rust_decimal::Decimal;
 use service::utils::json::JsonParams;
 use service::{Context, Services};
 use store::balance::{BalanceForGoods, Cost};
 use store::batch::Batch;
-use store::elements::{dt, Goods, Mode, Qty, Store};
+use store::elements::{dt, Goods, Mode, Store};
 use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
+use store::qty::{Number, Qty};
 use store::GetWarehouse;
 
 #[actix_web::test]
@@ -42,6 +46,9 @@ async fn check_edit_document() {
   let s3 = store(&app, "s3");
   let g1 = goods(&app, "g1");
 
+  let uom0 = uom(&app, "uom0");
+  let uom1 = uom(&app, "uom1");
+
   let mut doc = object! {
     date: "2023-01-20",
     counterparty: s1.to_string(),
@@ -51,14 +58,22 @@ async fn check_edit_document() {
 
   let d1 = receive_doc.create(&app, doc.clone());
 
-  let receiveDoc = object! {
+  let qty0: JsonValue = (&Qty::new(vec![Number::new(
+    Decimal::from(1),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(3), uom1, None))),
+  )]))
+    .into();
+
+  let receiveOp = object! {
     document: d1["_id"].string(),
     goods: g1.to_string(),
-    qty: object! {number: "3.0"},
+    // qty: object! {number: "3.0"},
+    qty: qty0,
     cost: object! {number: "0.3"},
   };
 
-  let receive = receive_op.create(&app, receiveDoc.clone());
+  let receive = receive_op.create(&app, receiveOp.clone());
 
   doc["storage"] = s3.to_string().into();
 
@@ -70,6 +85,9 @@ async fn check_edit_document() {
   log::debug!("s1: {s1:#?}");
   log::debug!("s2: {s2:#?}");
   log::debug!("s3: {s3:#?}");
+
+  let s2_bs = balances.get(&s2);
+  assert_eq!(s2_bs.is_none(), true);
 
   let s3_bs = balances.get(&s3).unwrap();
   assert_eq!(s3_bs.len(), 1);

@@ -12,14 +12,16 @@ use crate::test_init::{create_record, goods, init, receive, store, transfer};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
+use rust_decimal::Decimal;
 use service::utils::json::JsonParams;
 use service::{Context, Services};
 use store::balance::{BalanceForGoods, Cost};
 use store::batch::Batch;
 use store::elements::ToJson;
-use store::elements::{dt, Goods, Mode, Qty, Store};
+use store::elements::{dt, Goods, Mode, Store};
 use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
+use store::qty::{Number, Qty};
 use store::GetWarehouse;
 
 #[actix_web::test]
@@ -39,20 +41,29 @@ async fn check_transfer_transfer_receive() {
 
   let g1 = goods(&app, "g1");
 
+  let uom0 = Uuid::new_v4();
+  let uom1 = Uuid::new_v4();
+
   log::debug!("transfer 03.02 s1 > s2 1");
-  transfer(&app, "2023-02-03", s1, s2, g1, 1.into());
+  let qty0 = Qty::new(vec![Number::new(
+    Decimal::from(1),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+  )]);
+
+  transfer(&app, "2023-02-03", s1, s2, g1, qty0.clone());
 
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
   // app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
 
   log::debug!("transfer 03.02 s2 > s3 1");
-  transfer(&app, "2023-02-03", s2, s3, g1, 1.into());
+  transfer(&app, "2023-02-03", s2, s3, g1, qty0.clone());
 
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
   // app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
 
   log::debug!("receive 02.02 s1 1");
-  let r1 = receive(&app, "2023-02-02", s1, g1, 1.into(), "15".try_into().unwrap());
+  let r1 = receive(&app, "2023-02-02", s1, g1, qty0.clone(), "15".try_into().unwrap());
   let r1_batch = Batch { id: r1, date: dt("2023-02-02").unwrap() };
 
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
@@ -93,6 +104,6 @@ async fn check_transfer_transfer_receive() {
 
   assert_eq!(
     s3_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: 1.into(), cost: 15.into() }
+    BalanceForGoods { qty: qty0, cost: 15.into() }
   );
 }

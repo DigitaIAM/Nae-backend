@@ -12,13 +12,15 @@ use crate::test_init::{create_record, goods, init, receive, store, transfer};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
+use rust_decimal::Decimal;
 use service::utils::json::JsonParams;
 use service::{Context, Services};
 use store::balance::{BalanceForGoods, Cost};
 use store::batch::Batch;
-use store::elements::{dt, Goods, Mode, Qty, Store};
+use store::elements::{dt, Goods, Mode, Store};
 use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
+use store::qty::{Number, Qty};
 use store::GetWarehouse;
 
 #[actix_web::test]
@@ -36,14 +38,23 @@ async fn check_recursion() {
   let s2 = store(&app, "s2");
   let g1 = goods(&app, "g1");
 
+  let uom0 = Uuid::new_v4();
+  let uom1 = Uuid::new_v4();
+
   log::debug!("transfer 26.01 s1 > s2 11");
-  transfer(&app, "2023-01-26", s1, s2, g1, 11.into());
+  let qty0 = Qty::new(vec![Number::new(
+    Decimal::from(1),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(11), uom1, None))),
+  )]);
+
+  transfer(&app, "2023-01-26", s1, s2, g1, qty0.clone());
 
   log::debug!("transfer 26.01 s2 > s1 11");
-  transfer(&app, "2023-01-26", s2, s1, g1, 11.into());
+  transfer(&app, "2023-01-26", s2, s1, g1, qty0.clone());
 
   log::debug!("receive 20.01 s1 11");
-  let r1 = receive(&app, "2023-01-20", s1, g1, 11.into(), 1.into());
+  let r1 = receive(&app, "2023-01-20", s1, g1, qty0.clone(), 1.into());
   let r1_batch = Batch { id: r1, date: dt("2023-01-20").unwrap() };
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
@@ -59,6 +70,6 @@ async fn check_recursion() {
 
   assert_eq!(
     s1_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: 11.into(), cost: 1.into() }
+    BalanceForGoods { qty: qty0, cost: 1.into() }
   );
 }
