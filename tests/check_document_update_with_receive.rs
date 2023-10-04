@@ -1,18 +1,23 @@
 mod test_init;
 
+use crate::test_init::uom;
 use crate::test_init::{goods, init, receive, store, DocumentCreation};
 use chrono::Utc;
 use json::object;
+use json::JsonValue;
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
+use rust_decimal::Decimal;
 use service::utils::json::JsonParams;
 use service::Services;
 use std::str::FromStr;
 use std::sync::Arc;
 use store::batch::Batch;
 use store::elements::dt;
+use store::qty::{Number, Qty};
 use store::GetWarehouse;
+use uuid::Uuid;
 
 #[actix_web::test]
 async fn check_document_update_with_receive() {
@@ -32,6 +37,9 @@ async fn check_document_update_with_receive() {
   let s2 = store(&app, "s2");
   let g1 = goods(&app, "g1");
 
+  let uom0 = uom(&app, "uom0");
+  let uom1 = uom(&app, "uom1");
+
   // create document
   let mut receiveDoc = object! {
     date: "2023-01-01",
@@ -43,10 +51,18 @@ async fn check_document_update_with_receive() {
   let d1 = receive_doc.create(&app, receiveDoc.clone());
 
   // create receive operation
+  let qty0: JsonValue = (&Qty::new(vec![Number::new(
+    Decimal::from(1),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(3), uom1, None))),
+  )]))
+    .into();
+
   let receiveOp = object! {
     document: d1["_id"].to_string(),
     goods: g1.to_string(),
-    qty: object! {number: "3.0"},
+    // qty: object! {number: "3.0"},
+    qty: qty0,
     cost: object! {number: "0.3"},
   };
 

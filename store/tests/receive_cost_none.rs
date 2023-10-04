@@ -4,10 +4,10 @@ use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::dt;
 use store::operations::{InternalOperation, OpMutation};
+use store::qty::{Number, Qty};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
-use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 
@@ -27,7 +27,9 @@ fn store_test_receive_cost_none() {
   let id1 = Uuid::from_u128(101);
   let id2 = Uuid::from_u128(102);
 
-  let uom = Uuid::new_v4();
+  let uom0 = Uuid::new_v4();
+  let uom1 = Uuid::new_v4();
+  let inner = Some(Box::new(Number::new(Decimal::from(3), uom1, None)));
 
   let ops = vec![
     OpMutation::new(
@@ -39,8 +41,9 @@ fn store_test_receive_cost_none() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![Number::new(Decimal::from(4), uom, None)]),
-        2000.into())),
+        Qty::new(vec![Number::new(Decimal::from(4), uom0, inner.clone())]),
+        2000.into(),
+      )),
     ),
     OpMutation::new(
       id2,
@@ -51,8 +54,9 @@ fn store_test_receive_cost_none() {
       doc.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![Number::new(Decimal::from(1), uom, None)]),
-        0.into())),
+        Qty::new(vec![Number::new(Decimal::from(1), uom0, inner.clone())]),
+        0.into(),
+      )),
     ),
   ];
 
@@ -66,12 +70,14 @@ fn store_test_receive_cost_none() {
     batch: Some(doc.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta {
-      qty: Qty::new(vec![Number::new(Decimal::from(5), uom, None)]),
-      cost: 2000.into() },
+      qty: Qty::new(vec![Number::new(Decimal::from(5), uom0, inner.clone())]),
+      cost: 2000.into(),
+    },
     issue: BalanceDelta::default(),
     close_balance: BalanceForGoods {
-      qty: Qty::new(vec![Number::new(Decimal::from(5), uom, None)]),
-      cost: 2000.into() },
+      qty: Qty::new(vec![Number::new(Decimal::from(5), uom0, inner)]),
+      cost: 2000.into(),
+    },
   };
 
   assert_eq!(agr, res.items.1[0]);
