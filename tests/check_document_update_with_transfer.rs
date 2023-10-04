@@ -1,6 +1,6 @@
 mod test_init;
 
-use crate::test_init::{goods, init, receive, store, DocumentCreation};
+use crate::test_init::{goods, init, receive, store, uom, DocumentCreation};
 use chrono::Utc;
 use json::object;
 use json::JsonValue;
@@ -15,8 +15,10 @@ use std::sync::Arc;
 use store::batch::Batch;
 use store::elements::dt;
 use store::elements::ToJson;
+use store::qty::{Number, Qty};
 use store::GetWarehouse;
 use tantivy::HasLen;
+use uuid::Uuid;
 use values::constants::_UUID;
 use values::ID;
 
@@ -41,6 +43,9 @@ async fn check_document_update_with_transfer() {
   let s3 = store(&app, "s3");
   let g1 = goods(&app, "g1");
 
+  let uom0 = uom(&app, "uom0");
+  let uom1 = uom(&app, "uom1");
+
   // create receive document
   let receiveDoc = object! {
     date: "2023-01-02",
@@ -53,10 +58,19 @@ async fn check_document_update_with_transfer() {
   let d1 = receive_doc.create(&app, receiveDoc.clone());
 
   // create receive operation
+  let qty0 = Qty::new(vec![Number::new(
+    Decimal::from(1),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(3), uom1, None))),
+  )]);
+
+  let qty0_json: JsonValue = (&qty0).into();
+
   let receiveOp = object! {
     document: d1["_id"].to_string(),
     goods: g1.to_string(),
-    qty: object! {number: "3.0"},
+    // qty: object! {number: "3.0"},
+    qty: qty0_json.clone(),
     cost: object! {number: "0.3"},
   };
 
@@ -81,7 +95,8 @@ async fn check_document_update_with_transfer() {
   let transferOp = object! {
     document: d2["_id"].to_string(),
     goods: g1.to_string(),
-    qty: object! {number: "3.0"},
+    // qty: object! {number: "3.0"},
+    qty: qty0_json,
     cost: object! {number: "0.3"},
   };
 
@@ -105,17 +120,22 @@ async fn check_document_update_with_transfer() {
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
 
-  // log::debug!("balances: {balances:#?}");
-  //
-  // log::debug!("s1: {s1:#?}");
-  // log::debug!("s2: {s2:#?}");
-  // log::debug!("s3: {s3:#?}");
+  log::debug!("s1: {s1:#?}");
+  log::debug!("s2: {s2:#?}");
+  log::debug!("s3: {s3:#?}");
+
+  log::debug!("balances: {balances:#?}");
 
   assert_eq!(balances.get(&s1), None);
 
-  assert_eq!(balances[&s2][&g1][&r1_batch].qty, Decimal::from(3));
+  assert_eq!(balances[&s2][&g1][&r1_batch].qty, qty0.clone());
 
-  assert_eq!(balances[&s2][&g1][&Batch::no()].qty, Decimal::from(-3));
+  let qty1 = Qty::new(vec![Number::new(
+    Decimal::from(-1),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(3), uom1, None))),
+  )]);
+  assert_eq!(balances[&s2][&g1][&Batch::no()].qty, qty1);
 
-  assert_eq!(balances[&s3][&g1][&Batch::no()].qty, Decimal::from(3));
+  assert_eq!(balances[&s3][&g1][&Batch::no()].qty, qty0);
 }

@@ -126,10 +126,7 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
         qty: Qty::new(vec![Number::new(Decimal::from(-2), uom0, inner.clone())]),
         cost: (-2000).into(),
       },
-      close_balance: BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(0), uom0, inner)]),
-        cost: 0.into(),
-      },
+      close_balance: BalanceForGoods::default(),
     },
   ];
 

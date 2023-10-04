@@ -12,13 +12,15 @@ use crate::test_init::{create_record, goods, init, receive, store, transfer};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
+use rust_decimal::Decimal;
 use service::utils::json::JsonParams;
 use service::{Context, Services};
 use store::balance::{BalanceForGoods, Cost};
 use store::batch::Batch;
-use store::elements::{dt, Goods, Mode, Qty, Store};
+use store::elements::{dt, Goods, Mode, Store};
 use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
+use store::qty::{Number, Qty};
 use store::GetWarehouse;
 
 #[actix_web::test]
@@ -36,12 +38,27 @@ async fn check_receive_two_stores() {
   let s2 = store(&app, "s2");
   let g1 = goods(&app, "g1");
 
+  let uom0 = Uuid::new_v4();
+  let uom1 = Uuid::new_v4();
+
   log::debug!("receive 20.01.23 s1 2");
-  let r1 = receive(&app, "2023-01-20", s1, g1, 2.into(), "0.2".try_into().unwrap());
+  let qty0 = Qty::new(vec![Number::new(
+    Decimal::from(2),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+  )]);
+
+  let r1 = receive(&app, "2023-01-20", s1, g1, qty0.clone(), "0.2".try_into().unwrap());
   let r1_batch = Batch { id: r1, date: dt("2023-01-20").unwrap() };
 
   log::debug!("receive 20.01.23 s2 1");
-  let r2 = receive(&app, "2023-01-20", s2, g1, 1.into(), "0.1".try_into().unwrap());
+  let qty1 = Qty::new(vec![Number::new(
+    Decimal::from(1),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+  )]);
+
+  let r2 = receive(&app, "2023-01-20", s2, g1, qty1.clone(), "0.1".try_into().unwrap());
   let r2_batch = Batch { id: r2, date: dt("2023-01-20").unwrap() };
 
   // s1 r1 2 0.2 (20.01)
@@ -61,7 +78,7 @@ async fn check_receive_two_stores() {
 
   assert_eq!(
     s1_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: 2.into(), cost: "0.2".try_into().unwrap() }
+    BalanceForGoods { qty: qty0, cost: "0.2".try_into().unwrap() }
   );
 
   // s2
@@ -73,6 +90,6 @@ async fn check_receive_two_stores() {
 
   assert_eq!(
     s2_g1_bs.get(&r2_batch).unwrap().clone(),
-    BalanceForGoods { qty: 1.into(), cost: "0.1".try_into().unwrap() }
+    BalanceForGoods { qty: qty1, cost: "0.1".try_into().unwrap() }
   );
 }

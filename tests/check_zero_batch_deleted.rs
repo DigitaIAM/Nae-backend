@@ -12,13 +12,15 @@ use crate::test_init::{create_record, goods, init, receive, store, transfer};
 use nae_backend::commutator::Application;
 use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
+use rust_decimal::Decimal;
 use service::utils::json::JsonParams;
 use service::{Context, Services};
 use store::balance::{BalanceForGoods, Cost};
 use store::batch::Batch;
-use store::elements::{dt, Goods, Mode, Qty, Store};
+use store::elements::{dt, Goods, Mode, Store};
 use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_record;
+use store::qty::{Number, Qty};
 use store::GetWarehouse;
 
 #[actix_web::test]
@@ -36,14 +38,27 @@ async fn check_zero_batch_deleted() {
   let s2 = store(&app, "s2");
   let g1 = goods(&app, "g1");
 
+  let uom0 = Uuid::new_v4();
+  let uom1 = Uuid::new_v4();
+
   log::debug!("transfer 26.01 s1 > s2 11");
-  transfer(&app, "2023-01-26", s1, s2, g1, 11.into());
+  let qty0 = Qty::new(vec![Number::new(Decimal::from(11), uom1, None)]);
+
+  transfer(&app, "2023-01-26", s1, s2, g1, qty0);
 
   log::debug!("transfer 27.01 s1 > s2 17");
-  transfer(&app, "2023-01-26", s1, s2, g1, 17.into());
+  let qty1 = Qty::new(vec![Number::new(Decimal::from(17), uom1, None)]);
+
+  transfer(&app, "2023-01-26", s1, s2, g1, qty1);
 
   log::debug!("receive 20.01 s1 300");
-  let r1 = receive(&app, "2023-01-20", s1, g1, 300.into(), 30.into());
+  let qty2 = Qty::new(vec![Number::new(
+    Decimal::from(10),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(30), uom1, None))),
+  )]);
+
+  let r1 = receive(&app, "2023-01-20", s1, g1, qty2, 30.into());
   let r1_batch = Batch { id: r1, date: dt("2023-01-20").unwrap() };
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
@@ -57,9 +72,13 @@ async fn check_zero_batch_deleted() {
   let s1_g1_bs = s1_bs.get(&g1).unwrap();
   assert_eq!(s1_g1_bs.len(), 1);
 
+  let qty3 = Qty::new(vec![
+    Number::new(Decimal::from(9), uom0, Some(Box::new(Number::new(Decimal::from(30), uom1, None)))),
+    Number::new(Decimal::from(2), uom1, None),
+  ]);
   assert_eq!(
     s1_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: 272.into(), cost: "27.2".try_into().unwrap() }
+    BalanceForGoods { qty: qty3, cost: "27.2".try_into().unwrap() }
   );
 
   let s2_bs = balances.get(&s2).unwrap();
@@ -68,8 +87,9 @@ async fn check_zero_batch_deleted() {
   let s2_g1_bs = s2_bs.get(&g1).unwrap();
   assert_eq!(s2_g1_bs.len(), 1);
 
+  let qty4 = Qty::new(vec![Number::new(Decimal::from(28), uom1, None)]);
   assert_eq!(
     s2_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: 28.into(), cost: "2.8".try_into().unwrap() }
+    BalanceForGoods { qty: qty4, cost: "2.8".try_into().unwrap() }
   )
 }
