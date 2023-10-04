@@ -7,6 +7,7 @@ use rust_decimal::prelude::{ToPrimitive, Zero};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use service::utils::json::JsonParams;
+use std::collections::VecDeque;
 use std::ops::{Add, AddAssign, Deref, Div, Mul, Neg, Sub, SubAssign};
 use uuid::Uuid;
 
@@ -726,47 +727,70 @@ impl Add for &Qty {
       return self.clone();
     }
 
-    let mut left = self.inner.clone();
+    let mut left = VecDeque::from(self.inner.clone());
+    // let mut right = VecDeque::from(rhs.inner.clone());
     let mut right = rhs.inner.clone();
 
-    'right: while let Some(right_last) = right.pop() {
-      let mut tmp_left = left.clone();
+    // [-10 of 10, -5] + [2 of 10, 5] = [-8 of 10]
 
-      for left_last in tmp_left.iter().rev() {
+    // [-10 of 10] + [2 of 10, 5] = [-7 of 10, -5]
+
+    // [2 of 10, 5] + [7 of 10, 5] = [9 of 10, 10]
+
+    // TODO iterate through right inside left
+
+    // let mut tmp_left = left.clone();
+
+    'left: while let Some(left_last) = left.pop_front() {
+      let mut tmp_right = right.clone();
+
+      let mut index = usize::MAX;
+      for (i, right_last) in tmp_right.iter().enumerate() {
         if let Some(common) = left_last.common(&right_last) {
           if let (Some(low_left), Some(low_right)) =
             (left_last.lowering(&common), right_last.lowering(&common))
           {
             let result = low_left.number + low_right.number;
+            // println!("{left_last:?} + {right_last:?} =");
 
-            left.pop();
+            // right.pop();
+            right.remove(0);
             // workaround to elevate result as high as possible
-            let elevate_number =
-              if left_last.name.depth() > right_last.name.depth() { left_last } else { &right_last };
+            let elevate_number = if left_last.name.depth() > right_last.name.depth() {
+              &left_last
+            } else {
+              &right_last
+            };
 
-            if result > Decimal::ZERO {
+            if result != Decimal::ZERO {
               let mut upper_numbers =
                 Number::new(result, low_left.uuid(), low_left.named()).elevate(elevate_number);
-              left.append(&mut upper_numbers.inner);
-            } else if result < Decimal::ZERO {
-              let mut upper_numbers =
-                Number::new(result, low_right.uuid(), low_right.named()).elevate(elevate_number);
-              right.append(&mut upper_numbers.inner);
+              // println!("{upper_numbers:?}");
+              for number in upper_numbers.inner {
+                right.push(number);
+              }
+              // left.append(&mut upper_numbers.inner.into());
             }
 
             // if there are no more values to add to, move everything from right to left and finish
             if left.is_empty() {
-              left.append(&mut right);
-              break 'right;
+              left.append(&mut right.into());
+              // for r in right {
+              //   left.push_front(r);
+              // }
+              break 'left;
             } else {
-              continue 'right;
+              continue 'left;
             }
           }
         }
+        index = i;
       }
-      left.push(right_last);
+      if index != usize::MAX {
+        left.push_front(right.remove(index));
+      }
     }
-    Qty::new(left)
+    Qty::new(left.into())
   }
 }
 
@@ -1529,6 +1553,133 @@ mod tests {
     let uom1 = Uuid::new_v4();
     let uom2 = Uuid::new_v4();
 
+    // [-10 of 10, -5] + [2 of 10, 5] = [-8 of 10]
+    check_add(
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-10),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(2),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-8),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+    );
+    // [2 of 10, 5] - [10 of 10] = [-8 of 10, 5] the same as below
+    // [-10 of 10] + [2 of 10, 5] = [-8 of 10, 5]
+    // check_add(
+    //   Qty::new(vec![Number::new(
+    //     Decimal::from(-10),
+    //     uom0,
+    //     Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+    //   )]),
+    //   Qty::new(vec![
+    //     Number::new(
+    //       Decimal::from(2),
+    //       uom0,
+    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+    //     ),
+    //     Number::new(Decimal::from(5), uom1, None),
+    //   ]),
+    //   Qty::new(vec![
+    //     Number::new(
+    //       Decimal::from(-8),
+    //       uom0,
+    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+    //     ),
+    //     Number::new(Decimal::from(5), uom1, None),
+    //   ]),
+    // );
+
+    // [2 of 10, 5] + [7 of 10, 5] = [9 of 10, 10]
+    check_add(
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(2),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(7),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(9),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(10), uom1, None),
+      ]),
+    );
+
+    // [-2 of 10, -5] + [-7 of 10, -5] = [-9 of 10, -10]
+    check_add(
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-2),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-7),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-9),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-10), uom1, None),
+      ]),
+    );
+
+    // [-2 of 10, -5] + [2 of 10, 5] = []
+    check_add(
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-2),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(2),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+      Qty::default(),
+    );
+
     // 2 + 3 = 5
     check_add(
       Qty::new(vec![Number::new(Decimal::from(2), uom0, None)]),
@@ -1768,38 +1919,6 @@ mod tests {
         ),
       ]),
     );
-
-    // [-7 of 10, -3 of 10] + [2 of 10, 5] = [-7 of 10, -5]
-    // check_add(
-    //   Qty::new(vec![
-    //     Number::new(
-    //       Decimal::from(-7),
-    //       uom0,
-    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-    //     ),
-    //     Number::new(
-    //       Decimal::from(-3),
-    //       uom0,
-    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-    //     ),
-    //   ]),
-    //   Qty::new(vec![
-    //     Number::new(
-    //       Decimal::from(2),
-    //       uom0,
-    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-    //     ),
-    //     Number::new(Decimal::from(5), uom1, None),
-    //   ]),
-    //   Qty::new(vec![
-    //     Number::new(
-    //       Decimal::from(-7),
-    //       uom0,
-    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-    //     ),
-    //     Number::new(Decimal::from(-5), uom1, None),
-    //   ]),
-    // );
   }
 
   fn check_sub(left: Qty, right: Qty, check: Qty) {
@@ -1818,6 +1937,30 @@ mod tests {
     let uom0 = Uuid::new_v4();
     let uom1 = Uuid::new_v4();
     let uom2 = Uuid::new_v4();
+
+    //  [3 of 50, 2 of 50, 55, 5] - [1 of 50, 10] = [-1 of 50, 50]
+    check_sub(
+      Qty::new(vec![
+        Number::new(Decimal::from(55), uom1, None),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(1),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(50), uom1, None))),
+        ),
+        Number::new(Decimal::from(10), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-1),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(50), uom1, None))),
+        ),
+        Number::new(Decimal::from(50), uom1, None),
+      ]),
+    );
 
     // 2 of 10 - 5 = [1 of 10, 5]
     check_sub(
