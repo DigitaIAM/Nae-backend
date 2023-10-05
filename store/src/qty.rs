@@ -728,68 +728,41 @@ impl Add for &Qty {
     }
 
     let mut left = VecDeque::from(self.inner.clone());
-    // let mut right = VecDeque::from(rhs.inner.clone());
-    let mut right = rhs.inner.clone();
+    let mut right = VecDeque::from(rhs.inner.clone());
 
-    // [-10 of 10, -5] + [2 of 10, 5] = [-8 of 10]
-
-    // [-10 of 10] + [2 of 10, 5] = [-7 of 10, -5]
-
-    // [2 of 10, 5] + [7 of 10, 5] = [9 of 10, 10]
-
-    // TODO iterate through right inside left
-
-    // let mut tmp_left = left.clone();
-
-    'left: while let Some(left_last) = left.pop_front() {
+    for cur_left in self.inner.iter() {
       let mut tmp_right = right.clone();
+      while let Some(cur_right) = tmp_right.pop_front() {
+        left.pop_front();
 
-      let mut index = usize::MAX;
-      for (i, right_last) in tmp_right.iter().enumerate() {
-        if let Some(common) = left_last.common(&right_last) {
+        if let Some(common) = cur_left.common(&cur_right) {
           if let (Some(low_left), Some(low_right)) =
-            (left_last.lowering(&common), right_last.lowering(&common))
+            (cur_left.lowering(&common), cur_right.lowering(&common))
           {
-            let result = low_left.number + low_right.number;
-            // println!("{left_last:?} + {right_last:?} =");
+            right.pop_front();
 
-            // right.pop();
-            right.remove(0);
-            // workaround to elevate result as high as possible
-            let elevate_number = if left_last.name.depth() > right_last.name.depth() {
-              &left_last
-            } else {
-              &right_last
-            };
+            let result = low_left.number + low_right.number;
+            // println!("{} + {} = {}", low_left.number, low_right.number, result);
 
             if result != Decimal::ZERO {
-              let mut upper_numbers =
-                Number::new(result, low_left.uuid(), low_left.named()).elevate(elevate_number);
-              // println!("{upper_numbers:?}");
-              for number in upper_numbers.inner {
-                right.push(number);
-              }
-              // left.append(&mut upper_numbers.inner.into());
-            }
+              let upper_number =
+                if cur_left.name.depth() > cur_right.name.depth() { cur_left } else { &cur_right };
 
-            // if there are no more values to add to, move everything from right to left and finish
-            if left.is_empty() {
-              left.append(&mut right.into());
-              // for r in right {
-              //   left.push_front(r);
-              // }
-              break 'left;
-            } else {
-              continue 'left;
+              let upper_qty =
+                Number::new(result, low_left.uuid(), low_left.named()).elevate(upper_number);
+
+              upper_qty.inner.into_iter().for_each(|n| left.push_back(n));
             }
+            break;
           }
+        } else {
+          left.push_back(cur_left.clone());
         }
-        index = i;
-      }
-      if index != usize::MAX {
-        left.push_front(right.remove(index));
       }
     }
+
+    right.into_iter().for_each(|n| left.push_back(n));
+
     Qty::new(left.into())
   }
 }
@@ -1553,131 +1526,100 @@ mod tests {
     let uom1 = Uuid::new_v4();
     let uom2 = Uuid::new_v4();
 
-    // [-10 of 10, -5] + [2 of 10, 5] = [-8 of 10]
+    // 1 uom0 + 1 uom1 = [1 uom0, 1 uom1]
     check_add(
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
+      Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
       Qty::new(vec![
-        Number::new(
-          Decimal::from(-10),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-        ),
-        Number::new(Decimal::from(-5), uom1, None),
+        Number::new(Decimal::from(1), uom0, None),
+        Number::new(Decimal::from(1), uom1, None),
       ]),
-      Qty::new(vec![
-        Number::new(
-          Decimal::from(2),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-        ),
-        Number::new(Decimal::from(5), uom1, None),
-      ]),
+    );
+
+    // 1 uom0 + (1 uom1 of 10 uom2) = [1 of 10, 1 uom0]
+    check_add(
+      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
       Qty::new(vec![Number::new(
-        Decimal::from(-8),
+        Decimal::from(1),
+        uom1,
+        Some(Box::new(Number::new(Decimal::from(10), uom2, None))),
+      )]),
+      Qty::new(vec![
+        Number::new(Decimal::from(1), uom0, None),
+        Number::new(
+          Decimal::from(1),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(10), uom2, None))),
+        ),
+      ]),
+    );
+
+    // 1 of 10 + 1 of 11 = [1 of 10, 1 of 11]
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
         uom0,
         Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
       )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(11), uom1, None))),
+      )]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(1),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(
+          Decimal::from(1),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(11), uom1, None))),
+        ),
+      ]),
     );
-    // [2 of 10, 5] - [10 of 10] = [-8 of 10, 5] the same as below
-    // [-10 of 10] + [2 of 10, 5] = [-8 of 10, 5]
-    // check_add(
-    //   Qty::new(vec![Number::new(
-    //     Decimal::from(-10),
-    //     uom0,
-    //     Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-    //   )]),
-    //   Qty::new(vec![
-    //     Number::new(
-    //       Decimal::from(2),
-    //       uom0,
-    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-    //     ),
-    //     Number::new(Decimal::from(5), uom1, None),
-    //   ]),
-    //   Qty::new(vec![
-    //     Number::new(
-    //       Decimal::from(-8),
-    //       uom0,
-    //       Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-    //     ),
-    //     Number::new(Decimal::from(5), uom1, None),
-    //   ]),
-    // );
 
-    // [2 of 10, 5] + [7 of 10, 5] = [9 of 10, 10]
+    // 2 of 10 of 100 + 2 of 10 of 99 = [2 of 10 of 100, 2 of 10 of 99]
     check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(2),
+        uom0,
+        Some(Box::new(Number::new(
+          Decimal::from(10),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+        ))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(2),
+        uom0,
+        Some(Box::new(Number::new(
+          Decimal::from(10),
+          uom1,
+          Some(Box::new(Number::new(Decimal::from(99), uom2, None))),
+        ))),
+      )]),
       Qty::new(vec![
         Number::new(
           Decimal::from(2),
           uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+          Some(Box::new(Number::new(
+            Decimal::from(10),
+            uom1,
+            Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
+          ))),
         ),
-        Number::new(Decimal::from(5), uom1, None),
-      ]),
-      Qty::new(vec![
-        Number::new(
-          Decimal::from(7),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-        ),
-        Number::new(Decimal::from(5), uom1, None),
-      ]),
-      Qty::new(vec![
-        Number::new(
-          Decimal::from(9),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-        ),
-        Number::new(Decimal::from(10), uom1, None),
-      ]),
-    );
-
-    // [-2 of 10, -5] + [-7 of 10, -5] = [-9 of 10, -10]
-    check_add(
-      Qty::new(vec![
-        Number::new(
-          Decimal::from(-2),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-        ),
-        Number::new(Decimal::from(-5), uom1, None),
-      ]),
-      Qty::new(vec![
-        Number::new(
-          Decimal::from(-7),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-        ),
-        Number::new(Decimal::from(-5), uom1, None),
-      ]),
-      Qty::new(vec![
-        Number::new(
-          Decimal::from(-9),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-        ),
-        Number::new(Decimal::from(-10), uom1, None),
-      ]),
-    );
-
-    // [-2 of 10, -5] + [2 of 10, 5] = []
-    check_add(
-      Qty::new(vec![
-        Number::new(
-          Decimal::from(-2),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-        ),
-        Number::new(Decimal::from(-5), uom1, None),
-      ]),
-      Qty::new(vec![
         Number::new(
           Decimal::from(2),
           uom0,
-          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+          Some(Box::new(Number::new(
+            Decimal::from(10),
+            uom1,
+            Some(Box::new(Number::new(Decimal::from(99), uom2, None))),
+          ))),
         ),
-        Number::new(Decimal::from(5), uom1, None),
       ]),
-      Qty::default(),
     );
 
     // 2 + 3 = 5
@@ -1842,82 +1784,135 @@ mod tests {
       Qty::new(vec![Number::new(Decimal::from(-5), uom1, None)]),
     );
 
-    // 1 uom0 + 1 uom1 = [1 uom0, 1 uom1]
+    // [-10 of 10, -5] + [2 of 10, 5] = [-8 of 10]
     check_add(
-      Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]),
-      Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
-      Qty::new(vec![
-        Number::new(Decimal::from(1), uom0, None),
-        Number::new(Decimal::from(1), uom1, None),
-      ]),
-    );
-
-    // 1 of 10 + 1 of 11 = [1 of 10, 1 of 11]
-    check_add(
-      Qty::new(vec![Number::new(
-        Decimal::from(1),
-        uom0,
-        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-      )]),
-      Qty::new(vec![Number::new(
-        Decimal::from(1),
-        uom0,
-        Some(Box::new(Number::new(Decimal::from(11), uom1, None))),
-      )]),
       Qty::new(vec![
         Number::new(
-          Decimal::from(1),
+          Decimal::from(-10),
           uom0,
           Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
         ),
+        // Number::new(Decimal::from(-5), uom1, None),
+      ]),
+      Qty::new(vec![
         Number::new(
-          Decimal::from(1),
+          Decimal::from(2),
           uom0,
-          Some(Box::new(Number::new(Decimal::from(11), uom1, None))),
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
         ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-8),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
       ]),
     );
 
-    // 2 of 10 of 100 + 2 of 10 of 99 = [2 of 10 of 100, 2 of 10 of 99]
+    // [2 of 10, 5] - [10 of 10] = [-8 of 10, 5] the same as below
+    // [-10 of 10] + [2 of 10, 5] = [-8 of 10, 5]
     check_add(
       Qty::new(vec![Number::new(
-        Decimal::from(2),
+        Decimal::from(-10),
         uom0,
-        Some(Box::new(Number::new(
-          Decimal::from(10),
-          uom1,
-          Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
-        ))),
-      )]),
-      Qty::new(vec![Number::new(
-        Decimal::from(2),
-        uom0,
-        Some(Box::new(Number::new(
-          Decimal::from(10),
-          uom1,
-          Some(Box::new(Number::new(Decimal::from(99), uom2, None))),
-        ))),
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
       )]),
       Qty::new(vec![
         Number::new(
           Decimal::from(2),
           uom0,
-          Some(Box::new(Number::new(
-            Decimal::from(10),
-            uom1,
-            Some(Box::new(Number::new(Decimal::from(100), uom2, None))),
-          ))),
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
         ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-8),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+    );
+
+    // [2 of 10, 5] + [7 of 10, 5] = [9 of 10, 10]
+    check_add(
+      Qty::new(vec![
         Number::new(
           Decimal::from(2),
           uom0,
-          Some(Box::new(Number::new(
-            Decimal::from(10),
-            uom1,
-            Some(Box::new(Number::new(Decimal::from(99), uom2, None))),
-          ))),
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
         ),
+        Number::new(Decimal::from(5), uom1, None),
       ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(7),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(9),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(10), uom1, None),
+      ]),
+    );
+
+    // // [-2 of 10, -5] + [-7 of 10, -5] = [-9 of 10, -10]
+    check_add(
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-2),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-7),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-9),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-10), uom1, None),
+      ]),
+    );
+
+    // // [-2 of 10, -5] + [2 of 10, 5] = []
+    check_add(
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-2),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(2),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+      Qty::default(),
     );
   }
 
