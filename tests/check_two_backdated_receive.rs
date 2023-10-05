@@ -58,25 +58,25 @@ async fn check_two_backdated_receive() {
   ]);
   transfer(&app, "2023-01-27", s1, s2, g1, qty1);
 
-  // log::debug!("receive 20.01 s1 60");
-  // let qty2 = Qty::new(vec![Number::new(
-  //   Decimal::from(6),
-  //   uom0,
-  //   Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-  // )]);
-  //
-  // let r1 = receive(&app, "2023-01-20", s1, g1, qty2, "60".try_into().unwrap());
-  // let r1_batch = Batch { id: r1, date: dt("2023-01-20").unwrap() };
+  log::debug!("receive 20.01 s1 60");
+  let qty2 = Qty::new(vec![Number::new(
+    Decimal::from(6),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+  )]);
 
-  // log::debug!("receive 22.01 s1 40");
-  // let qty3 = Qty::new(vec![Number::new(
-  //   Decimal::from(4),
-  //   uom0,
-  //   Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-  // )]);
-  //
-  // let r2 = receive(&app, "2023-01-22", s1, g1, qty3, "40".try_into().unwrap());
-  // let r2_batch = Batch { id: r2, date: dt("2023-01-22").unwrap() };
+  let r1 = receive(&app, "2023-01-20", s1, g1, qty2, "60".try_into().unwrap());
+  let r1_batch = Batch { id: r1, date: dt("2023-01-20").unwrap() };
+
+  log::debug!("receive 22.01 s1 40");
+  let qty3 = Qty::new(vec![Number::new(
+    Decimal::from(4),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+  )]);
+
+  let r2 = receive(&app, "2023-01-22", s1, g1, qty3, "40".try_into().unwrap());
+  let r2_batch = Batch { id: r2, date: dt("2023-01-22").unwrap() };
 
   // s2 r1 60 60
   // s2 r2 40 40
@@ -94,15 +94,15 @@ async fn check_two_backdated_receive() {
   let s2_g1_bs = s2_bs.get(&g1).unwrap();
   assert_eq!(s2_g1_bs.len(), 2);
 
-  // let qty4 = Qty::new(vec![Number::new(Decimal::from(60), uom1, None)]);
-  // assert_eq!(
-  //   s2_g1_bs.get(&r1_batch).unwrap().clone(),
-  //   BalanceForGoods { qty: qty4, cost: "60".try_into().unwrap() }
-  // );
+  let qty4 = Qty::new(vec![Number::new(Decimal::from(60), uom1, None)]);
+  assert_eq!(
+    s2_g1_bs.get(&r1_batch).unwrap().clone(),
+    BalanceForGoods { qty: qty4, cost: "60".try_into().unwrap() }
+  );
 
-  // let qty5 = Qty::new(vec![Number::new(Decimal::from(40), uom1, None)]);
-  // assert_eq!(
-  //   s2_g1_bs.get(&r2_batch).unwrap().clone(),
-  //   BalanceForGoods { qty: qty5, cost: "40".try_into().unwrap() }
-  // );
+  let qty5 = Qty::new(vec![Number::new(Decimal::from(40), uom1, None)]);
+  assert_eq!(
+    s2_g1_bs.get(&r2_batch).unwrap().clone(),
+    BalanceForGoods { qty: qty5, cost: "40".try_into().unwrap() }
+  );
 }
