@@ -315,22 +315,22 @@ impl Number<Uom> {
     }
   }
 
-  fn subtract(
-    full: Vec<(Decimal, Uuid)>,
-    mut left: Vec<(Decimal, Uuid)>,
-    right: Vec<(Decimal, Uuid)>,
-  ) -> Result<Vec<Self>, WHError> {
-    if let (Some(l_last), Some(r_last)) = (left.last_mut(), right.last()) {
-      let (last_number, last_uuid) = *l_last;
-      let number = last_number - r_last.0;
-      if number == Decimal::ZERO {
-        return Ok(Vec::new());
-      }
-      *l_last = (number, last_uuid);
-    }
-
-    left.convert(full)
-  }
+  // fn subtract(
+  //   full: Vec<(Decimal, Uuid)>,
+  //   mut left: Vec<(Decimal, Uuid)>,
+  //   right: Vec<(Decimal, Uuid)>,
+  // ) -> Result<Vec<Self>, WHError> {
+  //   if let (Some(l_last), Some(r_last)) = (left.last_mut(), right.last()) {
+  //     let (last_number, last_uuid) = *l_last;
+  //     let number = last_number - r_last.0;
+  //     if number == Decimal::ZERO {
+  //       return Ok(Vec::new());
+  //     }
+  //     *l_last = (number, last_uuid);
+  //   }
+  //
+  //   left.convert(full)
+  // }
 
   pub fn is_zero(&self) -> bool {
     if self.number.is_zero() {
@@ -496,48 +496,48 @@ impl Neg for Number<Uom> {
   }
 }
 
-impl Sub for &Number<Uom> {
-  type Output = Qty;
-
-  fn sub(self, rhs: Self) -> Self::Output {
-    let mut left = self.to_vec();
-    let mut right = rhs.to_vec();
-    let mut index = 0;
-
-    for (l, r) in left.iter().zip(right.iter()) {
-      // compare name and number parts if it's not the last value
-      if index + 1 < left.len() && index + 1 < right.len() {
-        if l != r {
-          return Qty { inner: vec![self.clone(), -(rhs.clone())] };
-        }
-        index += 1;
-      } else {
-        // compare only name part if it's the last value
-        let (_, left_id) = l;
-        let (_, right_id) = r;
-        if left_id != right_id {
-          return Qty { inner: vec![self.clone(), -(rhs.clone())] };
-        }
-      }
-    }
-
-    let full = left.clone();
-
-    if left.len() > index + 1 {
-      Number::simplify(&mut left, index);
-    } else if right.len() > index + 1 {
-      Number::simplify(&mut right, index);
-    }
-
-    let mut result = Qty { inner: Vec::new() };
-
-    if left.len() == right.len() {
-      result.inner = Number::subtract(full, left, right).unwrap_or_default();
-    }
-
-    result
-  }
-}
+// impl Sub for &Number<Uom> {
+//   type Output = Qty;
+//
+//   fn sub(self, rhs: Self) -> Self::Output {
+//     let mut left = self.to_vec();
+//     let mut right = rhs.to_vec();
+//     let mut index = 0;
+//
+//     for (l, r) in left.iter().zip(right.iter()) {
+//       // compare name and number parts if it's not the last value
+//       if index + 1 < left.len() && index + 1 < right.len() {
+//         if l != r {
+//           return Qty { inner: vec![self.clone(), -(rhs.clone())] };
+//         }
+//         index += 1;
+//       } else {
+//         // compare only name part if it's the last value
+//         let (_, left_id) = l;
+//         let (_, right_id) = r;
+//         if left_id != right_id {
+//           return Qty { inner: vec![self.clone(), -(rhs.clone())] };
+//         }
+//       }
+//     }
+//
+//     let full = left.clone();
+//
+//     if left.len() > index + 1 {
+//       Number::simplify(&mut left, index);
+//     } else if right.len() > index + 1 {
+//       Number::simplify(&mut right, index);
+//     }
+//
+//     let mut result = Qty { inner: Vec::new() };
+//
+//     if left.len() == right.len() {
+//       result.inner = Number::subtract(full, left, right).unwrap_or_default();
+//     }
+//
+//     result
+//   }
+// }
 
 impl Mul<Decimal> for Number<Uom> {
   type Output = Decimal;
@@ -574,6 +574,11 @@ impl Div<Number<Uom>> for Decimal {
 impl Qty {
   pub fn new(inner: Vec<Number<Uom>>) -> Self {
     Qty { inner }
+  }
+
+  fn sort(&mut self) {
+    // self.inner.sort_by(|a, b| a.number.cmp(&b.number));
+    self.inner.sort_by(|a, b| b.name.depth().cmp(&a.name.depth()))
   }
 
   pub fn inner(&self) -> &Vec<Number<Uom>> {
@@ -727,16 +732,17 @@ impl Add for &Qty {
       return self.clone();
     }
 
-    let mut left = VecDeque::from(self.inner.clone());
-    let mut right = VecDeque::from(rhs.inner.clone());
+    let mut sorted_left = self.clone();
+    sorted_left.sort();
+    let mut sorted_right = rhs.clone();
+    sorted_right.sort();
 
-    // 6 of 10 + [-2 of 10, -5] = [3 of 10, 5]
-    for cur_left in self.inner.iter() {
-      // 'left: while let Some(cur_left) = left.pop_front() {
+    let mut left = VecDeque::from(sorted_left.inner);
+    let mut right = VecDeque::from(sorted_right.inner);
+
+    'left: while let Some(cur_left) = left.pop_front() {
       let mut tmp_right = right.clone();
       while let Some(cur_right) = tmp_right.pop_front() {
-        left.pop_front();
-
         if let Some(common) = cur_left.common(&cur_right) {
           if let (Some(low_left), Some(low_right)) =
             (cur_left.lowering(&common), cur_right.lowering(&common))
@@ -748,7 +754,7 @@ impl Add for &Qty {
 
             if result != Decimal::ZERO {
               let upper_number =
-                if cur_left.name.depth() > cur_right.name.depth() { cur_left } else { &cur_right };
+                if cur_left.name.depth() > cur_right.name.depth() { &cur_left } else { &cur_right };
 
               let upper_qty =
                 Number::new(result, low_left.uuid(), low_left.named()).elevate(upper_number);
@@ -758,14 +764,28 @@ impl Add for &Qty {
             break;
           }
         } else {
-          left.push_back(cur_left.clone());
+          if left.is_empty() {
+            left.push_back(cur_left.clone());
+            right.into_iter().for_each(|n| left.push_back(n));
+
+            let mut result = Qty::new(left.into());
+            result.sort();
+            return result;
+          } else {
+            left.push_back(cur_left.clone());
+          }
         }
+      }
+      if right.is_empty() {
+        break 'left;
       }
     }
 
     right.into_iter().for_each(|n| left.push_back(n));
 
-    Qty::new(left.into())
+    let mut result = Qty::new(left.into());
+    result.sort();
+    result
   }
 }
 
@@ -788,10 +808,14 @@ impl Sub for &Qty {
       return self.clone();
     }
 
-    let mut left = VecDeque::from(self.inner.clone());
-    let mut right = VecDeque::from(rhs.inner.clone());
+    let mut sorted_left = self.clone();
+    sorted_left.sort();
+    let mut sorted_right = rhs.clone();
+    sorted_right.sort();
 
-    // for cur_left in self.inner.iter() {
+    let mut left = VecDeque::from(sorted_left.inner);
+    let mut right = VecDeque::from(sorted_right.inner);
+
     'left: while let Some(cur_left) = left.pop_front() {
       let mut tmp_right = right.clone();
       while let Some(cur_right) = tmp_right.pop_front() {
@@ -827,7 +851,9 @@ impl Sub for &Qty {
                 left.push_back(-n)
               }
             });
-            return Qty::new(left.into());
+            let mut result = Qty::new(left.into());
+            result.sort();
+            return result;
           } else {
             left.push_back(cur_left.clone());
           }
@@ -848,7 +874,9 @@ impl Sub for &Qty {
       });
     }
 
-    Qty::new(left.into())
+    let mut result = Qty::new(left.into());
+    result.sort();
+    result
   }
 }
 
@@ -982,6 +1010,31 @@ mod tests {
         }))
       )
     );
+  }
+
+  #[test]
+  fn sort() {
+    let uom0 = Uuid::new_v4();
+    let uom1 = Uuid::new_v4();
+    let uom2 = Uuid::new_v4();
+
+    let mut data0 = Qty::new(vec![
+      Number::new(
+        Decimal::from(10),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      ),
+      Number::new(Decimal::from(3), uom1, None),
+      Number::new(
+        Decimal::from(-2),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      ),
+    ]);
+
+    data0.sort();
+
+    println!("{data0:?}");
   }
 
   #[test]
@@ -1584,6 +1637,25 @@ mod tests {
     let uom1 = Uuid::new_v4();
     let uom2 = Uuid::new_v4();
 
+    // 1 of 10 + (-2 of 10) = -1 of 10
+    check_add(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-2),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+    );
+
     // 6 of 10 + [-2 of 10, -5] = [3 of 10, 5]
     check_add(
       Qty::new(vec![
@@ -1658,12 +1730,12 @@ mod tests {
         Some(Box::new(Number::new(Decimal::from(10), uom2, None))),
       )]),
       Qty::new(vec![
-        Number::new(Decimal::from(1), uom0, None),
         Number::new(
           Decimal::from(1),
           uom1,
           Some(Box::new(Number::new(Decimal::from(10), uom2, None))),
         ),
+        Number::new(Decimal::from(1), uom0, None),
       ]),
     );
 
@@ -1833,25 +1905,6 @@ mod tests {
       )]),
       Qty::new(vec![Number::new(
         Decimal::from(-2),
-        uom0,
-        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-      )]),
-    );
-
-    // 1 of 10 + (-2 of 10) = -1 of 10
-    check_add(
-      Qty::new(vec![Number::new(
-        Decimal::from(1),
-        uom0,
-        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-      )]),
-      Qty::new(vec![Number::new(
-        Decimal::from(-2),
-        uom0,
-        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
-      )]),
-      Qty::new(vec![Number::new(
-        Decimal::from(-1),
         uom0,
         Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
       )]),
@@ -2045,6 +2098,25 @@ mod tests {
     let uom0 = Uuid::new_v4();
     let uom1 = Uuid::new_v4();
     let uom2 = Uuid::new_v4();
+
+    // 1 of 10 - 2 of 10 = (-1 of 10)
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(2),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![Number::new(
+        Decimal::from(-1),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+    );
 
     // [6 of 10] - [2 of 10, 5] = [3 of 10, 5]
     check_sub(
