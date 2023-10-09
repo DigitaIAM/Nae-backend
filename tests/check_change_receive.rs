@@ -116,9 +116,6 @@ async fn check_change_receive() {
   )]))
     .into();
 
-  // receiveOp["qty"] = array![
-  //   object! {"number": "1", "uom": { "number": "4.0", "uom": uom0.to_json(), "in": uom1.to_json() }}
-  // ];
   receiveOp["qty"] = qty2;
   receiveOp["cost"] = object! {number: "0.4"};
 
@@ -133,11 +130,10 @@ async fn check_change_receive() {
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
 
-  log::debug!("balances: {balances:#?}");
-
   log::debug!("s1: {s1:#?}");
   log::debug!("s2: {s2:#?}");
   log::debug!("s3: {s3:#?}");
+  log::debug!("balances: {balances:#?}");
 
   assert_eq!(balances.get(&s1), None);
 
