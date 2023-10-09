@@ -10,7 +10,7 @@ use std::str::FromStr;
 use crate::batch::Batch;
 use crate::elements::{Goods, Mode, Store, UUID_NIL};
 use crate::operations::{InternalOperation, OpMutation};
-use crate::qty::{Qty, Uom};
+use crate::qty::{Qty, QtyDelta, Uom};
 use service::utils::json::JsonParams;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -203,6 +203,18 @@ impl ToJson for BalanceForGoods {
     object! {
       qty: qty,
       cost: self.cost.to_json(),
+    }
+  }
+}
+
+impl AddAssign<QtyDelta> for BalanceForGoods {
+  fn add_assign(&mut self, rhs: QtyDelta) {
+    if self.is_zero() {
+      // TODO relax delta and add to balance
+    } else {
+      // find common0 for delta, find common1 for balance and common0, operate, elevate result to balance
+      // if no common, find base uom and operate with it
+      // if no base uom, record as is
     }
   }
 }
