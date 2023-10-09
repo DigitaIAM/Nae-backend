@@ -5,6 +5,7 @@ use crate::db::Db;
 use crate::elements::{dt, Goods, Mode, Report, Store, WHError};
 use crate::operations::{Dependant, InternalOperation, Op, OpMutation};
 
+use crate::qty::Qty;
 use chrono::{DateTime, Utc};
 use json::JsonValue;
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, DB};
@@ -852,44 +853,71 @@ impl<'a> PropagationFront<'a> {
 
       if !balance.qty.is_positive() || batch == Batch::no() {
         continue;
-      } else if qty.is_greater_or_equal(&balance.qty)? {
-        let mut new = op.clone();
-        new.is_dependent = true;
-        new.dependant = vec![];
-        new.batch = batch;
-        new.op = InternalOperation::Issue(balance.qty.clone(), balance.cost, Mode::Auto);
-        log::debug!("NEW_OP partly: qty {qty:?} balance {balance:?} op {new:#?}");
+      } else if let Some(common) = qty.common(&balance.qty) {
+        let left = qty.lowering(&common).unwrap();
+        let right = balance.qty.lowering(&common).unwrap();
 
-        // let balance_before = self.mt.balance_before(&new)?;
-        // assert_eq!(balance, balance_before);
+        if left.number() == right.number() {
+          let result = &balance.qty - &qty;
+          if result.is_zero() {
+            let mut new = op.clone();
+            new.is_dependent = true;
+            new.dependant = vec![];
+            new.batch = batch;
+            new.op = InternalOperation::Issue(qty.clone(), balance.cost, Mode::Auto);
+            log::debug!("NEW_OP partly: qty {qty:?} balance {balance:?} op {new:#?}");
 
-        new_dependant.push(Dependant::from(&new));
-        self.insert(new)?;
+            // let balance_before = self.mt.balance_before(&new)?;
+            // assert_eq!(balance, balance_before);
 
-        qty -= &balance.qty;
+            new_dependant.push(Dependant::from(&new));
+            self.insert(new)?;
 
-        // log::debug!("NEW_OP: qty {:?}", qty);
-      } else {
-        let mut new = op.clone();
-        new.is_dependent = true;
-        new.dependant = vec![];
-        new.batch = batch;
-        let cost = &qty * price;
-        new.op = InternalOperation::Issue(qty.clone(), cost, Mode::Auto);
-        log::debug!("NEW_OP full: qty {qty:?} balance {balance:?} op {new:#?}");
+            qty = result;
+          } else {
+            continue;
+          }
+        } else if left.number() > right.number() {
+          let issue = Qty::new(vec![right]);
 
-        // let balance_before = self.balance_before(&new)?;
-        // assert_eq!(balance, balance_before);
+          let mut new = op.clone();
+          new.is_dependent = true;
+          new.dependant = vec![];
+          new.batch = batch;
+          new.op = InternalOperation::Issue(issue.clone(), balance.cost, Mode::Auto);
+          log::debug!("NEW_OP partly: qty {qty:?} balance {balance:?} op {new:#?}");
 
-        new_dependant.push(Dependant::from(&new));
-        self.insert(new)?;
+          // let balance_before = self.mt.balance_before(&new)?;
+          // assert_eq!(balance, balance_before);
 
-        qty -= &qty.clone();
-        // log::debug!("NEW_OP: qty {:?}", qty);
-      }
+          new_dependant.push(Dependant::from(&new));
+          self.insert(new)?;
 
-      if !qty.is_positive() {
-        break;
+          qty -= &issue;
+
+          // log::debug!("NEW_OP: qty {:?}", qty);
+        } else {
+          let mut new = op.clone();
+          new.is_dependent = true;
+          new.dependant = vec![];
+          new.batch = batch;
+          let cost = &qty * price;
+          new.op = InternalOperation::Issue(qty.clone(), cost, Mode::Auto);
+          log::debug!("NEW_OP full: qty {qty:?} balance {balance:?} op {new:#?}");
+
+          // let balance_before = self.balance_before(&new)?;
+          // assert_eq!(balance, balance_before);
+
+          new_dependant.push(Dependant::from(&new));
+          self.insert(new)?;
+
+          qty -= &qty.clone();
+          // log::debug!("NEW_OP: qty {:?}", qty);
+        }
+
+        if !qty.is_positive() {
+          break;
+        }
       }
     }
 

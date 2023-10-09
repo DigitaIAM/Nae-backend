@@ -2,7 +2,7 @@ use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::elements::{Goods, Mode, Store, ToJson, WHError};
 use crate::ordered_topology::OrderedTopology;
-use crate::qty::Qty;
+use crate::qty::{Qty, QtyDelta};
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
 use serde::{Deserialize, Serialize};
@@ -427,21 +427,35 @@ impl OpMutation {
     })
   }
 
-  pub(crate) fn to_delta(&self) -> BalanceDelta {
+  // pub(crate) fn to_delta(&self) -> BalanceDelta {
+  //   if let Some((before, _)) = self.before.as_ref() {
+  //     if let Some((after, _)) = self.after.as_ref() {
+  //       let before: BalanceDelta = before.clone().into();
+  //       let after: BalanceDelta = after.clone().into();
+  //       after - before
+  //     } else {
+  //       let before: BalanceDelta = before.clone().into();
+  //
+  //       BalanceDelta { qty: -before.qty, cost: -before.cost }
+  //     }
+  //   } else if let Some((after, _)) = self.after.as_ref() {
+  //     after.clone().into()
+  //   } else {
+  //     BalanceDelta::default()
+  //   }
+  // }
+
+  pub(crate) fn to_delta(&self) -> QtyDelta {
     if let Some((before, _)) = self.before.as_ref() {
       if let Some((after, _)) = self.after.as_ref() {
-        let before: BalanceDelta = before.clone().into();
-        let after: BalanceDelta = after.clone().into();
-        after - before
+        QtyDelta { before: Some(before.clone()), after: Some(after.clone()) }
       } else {
-        let before: BalanceDelta = before.clone().into();
-
-        BalanceDelta { qty: -before.qty, cost: -before.cost }
+        QtyDelta { before: Some(before.clone()), after: None }
       }
     } else if let Some((after, _)) = self.after.as_ref() {
-      after.clone().into()
+      QtyDelta { before: None, after: Some(after.clone()) }
     } else {
-      BalanceDelta::default()
+      QtyDelta { before: None, after: None }
     }
   }
 

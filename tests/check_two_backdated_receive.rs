@@ -94,13 +94,21 @@ async fn check_two_backdated_receive() {
   let s2_g1_bs = s2_bs.get(&g1).unwrap();
   assert_eq!(s2_g1_bs.len(), 2);
 
-  let qty4 = Qty::new(vec![Number::new(Decimal::from(60), uom1, None)]);
+  let qty4 = Qty::new(vec![
+    Number::new(Decimal::from(5), uom0, Some(Box::new(Number::new(Decimal::from(10), uom1, None)))),
+    Number::new(Decimal::from(10), uom1, None),
+  ]);
+
   assert_eq!(
     s2_g1_bs.get(&r1_batch).unwrap().clone(),
     BalanceForGoods { qty: qty4, cost: "60".try_into().unwrap() }
   );
 
-  let qty5 = Qty::new(vec![Number::new(Decimal::from(40), uom1, None)]);
+  let qty5 = Qty::new(vec![Number::new(
+    Decimal::from(4),
+    uom0,
+    Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+  )]);
   assert_eq!(
     s2_g1_bs.get(&r2_batch).unwrap().clone(),
     BalanceForGoods { qty: qty5, cost: "40".try_into().unwrap() }
