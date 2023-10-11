@@ -210,6 +210,17 @@ impl ToJson for BalanceForGoods {
 
 impl AddAssign<QtyDelta> for BalanceForGoods {
   fn add_assign(&mut self, rhs: QtyDelta) {
+    // if self.is_zero() && rhs.is_zero() {
+    //   // do nothing
+    // } else if rhs.is_zero() {
+    //   // do nothing
+    // } else if self.is_zero() {
+    //   // relax rhs and add it to self ?
+    //   //
+    // } else {
+    //   // run all code below
+    // }
+
     let mut positive = vec![];
     let mut negative = vec![];
     if let Some(before) = rhs.before {
@@ -250,17 +261,16 @@ impl AddAssign<QtyDelta> for BalanceForGoods {
           if r.is_zero() {
             break;
           }
-          // let l = &ls[i];
-          let l = ls[i].clone();
+          let l = &ls[i];
           // println!("left {l:?}");
           if &l.name == &r.name {
-            ls.remove(i);
+            let l = ls.remove(i);
             let product = l.number() - r.number();
-            log::debug!("ADD_ASSIGN: {:?} - {:?} = {:?}", l.number(), r.number(), product);
+            println!("ADD_ASSIGN1: {:?} - {:?} = {:?}", l.number(), r.number(), product);
             r.number = Decimal::ZERO;
-            if product.is_sign_positive() {
+            if product > Decimal::ZERO {
               ls.push(Number::new_named(product, l.name.clone()));
-            } else if product.is_sign_negative() {
+            } else if product < Decimal::ZERO {
               rs.push(Number::new_named(-product, l.name.clone()));
             }
           }
@@ -274,15 +284,6 @@ impl AddAssign<QtyDelta> for BalanceForGoods {
           .iter()
           .enumerate()
           .map(|(i, l)| (i, l.common(&r)))
-          // .map(|(i, l)| {
-          //   if let Some(common) = l.common(&r) {
-          //     (i, Some(common))
-          //   } else if l.base() == r.base() {
-          //     (i, Some(l.base()))
-          //   } else {
-          //     (i, None)
-          //   }
-          // })
           .filter(|(_, l)| l.is_some())
           .map(|(i, l)| (i, l.unwrap()))
           .collect();
@@ -313,11 +314,11 @@ impl AddAssign<QtyDelta> for BalanceForGoods {
           let rl = r.lowering(&common).unwrap();
 
           let product = ll.number() - rl.number();
-          log::debug!("ADD_ASSIGN: {:?} - {:?} = {:?}", ll.number(), rl.number(), product);
+          println!("ADD_ASSIGN2: {:?} - {:?} = {:?}", ll.number(), rl.number(), product);
           r.number = Decimal::ZERO;
-          if product.is_sign_positive() {
+          if product > Decimal::ZERO {
             ls.append(&mut Number::new_named(product, l.name.clone()).elevate_to_uom(&l.name).inner);
-          } else if product.is_sign_negative() {
+          } else if product < Decimal::ZERO {
             rs.append(
               &mut Number::new_named(-product, l.name.clone()).elevate_to_uom(&l.name).inner,
             );
@@ -329,7 +330,9 @@ impl AddAssign<QtyDelta> for BalanceForGoods {
     }
 
     for (q, c) in positive {
+      // println!("ADD_ASSIGN3: {:?} += {:?}", self.qty, q);
       self.qty += &q;
+      // println!(" = {:?}", self.qty);
       self.cost += &c;
     }
   }
@@ -414,9 +417,9 @@ impl BalanceDelta {
     BalanceDelta { qty: qty.clone(), cost: cost.clone() }
   }
 
-  pub(crate) fn to_delta(&self, rhs: &Self) -> BalanceDelta {
-    BalanceDelta { qty: self.qty.to_delta(&rhs.qty), cost: rhs.cost - self.cost }
-  }
+  // pub(crate) fn to_delta(&self, rhs: &Self) -> BalanceDelta {
+  //   BalanceDelta { qty: self.qty.to_delta(&rhs.qty), cost: rhs.cost - self.cost }
+  // }
 
   // pub(crate) fn relax(&self, balance: &Qty) -> Self {
   //   BalanceDelta { qty: self.qty.relax(balance), cost: self.cost }
@@ -608,7 +611,7 @@ mod tests {
       },
     );
 
-    // (1 0f 3) + ((1 of 3) d (1 of 4)) = (1 of 4)
+    // (1 of 3) + ((1 of 3) d (1 of 4)) = (1 of 4)
     balance_plus_delta(
       BalanceForGoods {
         qty: Qty::new(vec![Number::new(
@@ -650,7 +653,7 @@ mod tests {
     // s1 -> s2 transfer 3
     // change s1 receive from (1 of 3) to (1 of 4)
 
-    // s1 (0) + ((1 of 3) d (1 of 4)) = (1 of 4)
+    // s1 (0) + ((1 of 3) d (1 of 4)) = (1)
     balance_plus_delta(
       BalanceForGoods { qty: Qty::new(vec![]), cost: Cost::from(Decimal::from(0)) },
       QtyDelta {
