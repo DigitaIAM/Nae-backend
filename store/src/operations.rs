@@ -305,6 +305,10 @@ impl Op {
       InternalOperation::Issue(..) => true,
     }
   }
+
+  pub fn is_virtual(&self) -> bool {
+    !self.is_dependent && self.batch.is_empty()
+  }
 }
 
 impl ToJson for Op {
@@ -535,7 +539,7 @@ pub enum InternalOperation {
 }
 
 impl InternalOperation {
-  pub fn apply(&self, balance: &BalanceForGoods) -> BalanceDelta {
+  pub fn apply(&self, balance: &BalanceForGoods) -> (BalanceForGoods, BalanceDelta) {
     match self {
       InternalOperation::Inventory(b, _, m) => {
         let qty = &b.qty - &balance.qty;
@@ -547,7 +551,7 @@ impl InternalOperation {
           b.cost - balance.cost
         };
 
-        BalanceDelta { qty: qty.clone(), cost }
+        (b.clone(), BalanceDelta { qty: qty.clone(), cost })
       },
       InternalOperation::Receive(..) => unimplemented!(),
       InternalOperation::Issue(..) => unimplemented!(),

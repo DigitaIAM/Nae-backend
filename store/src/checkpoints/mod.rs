@@ -16,7 +16,7 @@ pub trait CheckpointTopology {
   fn key_to_data(&self, k: Vec<u8>) -> Result<(DateTime<Utc>, Store, Goods, Batch), WHError>;
 
   fn get_balance(&self, key: &Vec<u8>) -> Result<BalanceForGoods, WHError>;
-  fn set_balance(&self, key: &Vec<u8>, balance: BalanceForGoods) -> Result<(), WHError>;
+  fn set_balance(&self, key: &Vec<u8>, balance: &BalanceForGoods) -> Result<(), WHError>;
   fn del_balance(&self, key: &Vec<u8>) -> Result<(), WHError>;
   fn key_latest_checkpoint_date(&self) -> Vec<u8>;
   fn get_latest_checkpoint_date(&self) -> Result<DateTime<Utc>, WHError>;
@@ -65,14 +65,32 @@ pub trait CheckpointTopology {
     goods: &Vec<Goods>,
   ) -> Result<(DateTime<Utc>, HashMap<Uuid, BalanceForGoods>), WHError>;
 
-  fn checkpoint_update(&self, op: &OpMutation) -> Result<(), WHError> {
+  fn checkpoint_update(
+    &self,
+    op: &OpMutation,
+    next_op_date: Option<DateTime<Utc>>,
+    balance: &BalanceForGoods,
+  ) -> Result<(), WHError> {
     // log::debug!("ops len: {}", ops.len());
     // for op in ops {
     log::debug!("================================");
-    log::debug!("checkpoint_update {:#?}", op);
+    let tmp_key = self.key(op.store, op.goods, op.batch.clone(), op.date);
+    let tmp_balance = self.get_balance(&tmp_key)?;
+    log::debug!("_balance: {tmp_balance:?}");
+    // self.set_balance(&key, &tmp_balance)?;
+
+    log::debug!("checkpoint_update {:#?} {next_op_date:?}", op);
 
     // This assert do not pass
     // assert!(op.before.is_some() || op.after.is_some());
+
+    // check if we reached the last op for current month
+    if let Some(next_op_date) = next_op_date {
+      if next_op_date < first_day_next_month(op.date) {
+        log::debug!("exit from checkpoint_update");
+        return Ok(());
+      }
+    }
 
     let mut tmp_date = op.date;
     let mut check_point_date = op.date;
@@ -95,7 +113,7 @@ pub trait CheckpointTopology {
             old_checkpoint.batch.clone(),
             new_checkpoint_date,
           );
-          self.set_balance(&key, old_checkpoint.clone().number)?;
+          self.set_balance(&key, &old_checkpoint.number)?;
           new_checkpoint_date = first_day_next_month(new_checkpoint_date);
         }
       }
@@ -106,18 +124,12 @@ pub trait CheckpointTopology {
 
       let key = self.key(op.store, op.goods, op.batch.clone(), check_point_date);
 
-      let mut balance = self.get_balance(&key)?;
-      log::debug!("balance on {check_point_date} {:#?} before operation {balance:?}", op.date);
-
-      balance += op.to_delta(); // TODO: will fail at inventory operation
-      log::debug!("{:?} > {balance:?}", op.to_delta());
-
       if balance.is_zero() {
         log::debug!("del_balance: {key:?}");
         self.del_balance(&key)?;
       } else {
         log::debug!("set_balance: {balance:?} {key:?}");
-        self.set_balance(&key, balance)?;
+        self.set_balance(&key, &balance)?;
       }
       tmp_date = check_point_date;
 
@@ -160,10 +172,16 @@ pub trait CheckpointTopology {
   fn debug(&self) -> Result<(), WHError> {
     log::debug!("DEBUG: checkpoint_topology");
     let latest = self.key_latest_checkpoint_date();
+    let key_latest_checkpoint_date = self.key_latest_checkpoint_date();
 
     for record in self.db().full_iterator_cf(&self.cf()?, IteratorMode::Start) {
       let (k, value) = record?;
+      if key_latest_checkpoint_date[..] == k[..] {
+        continue;
+      }
+      // log::debug!("deserialize value");
       let b = self.from_bytes(&value)?;
+      // log::debug!("deserialize key");
       let (date, store, goods, batch) = self.key_to_data(k.to_vec())?;
       if latest[..] == k[..] {
         log::debug!("latest checkpoint:");

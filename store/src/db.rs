@@ -42,17 +42,22 @@ impl Db {
     }
   }
 
-  pub fn update(&self, op: OpMutation, balance: BalanceForGoods) -> Result<(), WHError> {
+  pub fn update(
+    &self,
+    op: OpMutation,
+    next_op_date: Option<DateTime<Utc>>,
+    balance: &BalanceForGoods,
+  ) -> Result<(), WHError> {
     for ordered_topology in self.ordered_topologies.iter().skip(1) {
       if let Some(after) = op.to_op_after() {
-        ordered_topology.put(&after, &balance)?;
+        ordered_topology.put(&after, balance)?;
       } else if let Some(before) = op.to_op_before() {
         ordered_topology.del(&before)?;
       }
     }
 
     for checkpoint_topology in self.checkpoint_topologies.iter() {
-      checkpoint_topology.checkpoint_update(&op)?;
+      checkpoint_topology.checkpoint_update(&op, next_op_date, balance)?;
     }
 
     Ok(())
