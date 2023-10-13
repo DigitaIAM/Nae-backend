@@ -72,7 +72,7 @@ impl OrderedTopology for StoreBatchDateTypeId {
   }
 
   fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
-    // log::debug!("balance_before {:#?}", op);
+    log::debug!("balance_before {:#?}", op);
 
     let key = self.key(op);
 
@@ -89,7 +89,7 @@ impl OrderedTopology for StoreBatchDateTypeId {
 
       let (loaded_op, balance) = self.from_bytes(&v)?;
 
-      // log::debug!("loaded_op {loaded_op:#?}\nbalance {balance:#?}");
+      log::debug!("fn_balance_before: loaded_op {loaded_op:#?}\nbalance {balance:#?}");
 
       if loaded_op.store != op.store || loaded_op.goods != op.goods || loaded_op.batch != op.batch {
         // log::debug!("break");
@@ -130,10 +130,14 @@ impl OrderedTopology for StoreBatchDateTypeId {
     Ok(BalanceForGoods::default())
   }
 
-  fn operation_after(&self, op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+  fn operation_after(
+    &self,
+    op: &Op,
+    exclude_virtual: bool,
+  ) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
     // log::debug!("operations_after {op:#?}");
 
-    let key = self.key(op);
+    let from = self.key(op);
     let till =
       self.key_build(op.store, op.goods, op.batch.clone(), i64::MAX, u8::MAX, UUID_MAX, true);
 
@@ -143,17 +147,17 @@ impl OrderedTopology for StoreBatchDateTypeId {
     // }
 
     let mut options = ReadOptions::default();
-    options.set_iterate_range(key.clone()..till);
+    options.set_iterate_range(from.clone()..till);
 
     // TODO change iterator with range from..till?
     let iter =
       self
         .db
-        .iterator_cf_opt(&self.cf()?, options, IteratorMode::From(&key, Direction::Forward));
+        .iterator_cf_opt(&self.cf()?, options, IteratorMode::From(&from, Direction::Forward));
 
     for bytes in iter {
       if let Ok((k, v)) = bytes {
-        if k[0..] == key {
+        if k[0..] == from {
           continue;
         }
 
@@ -165,6 +169,10 @@ impl OrderedTopology for StoreBatchDateTypeId {
         {
           // log::debug!("break");
           break;
+        }
+
+        if exclude_virtual && loaded_op.is_virtual() {
+          continue;
         }
 
         return Ok(Some((loaded_op, balance)));

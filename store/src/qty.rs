@@ -1,4 +1,4 @@
-use crate::balance::{BalanceDelta, BalanceForGoods, Cost, Price};
+use crate::balance::{BalanceForGoods, Cost, Price};
 use crate::elements::{ToJson, UUID_NIL};
 use crate::error::WHError;
 use crate::operations::InternalOperation;
@@ -482,7 +482,7 @@ impl Number<Uom> {
     Some(result)
   }
 
-  fn elevate_to_balance(&self, balance: &Qty) -> Qty {
+  pub(crate) fn elevate_to_qty(&self, balance: &Qty) -> Qty {
     let mut result = Qty::new(vec![self.clone()]);
     let mut prev = self.clone();
 
@@ -567,81 +567,6 @@ impl Neg for Number<Uom> {
 
   fn neg(self) -> Self::Output {
     Number { number: -(self.number), name: self.name }
-  }
-}
-
-// impl Sub for &Number<Uom> {
-//   type Output = Qty;
-//
-//   fn sub(self, rhs: Self) -> Self::Output {
-//     let mut left = self.to_vec();
-//     let mut right = rhs.to_vec();
-//     let mut index = 0;
-//
-//     for (l, r) in left.iter().zip(right.iter()) {
-//       // compare name and number parts if it's not the last value
-//       if index + 1 < left.len() && index + 1 < right.len() {
-//         if l != r {
-//           return Qty { inner: vec![self.clone(), -(rhs.clone())] };
-//         }
-//         index += 1;
-//       } else {
-//         // compare only name part if it's the last value
-//         let (_, left_id) = l;
-//         let (_, right_id) = r;
-//         if left_id != right_id {
-//           return Qty { inner: vec![self.clone(), -(rhs.clone())] };
-//         }
-//       }
-//     }
-//
-//     let full = left.clone();
-//
-//     if left.len() > index + 1 {
-//       Number::simplify(&mut left, index);
-//     } else if right.len() > index + 1 {
-//       Number::simplify(&mut right, index);
-//     }
-//
-//     let mut result = Qty { inner: Vec::new() };
-//
-//     if left.len() == right.len() {
-//       result.inner = Number::subtract(full, left, right).unwrap_or_default();
-//     }
-//
-//     result
-//   }
-// }
-
-impl Mul<Decimal> for Number<Uom> {
-  type Output = Decimal;
-
-  fn mul(self, rhs: Decimal) -> Self::Output {
-    let mut sum_qty = self.number;
-    let mut data = self;
-
-    while let Some(qty) = data.named() {
-      sum_qty *= qty.number;
-      data = *qty;
-    }
-
-    sum_qty * rhs
-  }
-}
-
-impl Div<Number<Uom>> for Decimal {
-  type Output = Self;
-
-  fn div(self, rhs: Number<Uom>) -> Self::Output {
-    let mut sum_qty = rhs.number;
-    let mut data = rhs;
-
-    while let Some(qty) = data.named() {
-      sum_qty *= qty.number;
-      data = *qty;
-    }
-
-    self / sum_qty
   }
 }
 
@@ -747,7 +672,7 @@ impl Qty {
       if let Some(common) = self.common(&balance.qty) {
         if let Some(lower) = self.lowering(&common) {
           let price = balance.price(&common);
-          (lower * price.number()).round_dp(5).into()
+          (lower.number * price.number()).round_dp(5).into()
         } else {
           Cost::ERROR
         }
@@ -795,7 +720,7 @@ impl Qty {
             let sum = low_first.number + low_second.number;
             result.inner.append(
               &mut Number::new(sum, low_first.uuid(), low_first.named())
-                .elevate_to_balance(&balance)
+                .elevate_to_qty(&balance)
                 .inner,
             );
           }
@@ -809,7 +734,7 @@ impl Qty {
               let sum = low_first.number + low_second.number;
               result.inner.append(
                 &mut Number::new(sum, low_first.uuid(), low_first.named())
-                  .elevate_to_balance(&balance)
+                  .elevate_to_qty(&balance)
                   .inner,
               );
             }
@@ -827,7 +752,7 @@ impl Mul<Price> for &Qty {
 
   fn mul(self, price: Price) -> Self::Output {
     if let Some(lower) = self.lowering(&price.uom()) {
-      let number = lower * price.number();
+      let number = lower.number * price.number();
       return Cost::from(number);
     }
     Cost::ERROR
@@ -874,7 +799,7 @@ impl Add for &Qty {
         if &l.name == &r.name {
           let l = ls.remove(i);
           let product = &l.number + &r.number;
-          println!("ADD1: {:?} + {:?} = {:?}", l.number, r.number, product);
+          // println!("ADD1: {:?} + {:?} = {:?}", l.number, r.number, product);
           r.number = Decimal::ZERO;
           if product != Decimal::ZERO {
             ls.push(Number::new_named(product, l.name));
@@ -927,7 +852,7 @@ impl Add for &Qty {
         let rl = r.lowering(&common).unwrap();
 
         let product = ll.number() + rl.number();
-        println!("ADD2: {:?} + {:?} = {:?}", ll.number(), rl.number(), product);
+        // println!("ADD2: {:?} + {:?} = {:?}", ll.number(), rl.number(), product);
         r.number = Decimal::ZERO;
         let upper_uom = if l.name.depth() > r.name.depth() { &l.name } else { &r.name };
         if product != Decimal::ZERO {
@@ -990,7 +915,7 @@ impl Sub for &Qty {
         if &l.name == &r.name {
           let l = ls.remove(i);
           let product = &l.number - &r.number;
-          println!("SUB1: {:?} - {:?} = {:?}", l.number, r.number, product);
+          // println!("SUB1: {:?} - {:?} = {:?}", l.number, r.number, product);
           r.number = Decimal::ZERO;
           if product > Decimal::ZERO {
             ls.push(Number::new_named(product, l.name));
@@ -1045,7 +970,7 @@ impl Sub for &Qty {
         let rl = r.lowering(&common).unwrap();
 
         let product = ll.number() - rl.number();
-        println!("SUB2: {:?} - {:?} = {:?}", ll.number(), rl.number(), product);
+        // println!("SUB2: {:?} - {:?} = {:?}", ll.number(), rl.number(), product);
         r.number = Decimal::ZERO;
         let upper_uom = if l.name.depth() > r.name.depth() { &l.name } else { &r.name };
         if product > Decimal::ZERO {
@@ -1688,60 +1613,6 @@ mod tests {
   }
 
   #[test]
-  fn mul() {
-    let u0 = Uuid::new_v4();
-    let u1 = Uuid::new_v4();
-    let u2 = Uuid::new_v4();
-
-    let data0 = object! {
-      "number": 2,
-      "uom": object! {
-        "number": 10,
-        "uom": object! {
-          "number": 100,
-          "uom": u2.to_json(),
-          "in": u1.to_json(),
-        },
-        "in": u0.to_json(),
-      },
-    };
-
-    let qty0: Qty = data0.try_into().unwrap();
-
-    let res = qty0.inner[0].clone() * Decimal::from(2);
-    // println!("mul {res:?}");
-
-    assert_eq!(res, Decimal::from(4000));
-  }
-
-  #[test]
-  fn div() {
-    let u0 = Uuid::new_v4();
-    let u1 = Uuid::new_v4();
-    let u2 = Uuid::new_v4();
-
-    let data0 = object! {
-      "number": 1,
-      "uom": object! {
-        "number": 10,
-        "uom": object! {
-          "number": 100,
-          "uom": u2.to_json(),
-          "in": u1.to_json(),
-        },
-        "in": u0.to_json(),
-      },
-    };
-
-    let qty0: Qty = data0.try_into().unwrap();
-
-    let res = Decimal::from(2000) / qty0.inner[0].clone();
-    // println!("div {res:?}");
-
-    assert_eq!(res, Decimal::from(2));
-  }
-
-  #[test]
   fn base() {
     let uom0 = Uuid::new_v4();
     let uom1 = Uuid::new_v4();
@@ -1786,7 +1657,7 @@ mod tests {
 
     let data1 = Number::new(Decimal::from(1000), uom2, None);
 
-    let elevate0 = data1.elevate_to_balance(&data0);
+    let elevate0 = data1.elevate_to_qty(&data0);
     // println!("elevate0 {elevate0:?}");
 
     let check0 = Qty::new(vec![Number::new(
@@ -2597,6 +2468,31 @@ mod tests {
     let uom0 = Uuid::new_v4();
     let uom1 = Uuid::new_v4();
     let uom2 = Uuid::new_v4();
+
+    // 6 of 10 - [7 of 10, 5] = [-1 of 10, -5]
+    check_sub(
+      Qty::new(vec![Number::new(
+        Decimal::from(6),
+        uom0,
+        Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+      )]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(7),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(5), uom1, None),
+      ]),
+      Qty::new(vec![
+        Number::new(
+          Decimal::from(-1),
+          uom0,
+          Some(Box::new(Number::new(Decimal::from(10), uom1, None))),
+        ),
+        Number::new(Decimal::from(-5), uom1, None),
+      ]),
+    );
 
     // (1 of 3) - [-1 of 4, 1 of 3] = (1 of 4)
     check_sub(

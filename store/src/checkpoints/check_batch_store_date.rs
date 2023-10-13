@@ -34,7 +34,7 @@ impl CheckpointTopology for CheckBatchStoreDate {
       .collect()
   }
 
-  fn key_to_data(&self, k: Vec<u8>) -> Result<(DateTime<Utc>, Store, Goods, Batch), WHError> {
+  fn key_to_data(&self, _k: Vec<u8>) -> Result<(DateTime<Utc>, Store, Goods, Batch), WHError> {
     unimplemented!()
   }
 
@@ -45,10 +45,10 @@ impl CheckpointTopology for CheckBatchStoreDate {
     }
   }
 
-  fn set_balance(&self, key: &Vec<u8>, balance: BalanceForGoods) -> Result<(), WHError> {
+  fn set_balance(&self, key: &Vec<u8>, balance: &BalanceForGoods) -> Result<(), WHError> {
     self
       .db
-      .put_cf(&self.cf()?, key, serde_json::to_string(&balance)?)
+      .put_cf(&self.cf()?, key, serde_json::to_string(balance)?)
       .map_err(|_| WHError::new("Can't put to database"))
   }
 

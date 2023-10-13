@@ -34,8 +34,8 @@ async fn check_zero_batch_deleted() {
   app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
-  let s1 = store(&app, "s1");
-  let s2 = store(&app, "s2");
+  let s1 = Uuid::from_str("00000000-0000-0000-0000-000000000001").unwrap();
+  let s2 = Uuid::from_str("00000000-0000-0000-0000-000000000002").unwrap();
   let g1 = goods(&app, "g1");
 
   let uom0 = Uuid::new_v4();
@@ -49,7 +49,10 @@ async fn check_zero_batch_deleted() {
   log::debug!("transfer 27.01 s1 > s2 17");
   let qty1 = Qty::new(vec![Number::new(Decimal::from(17), uom1, None)]);
 
-  transfer(&app, "2023-01-26", s1, s2, g1, qty1);
+  transfer(&app, "2023-01-27", s1, s2, g1, qty1);
+
+  app.warehouse().database.ordered_topologies[0].debug().unwrap();
+  app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
 
   log::debug!("receive 20.01 s1 300");
   let qty2 = Qty::new(vec![Number::new(
@@ -60,6 +63,9 @@ async fn check_zero_batch_deleted() {
 
   let r1 = receive(&app, "2023-01-20", s1, g1, qty2, 30.into());
   let r1_batch = Batch { id: r1, date: dt("2023-01-20").unwrap() };
+
+  app.warehouse().database.ordered_topologies[0].debug().unwrap();
+  app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
   log::debug!("balances: {balances:#?}");

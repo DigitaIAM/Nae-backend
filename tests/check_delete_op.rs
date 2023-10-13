@@ -54,6 +54,7 @@ async fn check_delete_op() {
   log::debug!("transfer 21.01 s2 > s3 11");
   let t2 = transfer(&app, "2023-01-21", s2, s3, g1, qty0.clone());
 
+  log::debug!("delete transfer 20.01 s1 > s2 11");
   delete(
     &app,
     "2023-01-20",

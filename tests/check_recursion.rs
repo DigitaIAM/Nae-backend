@@ -34,8 +34,8 @@ async fn check_recursion() {
   app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
-  let s1 = store(&app, "s1");
-  let s2 = store(&app, "s2");
+  let s1 = Uuid::from_str("00000000-0000-0000-0000-000000000001").unwrap();
+  let s2 = Uuid::from_str("00000000-0000-0000-0000-000000000002").unwrap();
   let g1 = goods(&app, "g1");
 
   let uom0 = Uuid::new_v4();
@@ -53,9 +53,15 @@ async fn check_recursion() {
   log::debug!("transfer 26.01 s2 > s1 11");
   transfer(&app, "2023-01-26", s2, s1, g1, qty0.clone());
 
+  app.warehouse().database.ordered_topologies[0].debug().unwrap();
+  app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
+
   log::debug!("receive 20.01 s1 11");
-  let r1 = receive(&app, "2023-01-20", s1, g1, qty0.clone(), 1.into());
+  let r1 = receive(&app, "2023-01-20", s1, g1, qty0.clone(), Decimal::try_from(1).unwrap().into());
   let r1_batch = Batch { id: r1, date: dt("2023-01-20").unwrap() };
+
+  app.warehouse().database.ordered_topologies[0].debug().unwrap();
+  app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
   log::debug!("balances: {balances:#?}");
@@ -70,6 +76,6 @@ async fn check_recursion() {
 
   assert_eq!(
     s1_g1_bs.get(&r1_batch).unwrap().clone(),
-    BalanceForGoods { qty: qty0, cost: 1.into() }
+    BalanceForGoods { qty: qty0, cost: Decimal::try_from(1).unwrap().into() }
   );
 }

@@ -67,10 +67,10 @@ impl CheckpointTopology for CheckDateStoreBatch {
     }
   }
 
-  fn set_balance(&self, key: &Vec<u8>, balance: BalanceForGoods) -> Result<(), WHError> {
+  fn set_balance(&self, key: &Vec<u8>, balance: &BalanceForGoods) -> Result<(), WHError> {
     self
       .db
-      .put_cf(&self.cf()?, key, self.to_bytes(&balance)?)
+      .put_cf(&self.cf()?, key, self.to_bytes(balance)?)
       .map_err(|_| WHError::new("Can't put to database"))
   }
 
@@ -275,7 +275,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
     for (k, v) in iter {
       let balance: BalanceForGoods = self.from_bytes(&v)?;
 
-      let (d, s, g, b) = self.key_to_data(k.to_vec())?;
+      let (_d, _s, g, b) = self.key_to_data(k.to_vec())?;
 
       if g == goods {
         log::debug!("fn_balances_for_store_goods: balance {balance:?}\nbatch {b:?}");
