@@ -13,7 +13,7 @@ use json::JsonValue;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{Error, ErrorKind, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -46,12 +46,15 @@ use crate::hr::services::companies::Companies;
 use crate::links::GetLinks;
 use crate::memories::MemoriesInFiles;
 use crate::settings::Settings;
+use crate::storage::organizations::Workspace;
 use crate::storage::Workspaces;
+use crate::warehouse::primitive_types::Decimal;
 use animo::db::AnimoDB;
 use animo::memory::Memory;
 use inventory::service::Inventory;
 use service::utils::json::JsonParams;
 use service::Services;
+use store::elements::ToJson;
 use store::error::WHError;
 use store::qty::Qty;
 use values::constants::{_DOCUMENT, _STATUS, _UUID};
@@ -121,93 +124,9 @@ async fn reindex(
       // delete batch from document if it exists
       after.remove("batch");
 
-      // update qty structure
-      let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
-
-      let qty = &after["qty"];
-
-      let goods =
-        |ctx_str: Vec<&str>, data: &JsonValue, params: JsonValue| -> Result<JsonValue, WHError> {
-          let goods_id = match ctx_str[..] {
-            ["production", "produce"] => {
-              let document = match app.service("memories").get(
-                service::Context::local(),
-                data["document"].string(),
-                params.clone(),
-              ) {
-                Ok(doc) => doc,
-                Err(e) => {
-                  return Err(WHError::new(e.to_string().as_str()));
-                },
-              };
-              log::debug!("_doc {document:?}");
-
-              let product = match app.service("memories").get(
-                service::Context::local(),
-                document["product"].string(),
-                params.clone(),
-              ) {
-                Ok(p) => p,
-                Err(e) => {
-                  return Err(WHError::new(e.to_string().as_str()));
-                },
-              };
-              log::debug!("_product {product:?}");
-
-              product["goods"].string()
-            },
-            _ => data["goods"].string(),
-          };
-
-          let goods =
-            match app.service("memories").get(service::Context::local(), goods_id, params.clone()) {
-              Ok(g) => g,
-              Err(e) => {
-                return Err(WHError::new(e.to_string().as_str()));
-              },
-            };
-
-          Ok(goods)
-        };
-
-      if !qty.is_null() {
-        match <JsonValue as TryInto<Qty>>::try_into(qty.clone()) {
-          Ok(q) => {
-            println!("_qty {q:?}")
-          }, // nothing to do
-          Err(_) => {
-            if qty["number"].is_null() {} // nothing to do
-
-            if !qty["uom"].is_object() {
-              let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
-
-              let goods = match goods(ctx_str, &after, params.clone()) {
-                Ok(g) => g,
-                Err(e) => {
-                  println!("goods_error: {e:?}, after: {after:?}");
-                  continue;
-                },
-              };
-              // println!("_goods {goods:?}");
-
-              let uom = match app.service("memories").get(
-                service::Context::local(),
-                goods["uom"].string(),
-                params.clone(),
-              ) {
-                Ok(uom) => uom,
-                Err(e) => {
-                  println!("uom_error {e}");
-                  continue;
-                },
-              };
-              // println!("_uom {uom:?}");
-
-              after["qty"]["uom"] = uom["_uuid"].clone();
-              // println!("_new_uom {:?}", after["qty"]["uom"]);
-            }
-          },
-        }
+      match update_qty(&app, &ws, ctx, &mut after) {
+        Ok(_) => {},
+        Err(_) => continue,
       }
 
       text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
@@ -230,6 +149,139 @@ async fn reindex(
 
   println!("count {count}");
 
+  Ok(())
+}
+
+fn update_qty(
+  app: &Application,
+  ws: &Workspace,
+  ctx: &Vec<String>,
+  after: &mut JsonValue,
+) -> io::Result<()> {
+  let params =
+    json::object! {oid: ws.id.to_string().as_str(), ctx: ["uom"], name: "Кор", enrich: false };
+  let uom_in = match app.service("memories").find(service::Context::local(), params.clone()) {
+    Ok(mut res) => {
+      let mut uom_in = String::new();
+      log::debug!("privet1 {res:?}");
+      res["data"].members().for_each(|o| {
+        log::debug!("privet2 {o:?}");
+        if &(o["name"].string()) == "Кор" {
+          uom_in = o["_uuid"].string()
+        }
+      });
+      uom_in.to_json()
+    },
+    Err(_) => JsonValue::Null,
+  };
+  log::debug!("_uom_in {uom_in:?}");
+
+  // update qty structure
+  let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+
+  let qty = after["qty"].clone();
+
+  let goods =
+    |ctx_str: Vec<&str>, data: &JsonValue, params: JsonValue| -> Result<JsonValue, WHError> {
+      let goods_id = match ctx_str[..] {
+        ["production", "produce"] => {
+          let document = match app.service("memories").get(
+            service::Context::local(),
+            data["document"].string(),
+            params.clone(),
+          ) {
+            Ok(doc) => doc,
+            Err(e) => {
+              return Err(WHError::new(e.to_string().as_str()));
+            },
+          };
+          log::debug!("_doc {document:?}");
+
+          let product = match app.service("memories").get(
+            service::Context::local(),
+            document["product"].string(),
+            params.clone(),
+          ) {
+            Ok(p) => p,
+            Err(e) => {
+              return Err(WHError::new(e.to_string().as_str()));
+            },
+          };
+          log::debug!("_product {product:?}");
+
+          product["goods"].string()
+        },
+        _ => data["goods"].string(),
+      };
+
+      let goods =
+        match app.service("memories").get(service::Context::local(), goods_id, params.clone()) {
+          Ok(g) => g,
+          Err(e) => {
+            return Err(WHError::new(e.to_string().as_str()));
+          },
+        };
+
+      Ok(goods)
+    };
+
+  if !qty.is_null() {
+    match <JsonValue as TryInto<Qty>>::try_into(qty.clone()) {
+      Ok(q) => {}, // nothing to do
+      Err(_) => {
+        log::debug!("change_qty {qty:?}");
+        let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+
+        let goods = match goods(ctx_str.clone(), &after, params.clone()) {
+          Ok(g) => g,
+          Err(e) => {
+            log::debug!("goods_error: {e:?}, after: {after:?}");
+            return Err(Error::new(ErrorKind::NotFound, e.message()));
+          },
+        };
+        log::debug!("_goods {goods:?}");
+
+        let uom = match app.service("memories").get(
+          service::Context::local(),
+          goods["uom"].string(),
+          params.clone(),
+        ) {
+          Ok(uom) => uom,
+          Err(e) => {
+            log::debug!("uom_error {e}");
+            return Err(Error::new(ErrorKind::NotFound, e.to_string()));
+          },
+        };
+        log::debug!("_uom {uom:?}");
+
+        match ctx_str[..] {
+          ["production", "produce"] => {
+            let tmp_number = if qty.is_string() {
+              // after["qty"]["number"] = Decimal::from(1).into();
+              qty.clone()
+            } else {
+              qty["number"].clone()
+            };
+
+            if qty["uom"].is_null() {
+              after["qty"]["number"] = Decimal::from(1).into();
+              after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": uom_in.clone()};
+            }
+          },
+          _ => {
+            if qty.is_string() {
+              after["qty"]["number"] = qty.clone();
+            }
+            if qty["uom"].is_null() {
+              after["qty"]["uom"] = uom["_uuid"].clone();
+            }
+          },
+        }
+
+        log::debug!("_new_after {:?}", after);
+      },
+    }
+  }
   Ok(())
 }
 
