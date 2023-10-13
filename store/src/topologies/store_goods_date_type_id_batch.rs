@@ -14,9 +14,7 @@ use chrono::{DateTime, Utc};
 
 use db::RangeIterator;
 use log::debug;
-use rocksdb::{
-  BoundColumnFamily, ColumnFamilyDescriptor, Direction, IteratorMode, Options, ReadOptions, DB,
-};
+use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, Options, DB};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -81,7 +79,11 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     Err(WHError::new("not implemented"))
   }
 
-  fn operation_after(&self, _op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+  fn operation_after(
+    &self,
+    _op: &Op,
+    _exclude_virtual: bool,
+  ) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
     Err(WHError::new("Not supported"))
   }
 
@@ -167,7 +169,7 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
 
     let mut res = Vec::new();
 
-    for (k, value) in (bytes_from.clone()..bytes_till.clone()).lookup(&self.db, &self.cf()?)? {
+    for (_k, value) in (bytes_from.clone()..bytes_till.clone()).lookup(&self.db, &self.cf()?)? {
       let (op, b) = self.from_bytes(&value)?;
 
       debug!("loaded_op {op:#?}\n > {b:?}");

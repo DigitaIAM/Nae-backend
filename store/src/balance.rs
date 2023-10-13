@@ -1,17 +1,16 @@
 use super::{elements::ToJson, error::WHError};
-use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, AddAssign, Deref, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 use std::str::FromStr;
 
 use crate::batch::Batch;
 use crate::elements::{Goods, Mode, Store, UUID_NIL};
 use crate::operations::{InternalOperation, OpMutation};
-use crate::qty::{Number, Qty, QtyDelta, Uom};
+use crate::qty::{Qty, Uom};
 use service::utils::json::JsonParams;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,7 +62,7 @@ impl Cost {
     } else {
       if let Some(lower) = qty.lowering(name) {
         log::debug!("_qty {qty:?}\n_lower {lower:?}");
-        Price((self.0 / lower).round_dp(5).into(), name.clone())
+        Price((self.0 / lower.number).round_dp(5).into(), name.clone())
       } else {
         Price::ERROR
       }
@@ -208,136 +207,6 @@ impl ToJson for BalanceForGoods {
   }
 }
 
-impl AddAssign<QtyDelta> for BalanceForGoods {
-  fn add_assign(&mut self, rhs: QtyDelta) {
-    // if self.is_zero() && rhs.is_zero() {
-    //   // do nothing
-    // } else if rhs.is_zero() {
-    //   // do nothing
-    // } else if self.is_zero() {
-    //   // relax rhs and add it to self ?
-    //   //
-    // } else {
-    //   // run all code below
-    // }
-
-    let mut positive = vec![];
-    let mut negative = vec![];
-    if let Some(before) = rhs.before {
-      match before {
-        InternalOperation::Inventory(_, _, _) => todo!(),
-        InternalOperation::Receive(q, c) => negative.push((q, c)),
-        InternalOperation::Issue(q, c, _) => positive.push((q, c)),
-      }
-    }
-    if let Some(after) = rhs.after {
-      match after {
-        InternalOperation::Inventory(_, _, _) => todo!(),
-        InternalOperation::Receive(q, c) => positive.push((q, c)),
-        InternalOperation::Issue(q, c, _) => negative.push((q, c)),
-      }
-    }
-
-    let mut ls = self.qty.inner.clone();
-
-    for (q, c) in negative {
-      // println!("negative qty {q:?}");
-      let mut rs = q.inner;
-
-      loop {
-        if rs.is_empty() {
-          break;
-        }
-
-        if ls.is_empty() {
-          ls = rs.into_iter().map(|n| -n).collect();
-
-          break;
-        }
-
-        let mut r = rs.remove(0);
-        // println!("right {r:?}");
-        for i in 0..ls.len() {
-          if r.is_zero() {
-            break;
-          }
-          let l = &ls[i];
-          // println!("left {l:?}");
-          if &l.name == &r.name {
-            let l = ls.remove(i);
-            let product = l.number() - r.number();
-            println!("ADD_ASSIGN1: {:?} - {:?} = {:?}", l.number(), r.number(), product);
-            r.number = Decimal::ZERO;
-            if product > Decimal::ZERO {
-              ls.push(Number::new_named(product, l.name.clone()));
-            } else if product < Decimal::ZERO {
-              rs.push(Number::new_named(-product, l.name.clone()));
-            }
-          }
-        }
-
-        if r.is_zero() {
-          continue;
-        }
-
-        let mut named: Vec<(usize, Uom)> = ls
-          .iter()
-          .enumerate()
-          .map(|(i, l)| (i, l.common(&r)))
-          .filter(|(_, l)| l.is_some())
-          .map(|(i, l)| (i, l.unwrap()))
-          .collect();
-
-        named.sort_by(|(li, ln), (ri, rn)| {
-          let l_depth = ln.depth();
-          let r_depth = rn.depth();
-
-          if r_depth == l_depth {
-            if let (Some(l_number), Some(r_number)) = (ln.number(), rn.number()) {
-              r_number.cmp(&l_number)
-            } else {
-              Ordering::Equal
-            }
-          } else {
-            r_depth.cmp(&l_depth)
-          }
-        });
-
-        if named.is_empty() {
-          ls.push(-r);
-        } else {
-          let (i, common) = named.remove(0); // TODO can be
-
-          let l = ls.remove(i);
-
-          let ll = l.lowering(&common).unwrap();
-          let rl = r.lowering(&common).unwrap();
-
-          let product = ll.number() - rl.number();
-          println!("ADD_ASSIGN2: {:?} - {:?} = {:?}", ll.number(), rl.number(), product);
-          r.number = Decimal::ZERO;
-          if product > Decimal::ZERO {
-            ls.append(&mut Number::new_named(product, l.name.clone()).elevate_to_uom(&l.name).inner);
-          } else if product < Decimal::ZERO {
-            rs.append(
-              &mut Number::new_named(-product, l.name.clone()).elevate_to_uom(&l.name).inner,
-            );
-          }
-        }
-      }
-      self.qty = Qty::new(ls.clone());
-      self.cost -= &c;
-    }
-
-    for (q, c) in positive {
-      // println!("ADD_ASSIGN3: {:?} += {:?}", self.qty, q);
-      self.qty += &q;
-      // println!(" = {:?}", self.qty);
-      self.cost += &c;
-    }
-  }
-}
-
 impl AddAssign<BalanceDelta> for BalanceForGoods {
   fn add_assign(&mut self, rhs: BalanceDelta) {
     self.qty += &rhs.qty;
@@ -382,26 +251,6 @@ impl Add<InternalOperation> for BalanceForGoods {
   }
 }
 
-// impl AddAssign<&InternalOperation> for BalanceForGoods {
-//   fn add_assign(&mut self, rhs: &InternalOperation) {
-//     match rhs {
-//       InternalOperation::Inventory(_, d, mode) => {
-//         self.qty += d.qty;
-//         self.cost +=
-//           if mode == &Mode::Manual { d.cost } else { self.cost.price(self.qty).cost(d.qty) }
-//       },
-//       InternalOperation::Receive(qty, cost) => {
-//         self.qty += qty;
-//         self.cost += cost;
-//       },
-//       InternalOperation::Issue(qty, cost, mode) => {
-//         self.qty -= qty;
-//         self.cost -= if mode == &Mode::Manual { *cost } else { self.cost.price(self.qty).cost(*qty) }
-//       },
-//     }
-//   }
-// }
-
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BalanceDelta {
   pub qty: Qty,
@@ -416,14 +265,6 @@ impl BalanceDelta {
   pub(crate) fn new(qty: &Qty, cost: &Cost) -> Self {
     BalanceDelta { qty: qty.clone(), cost: cost.clone() }
   }
-
-  // pub(crate) fn to_delta(&self, rhs: &Self) -> BalanceDelta {
-  //   BalanceDelta { qty: self.qty.to_delta(&rhs.qty), cost: rhs.cost - self.cost }
-  // }
-
-  // pub(crate) fn relax(&self, balance: &Qty) -> Self {
-  //   BalanceDelta { qty: self.qty.relax(balance), cost: self.cost }
-  // }
 }
 
 impl ToJson for BalanceDelta {
@@ -498,190 +339,5 @@ impl Balance {
       .chain(self.batch.id.as_bytes().iter())
       .copied()
       .collect()
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use crate::balance::{BalanceForGoods, Cost};
-  use crate::operations::InternalOperation;
-  use crate::qty::{Number, Qty, QtyDelta};
-  use rust_decimal::Decimal;
-  use uuid::Uuid;
-
-  fn balance_plus_delta(balance: BalanceForGoods, delta: QtyDelta, check: BalanceForGoods) {
-    let mut result = balance.clone();
-
-    result += delta;
-    println!("balance_plus_delta {result:?}");
-
-    assert_eq!(check, result);
-  }
-  #[test]
-  fn add_QtyDelta_to_BalanceForGoods() {
-    let uom0 = Uuid::new_v4();
-    let uom1 = Uuid::new_v4();
-    let uom2 = Uuid::new_v4();
-
-    // 3 + (3 d 1) = 1
-    balance_plus_delta(
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(3), uom1, None)]),
-        cost: Cost::from(Decimal::from(3)),
-      },
-      QtyDelta {
-        before: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(Decimal::from(3), uom1, None)]),
-          Cost::from(Decimal::from(3)),
-        )),
-        after: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
-          Cost::from(Decimal::from(1)),
-        )),
-      },
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
-        cost: Cost::from(Decimal::from(1)),
-      },
-    );
-
-    // 1 + (2 d 0) = -1
-    balance_plus_delta(
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
-        cost: Cost::from(Decimal::from(1)),
-      },
-      QtyDelta {
-        before: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(Decimal::from(2), uom1, None)]),
-          Cost::from(Decimal::from(2)),
-        )),
-        after: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(Decimal::from(0), uom1, None)]),
-          Cost::from(Decimal::from(0)),
-        )),
-      },
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(-1), uom1, None)]),
-        cost: Cost::from(Decimal::from(-1)),
-      },
-    );
-
-    // 2 + (2 d -3) = -3
-    balance_plus_delta(
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(2), uom1, None)]),
-        cost: Cost::from(Decimal::from(2)),
-      },
-      QtyDelta {
-        before: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(Decimal::from(2), uom1, None)]),
-          Cost::from(Decimal::from(2)),
-        )),
-        after: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(Decimal::from(-3), uom1, None)]),
-          Cost::from(Decimal::from(-3)),
-        )),
-      },
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(-3), uom1, None)]),
-        cost: Cost::from(Decimal::from(-3)),
-      },
-    );
-
-    // 1 + 0 = 1
-    balance_plus_delta(
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
-        cost: Cost::from(Decimal::from(1)),
-      },
-      QtyDelta {
-        before: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(Decimal::from(0), uom1, None)]),
-          Cost::from(Decimal::from(0)),
-        )),
-        after: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(Decimal::from(0), uom1, None)]),
-          Cost::from(Decimal::from(0)),
-        )),
-      },
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
-        cost: Cost::from(Decimal::from(1)),
-      },
-    );
-
-    // (1 of 3) + ((1 of 3) d (1 of 4)) = (1 of 4)
-    balance_plus_delta(
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(
-          Decimal::from(1),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(3), uom1, None))),
-        )]),
-        cost: Cost::from(Decimal::from(3)),
-      },
-      QtyDelta {
-        before: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(
-            Decimal::from(1),
-            uom0,
-            Some(Box::new(Number::new(Decimal::from(3), uom1, None))),
-          )]),
-          Cost::from(Decimal::from(3)),
-        )),
-        after: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(
-            Decimal::from(1),
-            uom0,
-            Some(Box::new(Number::new(Decimal::from(4), uom1, None))),
-          )]),
-          Cost::from(Decimal::from(4)),
-        )),
-      },
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(
-          Decimal::from(1),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(4), uom1, None))),
-        )]),
-        cost: Cost::from(Decimal::from(4)),
-      },
-    );
-
-    // s1 receive (1 of 3)
-    // s1 -> s2 transfer 3
-    // change s1 receive from (1 of 3) to (1 of 4)
-
-    // s1 (0) + ((1 of 3) d (1 of 4)) = (1)
-    balance_plus_delta(
-      BalanceForGoods { qty: Qty::new(vec![]), cost: Cost::from(Decimal::from(0)) },
-      QtyDelta {
-        before: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(
-            Decimal::from(-1),
-            uom0,
-            Some(Box::new(Number::new(Decimal::from(3), uom1, None))),
-          )]),
-          Cost::from(Decimal::from(3)),
-        )),
-        after: Some(InternalOperation::Receive(
-          Qty::new(vec![Number::new(
-            Decimal::from(1),
-            uom0,
-            Some(Box::new(Number::new(Decimal::from(4), uom1, None))),
-          )]),
-          Cost::from(Decimal::from(4)),
-        )),
-      },
-      BalanceForGoods {
-        qty: Qty::new(vec![Number::new(
-          Decimal::from(1),
-          uom0,
-          Some(Box::new(Number::new(Decimal::from(4), uom1, None))),
-        )]),
-        cost: Cost::from(Decimal::from(4)),
-      },
-    );
   }
 }

@@ -78,7 +78,11 @@ impl OrderedTopology for StoreDateTypeBatchId {
     Err(WHError::new("Not supported"))
   }
 
-  fn operation_after(&self, _op: &Op) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
+  fn operation_after(
+    &self,
+    _op: &Op,
+    _exclude_virtual: bool,
+  ) -> Result<Option<(Op, BalanceForGoods)>, WHError> {
     Err(WHError::new("Not supported"))
   }
 
