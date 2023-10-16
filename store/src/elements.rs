@@ -352,7 +352,10 @@ where
     OpType::Receive => {
       let qty: Qty = match data["qty"].clone().try_into() {
         Ok(q) => q,
-        Err(e) => { log::debug!("Qty error: {e:?}"); return Ok(ops); },
+        Err(e) => {
+          log::debug!("Qty error: {e:?}");
+          return Ok(ops);
+        },
       };
       // let qty = match ctx_str[..] {
       //   ["production", "produce"] => data["qty"].number_or_none(),
@@ -362,7 +365,7 @@ where
 
       if ctx == &vec!["production".to_owned(), "produce".to_owned()] {
         InternalOperation::Receive(qty, Cost::ZERO)
-      } else if  cost.is_none() {
+      } else if cost.is_none() {
         return Ok(ops);
       } else {
         InternalOperation::Receive(qty, cost.unwrap_or_default().into())
@@ -371,7 +374,10 @@ where
     OpType::Transfer | OpType::Dispatch => {
       let qty: Qty = match data["qty"].clone().try_into() {
         Ok(q) => q,
-        Err(e) => { log::debug!("Qty error: {e:?}"); return Ok(ops); },
+        Err(e) => {
+          log::debug!("Qty error: {e:?}");
+          return Ok(ops);
+        },
       };
 
       let cost = data["cost"]["number"].number_or_none();
@@ -410,8 +416,9 @@ where
     }
   } else {
     match &data["batch"] {
-      JsonValue::Object(_d) => {
-        Batch { id: data["batch"][_UUID].uuid()?, date: data["batch"]["date"].date_with_check()? }
+      JsonValue::Object(d) => {
+        let id = if let Some(id) = d["id"].uuid_or_none() { id } else { d[_UUID].uuid()? };
+        Batch { id, date: data["batch"]["date"].date_with_check()? }
       },
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
     }

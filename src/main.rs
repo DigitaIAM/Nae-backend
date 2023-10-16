@@ -126,7 +126,10 @@ async fn reindex(
 
       match update_qty(&app, &ws, ctx, &mut after) {
         Ok(_) => {},
-        Err(_) => continue,
+        Err(_) => {
+          log::debug!("skip_update_qty");
+          continue;
+        },
       }
 
       text_search::handle_mutation(&app, ctx, &before, &after).unwrap();
@@ -163,9 +166,7 @@ fn update_qty(
   let uom_in = match app.service("memories").find(service::Context::local(), params.clone()) {
     Ok(mut res) => {
       let mut uom_in = String::new();
-      log::debug!("privet1 {res:?}");
       res["data"].members().for_each(|o| {
-        log::debug!("privet2 {o:?}");
         if &(o["name"].string()) == "Кор" {
           uom_in = o["_uuid"].string()
         }
@@ -174,7 +175,6 @@ fn update_qty(
     },
     Err(_) => JsonValue::Null,
   };
-  log::debug!("_uom_in {uom_in:?}");
 
   // update qty structure
   let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
@@ -209,7 +209,13 @@ fn update_qty(
           };
           log::debug!("_product {product:?}");
 
-          product["goods"].string()
+          let goods = product["goods"].string();
+
+          if &goods != "" {
+            goods
+          } else {
+            return Ok(product);
+          }
         },
         _ => data["goods"].string(),
       };
@@ -227,7 +233,7 @@ fn update_qty(
 
   if !qty.is_null() {
     match <JsonValue as TryInto<Qty>>::try_into(qty.clone()) {
-      Ok(q) => {}, // nothing to do
+      Ok(_q) => {}, // nothing to do
       Err(_) => {
         log::debug!("change_qty {qty:?}");
         let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
@@ -278,7 +284,7 @@ fn update_qty(
           },
         }
 
-        log::debug!("_new_after {:?}", after);
+        // log::debug!("_new_after {:?}", after);
       },
     }
   }
