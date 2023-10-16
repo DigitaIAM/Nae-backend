@@ -341,7 +341,7 @@ impl Db {
       }
     };
 
-    println!("CHECKPOINTS: {checkpoints:?}");
+    debug!("CHECKPOINTS: {checkpoints:?}");
 
     for ordered_topology in self.ordered_topologies.iter() {
       match ordered_topology.get_balances_for_all(from_date, date, checkpoints.clone()) {

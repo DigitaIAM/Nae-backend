@@ -19,6 +19,7 @@ use crate::commutator::Application;
 
 use crate::links::GetLinks;
 use stock::find_items;
+use store::qty::Qty;
 use values::constants::{_ID, _STATUS, _UUID};
 
 // warehouse: { receiving, Put-away, transfer,  }
@@ -227,16 +228,22 @@ impl Service for MemoriesInFiles {
           .links()
           .get_source_links_for_ctx(order_uuid, &vec!["production".into(), "produce".into()])?;
 
-        let mut boxes = 0_u32;
+        let mut boxes = Decimal::ZERO;
         let sum_produced: Decimal = produced
           .iter()
           .map(|uuid| uuid.resolve_to_json_object(&ws))
           .filter(|o| o.is_object())
           .filter(|o| o[_STATUS].string() != *"deleted")
-          .map(|o| o["qty"].number())
           .map(|o| {
-            boxes += 1;
-            o
+            let qty: Qty = o["qty"].clone().try_into().unwrap_or_default();
+            let mut pieces = Decimal::ZERO;
+            qty.inner.iter().for_each(|q| {
+              boxes += q.number;
+              if let Some(number) = q.name.number() {
+                pieces += number;
+              }
+            });
+            pieces
           })
           .sum();
 
