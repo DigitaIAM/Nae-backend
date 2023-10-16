@@ -363,7 +363,9 @@ where
       // };
       let cost = data["cost"]["number"].number_or_none();
 
-      if ctx == &vec!["production".to_owned(), "produce".to_owned()] {
+      if ctx == &vec!["production".to_owned(), "produce".to_owned()]
+        || ctx == &vec!["production".to_owned(), "material".to_owned(), "produced".to_owned()]
+      {
         InternalOperation::Receive(qty, Cost::ZERO)
       } else if cost.is_none() {
         return Ok(ops);
