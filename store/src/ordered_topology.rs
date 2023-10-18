@@ -222,9 +222,7 @@ pub trait OrderedTopology {
 
         let (before_op, current_balance) = if let Some((o, b)) = self.get(&op)? {
           if o == calculated_op && b == new_balance {
-            log::debug!(
-              "EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT"
-            );
+            log::debug!("EXIT * EXIT * EXIT 1");
             continue;
           }
 
@@ -253,9 +251,7 @@ pub trait OrderedTopology {
 
           let (before_op, current_balance) = {
             if loaded_op == calculated_op && loaded_balance == new_balance {
-              log::debug!(
-                "EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT"
-              );
+              log::debug!("EXIT * EXIT * EXIT 2");
               continue;
             }
 
@@ -471,9 +467,7 @@ pub trait OrderedTopology {
     let (before_op, current_balance) = if let Some((o, b)) = self.get(&op)? {
       // if no changes exit
       if o == calculated_op && b == new_balance {
-        log::debug!(
-          "EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT * EXIT"
-        );
+        log::debug!("EXIT * EXIT * EXIT 3");
         return Ok((b, o, new_balance));
       }
 
