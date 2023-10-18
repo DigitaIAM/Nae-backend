@@ -50,7 +50,7 @@ impl Batch {
     format!("2{}{}{}{}", &date[2..4], &date[5..7], &date[8..10], &id[0..5])
   }
 
-  pub(crate) fn to_bytes(&self, goods: &Goods) -> Vec<u8> {
+  pub fn to_bytes(&self, goods: &Goods) -> Vec<u8> {
     let dt = self.date.timestamp() as u64;
 
     goods

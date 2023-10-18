@@ -54,6 +54,7 @@ use animo::memory::Memory;
 use inventory::service::Inventory;
 use service::utils::json::JsonParams;
 use service::Services;
+use store::balance::BalanceForGoods;
 use store::elements::ToJson;
 use store::error::WHError;
 use store::qty::Qty;
@@ -74,6 +75,59 @@ struct Opt {
   data: PathBuf,
 }
 
+async fn check_ops(app: Application) -> io::Result<()> {
+  let mut count = 0;
+
+  // let mut prev_op: Option<Op> = None;
+  let mut cur_balances: HashMap<Vec<u8>, BalanceForGoods> = HashMap::new();
+
+  let topology = &app.warehouse.database.ordered_topologies[0];
+
+  for item in topology.db().iterator_cf(&topology.cf().unwrap(), rocksdb::IteratorMode::Start) {
+    let (_, value) = item.unwrap();
+
+    let (cur, op_balance) = topology.from_bytes(&value).unwrap();
+
+    // if cur.goods.to_string() != "c74f7aab-bbdd-4832-8bd3-0291470e8964".to_string() {
+    //   continue;
+    // }
+
+    if !cur.dependant.is_empty() {
+      continue;
+    }
+
+    let key = cur
+      .store
+      .as_bytes()
+      .iter() // store
+      .chain(cur.batch.to_bytes(&cur.goods).iter()) // batch
+      .copied()
+      .collect();
+
+    let cur_balance = cur_balances.entry(key).or_insert(BalanceForGoods::default());
+
+    println!("balance before: {:?} {cur_balance:?}", cur.store);
+    println!("cur: {:#?}", cur);
+    cur_balance.apply(&cur.op);
+    println!("balance after: {:?} {cur_balance:?}", cur.store);
+    println!("====================================================================================");
+
+    // topology.debug().unwrap();
+    // app.warehouse.database.checkpoint_topologies[0].debug().unwrap();
+
+    assert_eq!(cur_balance, &op_balance);
+
+    // if cur_balance != &op_balance {
+    //   println!("NOT_EQUAL");
+    //   count += 1;
+    // }
+  }
+
+  println!("count {count}");
+
+  Ok(())
+}
+
 async fn reindex(
   settings: Arc<Settings>,
   app: Application,
@@ -83,12 +137,18 @@ async fn reindex(
   for ws in app.wss.list()? {
     for doc in ws.clone().into_iter() {
       // println!("{:?} {:?}", doc.id, doc.json().unwrap());
-      count += 1;
 
       let ctx = &doc.mem.ctx;
 
       let before = JsonValue::Null;
       let mut after = doc.json().unwrap();
+
+      // goods/2023-05-12T09:08:16.827Z
+      // if after["goods"].string() != "goods/2023-05-12T09:08:16.827Z".to_string() {
+      //   continue;
+      // }
+
+      count += 1;
 
       // inject uuid if missing
       if after[_UUID].is_null() {
@@ -127,7 +187,7 @@ async fn reindex(
       match update_qty(&app, &ws, ctx, &mut after) {
         Ok(_) => {},
         Err(_) => {
-          log::debug!("skip_update_qty");
+          // log::debug!("skip_update_qty");
           continue;
         },
       }
@@ -195,7 +255,7 @@ fn update_qty(
               return Err(WHError::new(e.to_string().as_str()));
             },
           };
-          log::debug!("_doc {document:?}");
+          // log::debug!("_doc {document:?}");
 
           let product = match app.service("memories").get(
             service::Context::local(),
@@ -207,7 +267,7 @@ fn update_qty(
               return Err(WHError::new(e.to_string().as_str()));
             },
           };
-          log::debug!("_product {product:?}");
+          // log::debug!("_product {product:?}");
 
           let goods = product["goods"].string();
 
@@ -235,17 +295,17 @@ fn update_qty(
     match <JsonValue as TryInto<Qty>>::try_into(qty.clone()) {
       Ok(_q) => {}, // nothing to do
       Err(_) => {
-        log::debug!("change_qty {qty:?}");
+        // log::debug!("change_qty {qty:?}");
         let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
 
         let goods = match goods(ctx_str.clone(), &after, params.clone()) {
           Ok(g) => g,
           Err(e) => {
-            log::debug!("goods_error: {e:?}, after: {after:?}");
+            // log::debug!("goods_error: {e:?}, after: {after:?}");
             return Err(Error::new(ErrorKind::NotFound, e.message()));
           },
         };
-        log::debug!("_goods {goods:?}");
+        // log::debug!("_goods {goods:?}");
 
         let uom = match app.service("memories").get(
           service::Context::local(),
@@ -254,11 +314,11 @@ fn update_qty(
         ) {
           Ok(uom) => uom,
           Err(e) => {
-            log::debug!("uom_error {e}");
+            // log::debug!("uom_error {e}");
             return Err(Error::new(ErrorKind::NotFound, e.to_string()));
           },
         };
-        log::debug!("_uom {uom:?}");
+        // log::debug!("_uom {uom:?}");
 
         match ctx_str[..] {
           ["production", "produce"] => {
@@ -278,7 +338,7 @@ fn update_qty(
             if qty.is_string() {
               after["qty"]["number"] = qty.clone();
             }
-            if qty["uom"].is_null() {
+            if !qty["uom"].is_object() {
               after["qty"]["uom"] = uom["_uuid"].clone();
             }
           },
@@ -428,6 +488,7 @@ async fn startup() -> io::Result<()> {
       },
       _ => unreachable!(),
     },
+    "check" => check_ops(app).await,
     _ => unreachable!(),
   }
 }

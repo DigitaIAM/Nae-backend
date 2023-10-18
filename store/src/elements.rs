@@ -153,6 +153,15 @@ pub fn receive_data(
   ctx: &Vec<String>,
   stack: &HashMap<String, (JsonValue, JsonValue)>,
 ) -> Result<(), WHError> {
+  // workaround to find a problem
+  // let g = "goods/2023-05-12T09:08:16.827Z".to_string();
+  // if after["goods"].string() != g
+  //   && after["goods"]["_id"].string() != g
+  //   && after["goods"].string() != "c74f7aab-bbdd-4832-8bd3-0291470e8964".to_string()
+  // {
+  //   return Ok(());
+  // }
+
   // TODO if structure of input Json is invalid, should return it without changes and save it to memories anyway
   // If my data was corrupted, should rewrite it and do the operations
   // TODO tests with invalid structure of incoming JsonValue
@@ -363,15 +372,16 @@ where
       // };
       let cost = data["cost"]["number"].number_or_none();
 
-      if ctx == &vec!["production".to_owned(), "produce".to_owned()]
-        || ctx == &vec!["production".to_owned(), "material".to_owned(), "produced".to_owned()]
-      {
-        InternalOperation::Receive(qty, Cost::ZERO)
-      } else if cost.is_none() {
-        return Ok(ops);
-      } else {
-        InternalOperation::Receive(qty, cost.unwrap_or_default().into())
-      }
+      // removed this because we have receive ops without cost (e.g. from 19.12.2022)
+      // if ctx == &vec!["production".to_owned(), "produce".to_owned()]
+      //   || ctx == &vec!["production".to_owned(), "material".to_owned(), "produced".to_owned()]
+      // {
+      //   InternalOperation::Receive(qty, Cost::ZERO)
+      // } else if cost.is_none() {
+      //   return Ok(ops);
+      // } else {
+      InternalOperation::Receive(qty, cost.unwrap_or_default().into())
+      // }
     },
     OpType::Transfer | OpType::Dispatch => {
       let qty: Qty = match data["qty"].clone().try_into() {
