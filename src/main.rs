@@ -57,6 +57,7 @@ use service::Services;
 use store::balance::BalanceForGoods;
 use store::elements::ToJson;
 use store::error::WHError;
+use store::operations::InternalOperation;
 use store::qty::Qty;
 use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
@@ -92,9 +93,16 @@ async fn check_ops(app: Application) -> io::Result<()> {
     //   continue;
     // }
 
-    if !cur.dependant.is_empty() {
+    // if !cur.dependant.is_empty() {
+    //   continue;
+    // }
+
+    if cur.is_virtual() || (cur.is_receive() && !cur.is_dependent && !cur.batch.is_empty()) {
+    } else {
       continue;
     }
+
+    count += 1;
 
     let key = cur
       .store
@@ -106,20 +114,56 @@ async fn check_ops(app: Application) -> io::Result<()> {
 
     let cur_balance = cur_balances.entry(key).or_insert(BalanceForGoods::default());
 
-    println!("balance before: {:?} {cur_balance:?}", cur.store);
-    println!("cur: {:#?}", cur);
+    // println!("balance before: {:?} {cur_balance:?}", cur.store);
+    // println!("cur: {:#?}", cur);
+
+    // ================================================================
+    println!("OpMutation {{");
+    println!("id: Uuid::from_str(\"{}\").unwrap(),", cur.id);
+    println!("date: dt(\"{}\").unwrap(),", cur.date.date_naive());
+    println!("store: Uuid::from_str(\"{}\").unwrap(),", cur.store);
+    match cur.store_into {
+      None => println!("transfer: None,"),
+      Some(s) => println!("transfer: Some(Uuid::from_str(\"{}\").unwrap()),", s),
+    }
+    println!("goods: Uuid::from_str(\"{}\").unwrap(),", cur.goods);
+    println!(
+      "batch: Batch {{ id: Uuid::from_str(\"{}\").unwrap(), date: dt(\"{}\").unwrap() }},",
+      cur.batch.id,
+      cur.batch.date.date_naive()
+    );
+    println!("before: None,");
+    match &cur.op {
+      InternalOperation::Inventory(_, _, _) => {},
+      InternalOperation::Receive(q, c) => {
+        println!(
+          "after: Some((InternalOperation::Receive(Qty::new(vec![Number {{ number: Decimal::try_from({}).unwrap(), name: In(Uuid::from_str(\"{}\").unwrap(), None) }}]), Cost::from(Decimal::try_from(\"{:?}\").unwrap())), false)),",
+          q.inner[0].number, q.inner[0].name.uuid(), c.number()
+        )
+      },
+      InternalOperation::Issue(q, c, m) => {
+        println!(
+          "after: Some((InternalOperation::Issue(Qty::new(vec![Number {{ number: Decimal::try_from({}).unwrap(), name: In(Uuid::from_str(\"{}\").unwrap(), None) }}]), Cost::from(Decimal::try_from(\"{:?}\").unwrap()), Mode::{:?}), false)),",
+          q.inner[0].number, q.inner[0].name.uuid(), c.number(), m,
+        )
+      },
+    }
+    // println!("is_dependent: {},", cur.is_dependent);
+    // println!("dependant: {:?}", cur.dependant);
+    println!("}},");
+    // ================================================================
+
     cur_balance.apply(&cur.op);
-    println!("balance after: {:?} {cur_balance:?}", cur.store);
-    println!("====================================================================================");
+    // println!("balance after: {:?} {cur_balance:?}", cur.store);
+    // println!("====================================================================================");
 
     // topology.debug().unwrap();
     // app.warehouse.database.checkpoint_topologies[0].debug().unwrap();
 
-    assert_eq!(cur_balance, &op_balance);
+    // assert_eq!(cur_balance, &op_balance, "\ncount {}", count);
 
     // if cur_balance != &op_balance {
     //   println!("NOT_EQUAL");
-    //   count += 1;
     // }
   }
 

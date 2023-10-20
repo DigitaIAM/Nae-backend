@@ -72,6 +72,10 @@ impl Cost {
   pub const fn is_zero(&self) -> bool {
     self.0.is_zero()
   }
+
+  pub fn number(&self) -> Decimal {
+    self.0
+  }
 }
 
 impl ToJson for Cost {
