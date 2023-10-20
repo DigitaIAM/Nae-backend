@@ -120,7 +120,7 @@ impl Convert for Vec<(Decimal, Uuid)> {
 }
 
 impl Uom {
-  fn uuid(&self) -> Uuid {
+  pub fn uuid(&self) -> Uuid {
     match self {
       Uom::In(uuid, _) => uuid.clone(),
     }
