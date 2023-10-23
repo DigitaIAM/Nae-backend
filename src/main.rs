@@ -8,12 +8,13 @@ use actix_web_httpauth::extractors::bearer::{BearerAuth, Config};
 use actix_web_httpauth::extractors::AuthenticationError;
 use actix_web_httpauth::middleware::HttpAuthentication;
 
+use chrono::Utc;
 use dbase::{FieldValue, Record};
 use json::JsonValue;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Error, ErrorKind, Write};
+use std::io::{Error, ErrorKind, Read, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -57,7 +58,7 @@ use service::Services;
 use store::balance::BalanceForGoods;
 use store::elements::ToJson;
 use store::error::WHError;
-use store::operations::InternalOperation;
+use store::operations::OpMutation;
 use store::qty::Qty;
 use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
@@ -76,13 +77,17 @@ struct Opt {
   data: PathBuf,
 }
 
-async fn check_ops(app: Application) -> io::Result<()> {
+async fn fix_topologies(app: Application) -> io::Result<()> {
   let mut count = 0;
 
   // let mut prev_op: Option<Op> = None;
   let mut cur_balances: HashMap<Vec<u8>, BalanceForGoods> = HashMap::new();
 
   let topology = &app.warehouse.database.ordered_topologies[0];
+
+  let time = Utc::now().to_string();
+  let path = format!("./fix_logs/fix_log_{}.txt", &time);
+  let mut log_file = File::create(path.clone())?;
 
   for item in topology.db().iterator_cf(&topology.cf().unwrap(), rocksdb::IteratorMode::Start) {
     let (_, value) = item.unwrap();
@@ -93,22 +98,20 @@ async fn check_ops(app: Application) -> io::Result<()> {
     //   continue;
     // }
 
-    // if !cur.dependant.is_empty() {
-    //   continue;
-    // }
-
-    if cur.is_virtual() || (cur.is_receive() && !cur.is_dependent && !cur.batch.is_empty()) {
-    } else {
+    if !cur.dependant.is_empty() {
       continue;
     }
 
-    count += 1;
+    // if cur.is_virtual() || (cur.is_receive() && !cur.is_dependent && !cur.batch.is_empty()) {
+    // } else {
+    //   continue;
+    // }
 
     let key = cur
       .store
       .as_bytes()
       .iter() // store
-      .chain(cur.batch.to_bytes(&cur.goods).iter()) // batch
+      .chain(cur.batch.to_bytes(&cur.goods).iter())
       .copied()
       .collect();
 
@@ -117,40 +120,41 @@ async fn check_ops(app: Application) -> io::Result<()> {
     // println!("balance before: {:?} {cur_balance:?}", cur.store);
     // println!("cur: {:#?}", cur);
 
+    // code for print ops and copy them into test
     // ================================================================
-    println!("OpMutation {{");
-    println!("id: Uuid::from_str(\"{}\").unwrap(),", cur.id);
-    println!("date: dt(\"{}\").unwrap(),", cur.date.date_naive());
-    println!("store: Uuid::from_str(\"{}\").unwrap(),", cur.store);
-    match cur.store_into {
-      None => println!("transfer: None,"),
-      Some(s) => println!("transfer: Some(Uuid::from_str(\"{}\").unwrap()),", s),
-    }
-    println!("goods: Uuid::from_str(\"{}\").unwrap(),", cur.goods);
-    println!(
-      "batch: Batch {{ id: Uuid::from_str(\"{}\").unwrap(), date: dt(\"{}\").unwrap() }},",
-      cur.batch.id,
-      cur.batch.date.date_naive()
-    );
-    println!("before: None,");
-    match &cur.op {
-      InternalOperation::Inventory(_, _, _) => {},
-      InternalOperation::Receive(q, c) => {
-        println!(
-          "after: Some((InternalOperation::Receive(Qty::new(vec![Number {{ number: Decimal::try_from({}).unwrap(), name: In(Uuid::from_str(\"{}\").unwrap(), None) }}]), Cost::from(Decimal::try_from(\"{:?}\").unwrap())), false)),",
-          q.inner[0].number, q.inner[0].name.uuid(), c.number()
-        )
-      },
-      InternalOperation::Issue(q, c, m) => {
-        println!(
-          "after: Some((InternalOperation::Issue(Qty::new(vec![Number {{ number: Decimal::try_from({}).unwrap(), name: In(Uuid::from_str(\"{}\").unwrap(), None) }}]), Cost::from(Decimal::try_from(\"{:?}\").unwrap()), Mode::{:?}), false)),",
-          q.inner[0].number, q.inner[0].name.uuid(), c.number(), m,
-        )
-      },
-    }
-    // println!("is_dependent: {},", cur.is_dependent);
-    // println!("dependant: {:?}", cur.dependant);
-    println!("}},");
+    // println!("OpMutation {{");
+    // println!("id: Uuid::from_str(\"{}\").unwrap(),", cur.id);
+    // println!("date: dt(\"{}\").unwrap(),", cur.date.date_naive());
+    // println!("store: Uuid::from_str(\"{}\").unwrap(),", cur.store);
+    // match cur.store_into {
+    //   None => println!("transfer: None,"),
+    //   Some(s) => println!("transfer: Some(Uuid::from_str(\"{}\").unwrap()),", s),
+    // }
+    // println!("goods: Uuid::from_str(\"{}\").unwrap(),", cur.goods);
+    // println!(
+    //   "batch: Batch {{ id: Uuid::from_str(\"{}\").unwrap(), date: dt(\"{}\").unwrap() }},",
+    //   cur.batch.id,
+    //   cur.batch.date.date_naive()
+    // );
+    // println!("before: None,");
+    // match &cur.op {
+    //   InternalOperation::Inventory(_, _, _) => {},
+    //   InternalOperation::Receive(q, c) => {
+    //     println!(
+    //       "after: Some((InternalOperation::Receive(Qty::new(vec![Number {{ number: Decimal::try_from({}).unwrap(), name: In(Uuid::from_str(\"{}\").unwrap(), None) }}]), Cost::from(Decimal::try_from(\"{:?}\").unwrap())), false)),",
+    //       q.inner[0].number, q.inner[0].name.uuid(), c.number()
+    //     )
+    //   },
+    //   InternalOperation::Issue(q, c, m) => {
+    //     println!(
+    //       "after: Some((InternalOperation::Issue(Qty::new(vec![Number {{ number: Decimal::try_from({}).unwrap(), name: In(Uuid::from_str(\"{}\").unwrap(), None) }}]), Cost::from(Decimal::try_from(\"{:?}\").unwrap()), Mode::{:?}), false)),",
+    //       q.inner[0].number, q.inner[0].name.uuid(), c.number(), m,
+    //     )
+    //   },
+    // }
+    // // println!("is_dependent: {},", cur.is_dependent);
+    // // println!("dependant: {:?}", cur.dependant);
+    // println!("}},");
     // ================================================================
 
     cur_balance.apply(&cur.op);
@@ -162,9 +166,51 @@ async fn check_ops(app: Application) -> io::Result<()> {
 
     // assert_eq!(cur_balance, &op_balance, "\ncount {}", count);
 
-    // if cur_balance != &op_balance {
-    //   println!("NOT_EQUAL");
-    // }
+    if cur_balance != &op_balance {
+      count += 1;
+      println!("NOT_EQUAL \n{cur_balance:?} \nvs. {op_balance:?}");
+
+      let old = format!("op {:?}\nold: balance {:?}", cur, op_balance);
+      let new = format!("\nnew: balance {:?}\n\n", cur_balance);
+
+      log_file.write_all(old.as_bytes())?;
+      log_file.write_all(new.as_bytes())?;
+
+      let next_op_date = match topology.operation_after(&cur, true) {
+        Ok(res) => {
+          if let Some((next_op, _)) = res {
+            Some(next_op.date)
+          } else {
+            None
+          }
+        },
+        Err(e) => {
+          println!("check_ops ERROR: {}", e.message());
+          return Err(Error::new(ErrorKind::NotFound, "check_ops ERROR"));
+        },
+      };
+
+      let cur_mut = OpMutation::new(
+        cur.id,
+        cur.date,
+        cur.store,
+        cur.store_into,
+        cur.goods,
+        cur.batch.clone(),
+        Some(cur.op.clone()),
+        Some(cur.op.clone()),
+      );
+
+      for ordered_topology in app.warehouse.database.ordered_topologies.iter() {
+        ordered_topology.put(&cur, cur_balance).unwrap();
+      }
+
+      for checkpoint_topology in app.warehouse.database.checkpoint_topologies.iter() {
+        checkpoint_topology
+          .checkpoint_update(&cur_mut, next_op_date, cur_balance)
+          .unwrap();
+      }
+    }
   }
 
   println!("count {count}");
@@ -532,7 +578,7 @@ async fn startup() -> io::Result<()> {
       },
       _ => unreachable!(),
     },
-    "check" => check_ops(app).await,
+    "fix" => fix_topologies(app).await,
     _ => unreachable!(),
   }
 }
