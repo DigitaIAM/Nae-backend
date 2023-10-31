@@ -311,20 +311,26 @@ fn update_qty(
   ctx: &Vec<String>,
   after: &mut JsonValue,
 ) -> io::Result<()> {
-  let params =
-    json::object! {oid: ws.id.to_string().as_str(), ctx: ["uom"], name: "Кор", enrich: false };
-  let uom_in = match app.service("memories").find(service::Context::local(), params.clone()) {
+  let uom_params = json::object! {oid: ws.id.to_string().as_str(), ctx: ["uom"], enrich: false };
+
+  let mut box_uom = String::new();
+  let mut roll_uom = String::new();
+
+  match app.service("memories").find(service::Context::local(), uom_params.clone()) {
     Ok(mut res) => {
-      let mut uom_in = String::new();
+      // println!("uoms= {res:?}");
       res["data"].members().for_each(|o| {
         if &(o["name"].string()) == "Кор" {
-          uom_in = o["_uuid"].string()
+          box_uom = o["_uuid"].string()
+        } else if &(o["name"].string()) == "Рул" {
+          roll_uom = o["_uuid"].string()
         }
       });
-      uom_in.to_json()
     },
-    Err(_) => JsonValue::Null,
-  };
+    Err(_) => {},
+  }
+  // log::debug!("box: {box_uom}");
+  // log::debug!("roll: {roll_uom}");
 
   // update qty structure
   let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
@@ -377,51 +383,72 @@ fn update_qty(
             return Err(WHError::new(e.to_string().as_str()));
           },
         };
+      // log::debug!("__goods {goods:?}");
 
       Ok(goods)
     };
 
-  if !qty.is_null() {
+  if !qty.is_null() && !qty["number"].is_null() {
+    let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+
+    let goods = match goods(ctx_str.clone(), &after, params.clone()) {
+      Ok(g) => g,
+      Err(e) => {
+        log::debug!("goods_error: {e:?}, after: {after:?}");
+        return Err(Error::new(ErrorKind::NotFound, e.message()));
+      },
+    };
+
+    let uom = match app.service("memories").get(
+      service::Context::local(),
+      goods["uom"].string(),
+      params.clone(),
+    ) {
+      Ok(uom) => uom,
+      Err(e) => {
+        // log::debug!("uom_error {e}");
+        return Err(Error::new(ErrorKind::NotFound, e.to_string()));
+      },
+    };
+    // log::debug!("_uom {uom:?}");
+
+    let tmp_number = if qty.is_string() {
+      // after["qty"]["number"] = Decimal::from(1).into();
+      qty.clone()
+    } else {
+      qty["uom"]["number"].clone()
+    };
+
     match <JsonValue as TryInto<Qty>>::try_into(qty.clone()) {
-      Ok(_q) => {}, // nothing to do
-      Err(_) => {
-        // log::debug!("change_qty {qty:?}");
-        let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
-
-        let goods = match goods(ctx_str.clone(), &after, params.clone()) {
-          Ok(g) => g,
-          Err(e) => {
-            // log::debug!("goods_error: {e:?}, after: {after:?}");
-            return Err(Error::new(ErrorKind::NotFound, e.message()));
-          },
-        };
-        // log::debug!("_goods {goods:?}");
-
-        let uom = match app.service("memories").get(
-          service::Context::local(),
-          goods["uom"].string(),
-          params.clone(),
-        ) {
-          Ok(uom) => uom,
-          Err(e) => {
-            // log::debug!("uom_error {e}");
-            return Err(Error::new(ErrorKind::NotFound, e.to_string()));
-          },
-        };
-        // log::debug!("_uom {uom:?}");
-
+      Ok(_q) => {
+        // workaround to fix roll production uom
         match ctx_str[..] {
           ["production", "produce"] => {
-            let tmp_number = if qty.is_string() {
-              // after["qty"]["number"] = Decimal::from(1).into();
-              qty.clone()
-            } else {
-              qty["number"].clone()
-            };
-
-            if qty["uom"].is_null() {
+            if goods["name"].string().starts_with("Рулон") {
               after["qty"]["number"] = Decimal::from(1).into();
-              after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": uom_in.clone()};
+              after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": roll_uom.clone()};
+              println!("RULON1 {:?}", after["qty"]);
+            }
+          },
+          _ => {},
+        }
+      }, // nothing to do
+      Err(_) => {
+        log::debug!("change_qty {qty:?}");
+        match ctx_str[..] {
+          ["production", "produce"] => {
+            // if qty["uom"].is_null() {
+            //   after["qty"]["number"] = Decimal::from(1).into();
+            //   after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": box_uom.clone()};
+            // }
+
+            if goods["name"].string().starts_with("Рулон") {
+              println!("RULON2");
+              after["qty"]["number"] = Decimal::from(1).into();
+              after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": roll_uom.clone()};
+            } else {
+              after["qty"]["number"] = Decimal::from(1).into();
+              after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": box_uom.clone()};
             }
           },
           _ => {

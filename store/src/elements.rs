@@ -5,6 +5,7 @@ use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::string::String;
 use uuid::{uuid, Uuid};
 
 pub use super::error::WHError;
@@ -19,7 +20,7 @@ use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
 use crate::qty::Qty;
 use service::utils::json::JsonParams;
-use values::constants::{_DOCUMENT, _STATUS, _UUID};
+use values::constants::{_DOCUMENT, _ID, _STATUS, _UUID};
 
 pub type Goods = Uuid;
 pub type Store = Uuid;
@@ -556,7 +557,40 @@ fn goods(
         };
 
       if let Some(goods) = product["goods"].string_or_none() {
-        Ok(app.service("memories").get(Context::local(), goods, goods_params)?)
+        let goods = app.service("memories").get(Context::local(), goods, goods_params)?;
+        if product["name"].string().starts_with("Рулон") {
+          let thickness = document["thickness"].number();
+          let color = if thickness == Decimal::ZERO {
+            "брак"
+          } else if thickness < Decimal::ONE {
+            "прозрачная"
+          } else {
+            "белая"
+          };
+          let name = format!("{} {} {} мм", goods["name"].string(), color, thickness);
+          let params = json::object! {oid: wid, ctx: ["goods"], name: name.clone(), enrich: false };
+          match app.service("memories").find(Context::local(), params) {
+            Ok(res) => {
+              log::debug!("find_some_goods {res}");
+              let mut result = JsonValue::Null;
+              res["data"].members().for_each(|o| {
+                if o["name"].string() == name {
+                  result = o.clone();
+                }
+              });
+              if result.is_null() {
+                return create_roll_goods(app, wid, &name);
+              } else {
+                return Ok(result);
+              }
+            },
+            Err(_) => {
+              return create_roll_goods(app, wid, &name);
+            },
+          }
+        } else {
+          Ok(goods)
+        }
       } else {
         Err(WHError::new("No data for goods"))
       }
@@ -567,6 +601,54 @@ fn goods(
         .get(Context::local(), data["goods"].string(), goods_params)?,
     ),
   }
+}
+
+fn create_roll_goods(
+  app: &(impl GetWarehouse + Services),
+  wid: &str,
+  name: &str,
+) -> Result<JsonValue, WHError> {
+  let category_params = json::object! {oid: wid, ctx: ["goods", "category"], name: "производственное сырьё", enrich: false };
+  let category_id = match app.service("memories").find(Context::local(), category_params) {
+    Ok(res) => {
+      println!("categories_found: {res:?}");
+      let mut id = String::new();
+      res["data"].members().for_each(|o| {
+        if &(o["name"].string()) == "производственное сырьё" {
+          id = o[_ID].string()
+        }
+      });
+      id
+    },
+    Err(e) => {
+      return Err(WHError::new(&e.to_string()));
+    },
+  };
+
+  let uom_params = json::object! {oid: wid, ctx: ["uom"], name: "кг", enrich: false };
+  let uom_id = match app.service("memories").find(Context::local(), uom_params) {
+    Ok(res) => {
+      println!("uoms_found: {res:?}");
+      let mut id = String::new();
+      res["data"].members().for_each(|o| {
+        if &(o["name"].string()) == "кг" {
+          id = o[_ID].string()
+        }
+      });
+      id
+    },
+    Err(e) => {
+      return Err(WHError::new(&e.to_string()));
+    },
+  };
+
+  let goods_params = object! {oid: wid, ctx: vec!["goods"] };
+  let goods = object! {name: name, category: category_id, uom: uom_id};
+
+  app
+    .service("memories")
+    .create(Context::local(), goods, goods_params)
+    .map_err(|e| WHError::new(&e.to_string()))
 }
 
 fn resolve_store(

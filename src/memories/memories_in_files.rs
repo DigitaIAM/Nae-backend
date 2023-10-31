@@ -5,7 +5,7 @@ use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
-use service::{Context, Service};
+use service::{Context, Service, Services};
 use std::collections::HashMap;
 use std::sync::Arc;
 use store::balance::BalanceForGoods;
@@ -93,6 +93,41 @@ impl Service for MemoriesInFiles {
       let ws = self.app.wss.get(&wsid);
 
       let warehouse = self.app.warehouse().database;
+
+      // log::debug!("__filters= {filter}");
+
+      // workaround to show materials as a single items
+      let get_single_items = filter["getSingleItems"].boolean();
+      if get_single_items {
+        let batch_filter = filter["batch"].uuid_or_none();
+        if let Some(batch) = batch_filter {
+          let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+          let document =
+            self.app.service("memories").get(Context::local(), batch.to_string(), params)?;
+
+          let filters = vec![("document", &document[_ID])];
+
+          let items: Vec<JsonValue> = get_records(
+            &self.app,
+            batch,
+            &vec!["production".into(), "produce".into()],
+            &ws,
+            &filters,
+          )?
+          .iter()
+          .map(|o| o.enrich(&ws))
+          .collect();
+          // log::debug!("get_single_items {}, {items:?}", items.len());
+
+          let total = items.len();
+
+          return Ok(json::object! {
+              data: items,
+              total: total,
+              "$skip": skip,
+          });
+        }
+      }
 
       let balances = warehouse
         .get_balance_for_all(Utc::now())

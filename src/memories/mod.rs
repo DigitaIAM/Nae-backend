@@ -14,28 +14,6 @@ impl Enrich for JsonValue {
   fn enrich(&self, ws: &Workspace) -> JsonValue {
     let mut data = self.clone();
 
-    // workaround for 'qty: {number: 5, uom: {number: 10, uom: uom/2023-04-07T07:56:50.249Z, in: uom/2023-04-07T07:57:02.154Z}}'
-    if data["qty"].is_array() && !data["qty"].is_empty() {
-      for element in data["qty"].members_mut() {
-        let mut processing = element;
-        while processing.is_object() {
-          if let Some(uom) = processing["in"].as_str() {
-            processing["in"] = uom.resolve_to_json_object(ws);
-          }
-
-          let node = &processing["uom"];
-          if let Some(uom) = node.as_str() {
-            processing["uom"] = uom.resolve_to_json_object(ws);
-            break;
-          } else if node.is_object() {
-            processing = &mut processing["uom"];
-          } else {
-            break;
-          }
-        }
-      }
-    }
-
     // workaround for uom
     if let Some(uom) = data["uom"].as_str() {
       data["uom"] = uom.resolve_to_json_object(ws);
@@ -78,6 +56,38 @@ impl Enrich for JsonValue {
       data["storage_into"] = storage_into.resolve_to_json_object(ws);
     }
 
+    // workaround for 'qty: {number: 5, uom: {number: 10, uom: uom/2023-04-07T07:56:50.249Z, in: uom/2023-04-07T07:57:02.154Z}}'
+    if data["qty"].is_object() && !data["qty"]["store"].is_null() {
+      data["qty"] = data["qty"]["store"].clone();
+    }
+
+    if data["qty"].is_array() && !data["qty"].is_empty() {
+      for element in data["qty"].members_mut() {
+        enrich_qty(ws, element);
+      }
+    } else if data["qty"].is_object() {
+      enrich_qty(ws, &mut data["qty"]);
+    }
+
+    fn enrich_qty(ws: &Workspace, element: &mut JsonValue) {
+      let mut processing = element;
+      while processing.is_object() {
+        if let Some(uom) = processing["in"].as_str() {
+          processing["in"] = uom.resolve_to_json_object(ws);
+        }
+
+        let node = &processing["uom"];
+        if let Some(uom) = node.as_str() {
+          processing["uom"] = uom.resolve_to_json_object(ws);
+          break;
+        } else if node.is_object() {
+          processing = &mut processing["uom"];
+        } else {
+          break;
+        }
+      }
+    }
+    log::debug!("enrich_qty {:?}", data["qty"]);
     data
   }
 }
