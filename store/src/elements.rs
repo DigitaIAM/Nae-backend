@@ -5,6 +5,7 @@ use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::string::String;
 use uuid::{uuid, Uuid};
 
 pub use super::error::WHError;
@@ -19,7 +20,7 @@ use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
 use crate::qty::Qty;
 use service::utils::json::JsonParams;
-use values::constants::{_DOCUMENT, _STATUS, _UUID};
+use values::constants::{_DOCUMENT, _ID, _STATUS, _UUID};
 
 pub type Goods = Uuid;
 pub type Store = Uuid;

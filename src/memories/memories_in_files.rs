@@ -5,7 +5,7 @@ use json::{object, JsonValue};
 use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
-use service::{Context, Service};
+use service::{Context, Service, Services};
 use std::collections::HashMap;
 use std::sync::Arc;
 use store::balance::BalanceForGoods;
@@ -94,10 +94,12 @@ impl Service for MemoriesInFiles {
 
       let warehouse = self.app.warehouse().database;
 
+      // log::debug!("__filters= {filter}");
+
       let balances = warehouse
         .get_balance_for_all(Utc::now())
         .map_err(|e| Error::GeneralError(e.message()))?;
-      log::debug!("balances: {balances:?}");
+      // log::debug!("balances: {balances:?}");
 
       return find_items(&ws, &balances, &filter, skip);
     }

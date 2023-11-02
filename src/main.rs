@@ -60,6 +60,7 @@ use store::elements::ToJson;
 use store::error::WHError;
 use store::operations::OpMutation;
 use store::qty::Qty;
+use store::GetWarehouse;
 use values::constants::{_DOCUMENT, _STATUS, _UUID};
 
 #[derive(StructOpt, Debug)]
@@ -219,9 +220,9 @@ async fn fix_topologies(app: Application) -> io::Result<()> {
 }
 
 async fn reindex(
-  settings: Arc<Settings>,
+  // settings: Arc<Settings>,
   app: Application,
-  com: Addr<Commutator>,
+  // com: Addr<Commutator>,
 ) -> io::Result<()> {
   let mut count = 0;
   for ws in app.wss.list()? {
@@ -272,7 +273,13 @@ async fn reindex(
       }
 
       // delete batch from document if it exists
-      after.remove("batch");
+      // let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+      // match ctx_str[..] {
+      //   ["production", "material", "used"] => {},
+      //   _ => {
+      //     after.remove("batch");
+      //   },
+      // }
 
       match update_qty(&app, &ws, ctx, &mut after) {
         Ok(_) => {},
@@ -302,6 +309,9 @@ async fn reindex(
 
   println!("count {count}");
 
+  // app.warehouse().database.ordered_topologies[0].debug().unwrap();
+  // app.warehouse().database.checkpoint_topologies[0].debug().unwrap();
+
   Ok(())
 }
 
@@ -311,28 +321,11 @@ fn update_qty(
   ctx: &Vec<String>,
   after: &mut JsonValue,
 ) -> io::Result<()> {
-  let params =
-    json::object! {oid: ws.id.to_string().as_str(), ctx: ["uom"], name: "Кор", enrich: false };
-  let uom_in = match app.service("memories").find(service::Context::local(), params.clone()) {
-    Ok(mut res) => {
-      let mut uom_in = String::new();
-      res["data"].members().for_each(|o| {
-        if &(o["name"].string()) == "Кор" {
-          uom_in = o["_uuid"].string()
-        }
-      });
-      uom_in.to_json()
-    },
-    Err(_) => JsonValue::Null,
-  };
-
   // update qty structure
-  let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
-
   let qty = after["qty"].clone();
 
   let goods =
-    |ctx_str: Vec<&str>, data: &JsonValue, params: JsonValue| -> Result<JsonValue, WHError> {
+    |ctx_str: &Vec<&str>, data: &JsonValue, params: JsonValue| -> Result<JsonValue, WHError> {
       let goods_id = match ctx_str[..] {
         ["production", "produce"] => {
           let document = match app.service("memories").get(
@@ -377,51 +370,81 @@ fn update_qty(
             return Err(WHError::new(e.to_string().as_str()));
           },
         };
+      // log::debug!("__goods {goods:?}");
 
       Ok(goods)
     };
 
-  if !qty.is_null() {
+  if !qty.is_null() && !qty["number"].is_null() {
+    let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+
+    let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+
+    let goods = match goods(&ctx_str, &after, params.clone()) {
+      Ok(g) => g,
+      Err(e) => {
+        log::debug!("goods_error: {e:?}, after: {after:?}");
+        return Err(Error::new(ErrorKind::NotFound, e.message()));
+      },
+    };
+
+    // get whole object cause we need an uuid
+    let uom = match app.service("memories").get(
+      service::Context::local(),
+      goods["uom"].string(),
+      params.clone(),
+    ) {
+      Ok(uom) => uom[_UUID].clone(),
+      Err(e) => {
+        // log::debug!("uom_error {e}");
+        return Err(Error::new(ErrorKind::NotFound, e.to_string()));
+      },
+    };
+    // log::debug!("_uom {uom:?}");
+
+    let tmp_number = if qty.is_string() {
+      // after["qty"]["number"] = Decimal::from(1).into();
+      qty.clone()
+    } else {
+      qty["uom"]["number"].clone()
+    };
+
+    let box_uom = String::from("76db8665-68bf-4088-857a-cce650bac352");
+    let roll_uom = String::from("3c887c88-964c-4ce2-b1f0-c7f1709e233a");
+
     match <JsonValue as TryInto<Qty>>::try_into(qty.clone()) {
-      Ok(_q) => {}, // nothing to do
-      Err(_) => {
-        // log::debug!("change_qty {qty:?}");
-        let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
-
-        let goods = match goods(ctx_str.clone(), &after, params.clone()) {
-          Ok(g) => g,
-          Err(e) => {
-            // log::debug!("goods_error: {e:?}, after: {after:?}");
-            return Err(Error::new(ErrorKind::NotFound, e.message()));
-          },
-        };
-        // log::debug!("_goods {goods:?}");
-
-        let uom = match app.service("memories").get(
-          service::Context::local(),
-          goods["uom"].string(),
-          params.clone(),
-        ) {
-          Ok(uom) => uom,
-          Err(e) => {
-            // log::debug!("uom_error {e}");
-            return Err(Error::new(ErrorKind::NotFound, e.to_string()));
-          },
-        };
-        // log::debug!("_uom {uom:?}");
-
+      Ok(_q) => {
+        // workaround to fix roll production uom
         match ctx_str[..] {
           ["production", "produce"] => {
-            let tmp_number = if qty.is_string() {
-              // after["qty"]["number"] = Decimal::from(1).into();
-              qty.clone()
-            } else {
-              qty["number"].clone()
-            };
-
-            if qty["uom"].is_null() {
+            if goods["name"].string().starts_with("Пленка") {
               after["qty"]["number"] = Decimal::from(1).into();
-              after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": uom_in.clone()};
+              after["qty"]["uom"] =
+                json::object! {"number": tmp_number, "uom": uom, "in": roll_uom.clone()};
+              // println!("RULON1 {:?}", after["qty"]);
+            }
+          },
+          _ => {},
+        }
+      }, // nothing to do
+      Err(_) => {
+        log::debug!("change_qty {qty:?}");
+        match ctx_str[..] {
+          ["production", "produce"] => {
+            // if qty["uom"].is_null() {
+            //   after["qty"]["number"] = Decimal::from(1).into();
+            //   after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom, "in": box_uom.clone()};
+            // }
+
+            if goods["name"].string().starts_with("Пленка") {
+              // println!("RULON2");
+              after["qty"]["number"] = Decimal::from(1).into();
+              after["qty"]["uom"] =
+                json::object! {"number": tmp_number, "uom": uom, "in": roll_uom.clone()};
+            } else {
+              after["qty"]["number"] = Decimal::from(1).into();
+              after["qty"]["uom"] =
+                json::object! {"number": tmp_number, "uom": uom, "in": box_uom.clone()};
             }
           },
           _ => {
@@ -429,11 +452,10 @@ fn update_qty(
               after["qty"]["number"] = qty.clone();
             }
             if !qty["uom"].is_object() {
-              after["qty"]["uom"] = uom["_uuid"].clone();
+              after["qty"]["uom"] = uom;
             }
           },
         }
-
         // log::debug!("_new_after {:?}", after);
       },
     }
@@ -523,7 +545,8 @@ async fn startup() -> io::Result<()> {
   println!("com started up");
 
   match opt.mode.as_str() {
-    "reindex" => reindex(settings, app, com).await,
+    // "reindex" => reindex(settings, app, com).await,
+    "reindex" => reindex(app).await,
     "server" => server(settings, app, com).await,
     "import" => {
       match opt.case.as_str() {
@@ -610,7 +633,16 @@ mod tests {
   use crate::warehouse::test_util::init;
   use actix_web::web::Bytes;
   use actix_web::{test, web, App};
+  use json::object;
   use rocksdb::Direction;
+  use rust_decimal::Decimal;
+  use service::Context;
+  use store::batch::Batch;
+  use store::elements::dt;
+  use store::qty::Number;
+  use store::GetWarehouse;
+  use values::constants::_ID;
+  const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
   #[actix_web::test]
   async fn test_put_get() {
@@ -663,6 +695,211 @@ mod tests {
 
     // stop db and delete data folder
     db.close();
+    tmp_dir.close().unwrap();
+  }
+
+  #[actix_web::test]
+  async fn check_material_used_and_reindex() {
+    std::env::set_var("RUST_LOG", "debug,actix_web=debug,actix_server=debug");
+    env_logger::init();
+
+    fn create(ctx: &Vec<&str>, app: &Application, data: JsonValue) -> JsonValue {
+      let data = app
+        .service("memories")
+        .create(
+          Context::local(),
+          data,
+          json::object! {
+            oid: WID,
+            ctx: ctx.clone(),
+          },
+        )
+        .unwrap();
+
+      data
+    }
+
+    let (tmp_dir, settings, db) = init();
+
+    let wss = Workspaces::new(tmp_dir.path().join("companies"));
+
+    let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db), wss).await.unwrap();
+
+    app.register(MemoriesInFiles::new(app.clone(), "memories"));
+    // app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
+
+    let produce_op = vec!["production", "produce"];
+    let used_op = vec!["production", "material", "used"];
+    let produce_doc = vec!["production", "order"];
+
+    let rolls = app
+      .service("memories")
+      .create(
+        Context::local(),
+        json::object! {
+          name: "рулоны",
+            code:"0",
+        },
+        json::object! {
+          oid: WID,
+          ctx: vec!["warehouse", "storage"],
+        },
+      )
+      .unwrap();
+
+    let extrusion = app
+      .service("memories")
+      .create(
+        Context::local(),
+        json::object! {
+          name: "экструдер",
+            type: "roll",
+            storage: rolls[_ID].to_string(),
+        },
+        json::object! {
+          oid: WID,
+          ctx: vec!["production", "area"],
+        },
+      )
+      .unwrap();
+
+    // let a1 = store(&app, "a1");
+
+    let g1 = app
+      .service("memories")
+      .create(
+        Context::local(),
+        json::object! {
+          name: "Пленка Midas",
+        },
+        json::object! {
+          oid: WID,
+          ctx: vec!["goods"],
+        },
+      )
+      .unwrap();
+
+    // let p1 = goods(&app, "p1");
+    let p1 = app
+      .service("memories")
+      .create(
+        Context::local(),
+        json::object! {
+          name: "p1",
+          goods: g1[_ID].string(),
+        },
+        json::object! {
+          oid: WID,
+          ctx: vec!["product"],
+        },
+      )
+      .unwrap();
+
+    let uom0 = app
+      .service("memories")
+      .create(
+        Context::local(),
+        json::object! {
+          name: "Рул",
+        },
+        json::object! {
+          oid: WID,
+          ctx: vec!["uom"],
+        },
+      )
+      .unwrap();
+
+    let uom1 = app
+      .service("memories")
+      .create(
+        Context::local(),
+        json::object! {
+          name: "кг",
+        },
+        json::object! {
+          oid: WID,
+          ctx: vec!["uom"],
+        },
+      )
+      .unwrap();
+
+    // create first produce document
+    let mut produceDoc0 = object! {
+      date: "2023-01-01",
+      area: extrusion[_ID].to_string(),
+      product: p1[_ID].to_string(),
+    };
+
+    let d0 = create(&produce_doc, &app, produceDoc0.clone());
+
+    // create first produce operation
+    let qty0: JsonValue = (&Qty::new(vec![Number::new(
+      Decimal::from(1),
+      uom0[_UUID].uuid().unwrap(),
+      Some(Box::new(Number::new(
+        Decimal::try_from("333.3").unwrap(),
+        uom1[_UUID].uuid().unwrap(),
+        None,
+      ))),
+    )]))
+      .into();
+
+    let produceOp0 = object! {
+      date: "2023-01-01",
+      document: d0["_id"].to_string(),
+      qty: qty0.clone(),
+    };
+
+    let r1 = create(&produce_op, &app, produceOp0);
+    // log::debug!("produce_data: {:#?}", r1.dump());
+
+    // let r1_batch = Batch { id: r1["_uuid"].uuid().unwrap(), date: dt("2023-01-01").unwrap() };
+
+    // create second produce operation
+    let qty1: JsonValue = (&Qty::new(vec![Number::new(
+      Decimal::from(1),
+      uom0[_UUID].uuid().unwrap(),
+      Some(Box::new(Number::new(
+        Decimal::try_from("444.4").unwrap(),
+        uom1[_UUID].uuid().unwrap(),
+        None,
+      ))),
+    )]))
+      .into();
+
+    let produceOp1 = object! {
+      date: "2023-01-01",
+      document: d0["_id"].to_string(),
+      qty: qty1.clone(),
+    };
+
+    let r2 = create(&produce_op, &app, produceOp1);
+
+    app.warehouse().database.ordered_topologies[0].debug().unwrap();
+
+    // create second produce document
+    let mut produceDoc1 = object! {
+      date: "2023-01-02",
+      area: extrusion[_ID].to_string(),
+      product: p1[_ID].to_string(),
+    };
+    let d1 = create(&produce_doc, &app, produceDoc1.clone());
+
+    // create used operation
+    let usedOp = object! {
+      document: d1["_id"].to_string(),
+      storage_from: rolls[_ID].to_string(),
+      goods: g1[_ID].string(),
+      qty: qty0,
+    };
+    let u1 = create(&used_op, &app, usedOp);
+    log::debug!("used_data: {:#?}", u1.dump());
+
+    app.warehouse().database.ordered_topologies[0].debug().unwrap();
+
+    reindex(app).await;
+
+    // app.warehouse().database.ordered_topologies[0].debug().unwrap();
     tmp_dir.close().unwrap();
   }
 }
