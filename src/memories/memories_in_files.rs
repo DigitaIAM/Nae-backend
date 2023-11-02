@@ -96,43 +96,10 @@ impl Service for MemoriesInFiles {
 
       // log::debug!("__filters= {filter}");
 
-      // workaround to show materials as a single items
-      let get_single_items = filter["getSingleItems"].boolean();
-      if get_single_items {
-        let batch_filter = filter["batch"].uuid_or_none();
-        if let Some(batch) = batch_filter {
-          let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
-          let document =
-            self.app.service("memories").get(Context::local(), batch.to_string(), params)?;
-
-          let filters = vec![("document", &document[_ID])];
-
-          let items: Vec<JsonValue> = get_records(
-            &self.app,
-            batch,
-            &vec!["production".into(), "produce".into()],
-            &ws,
-            &filters,
-          )?
-          .iter()
-          .map(|o| o.enrich(&ws))
-          .collect();
-          // log::debug!("get_single_items {}, {items:?}", items.len());
-
-          let total = items.len();
-
-          return Ok(json::object! {
-              data: items,
-              total: total,
-              "$skip": skip,
-          });
-        }
-      }
-
       let balances = warehouse
         .get_balance_for_all(Utc::now())
         .map_err(|e| Error::GeneralError(e.message()))?;
-      log::debug!("balances: {balances:?}");
+      // log::debug!("balances: {balances:?}");
 
       return find_items(&ws, &balances, &filter, skip);
     }
