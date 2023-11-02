@@ -272,17 +272,16 @@ async fn reindex(
         after.remove("order");
       }
 
-      let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
-
       // delete batch from document if it exists
-      match ctx_str[..] {
-        ["production", "material", "used"] => {},
-        _ => {
-          after.remove("batch");
-        },
-      }
+      // let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+      // match ctx_str[..] {
+      //   ["production", "material", "used"] => {},
+      //   _ => {
+      //     after.remove("batch");
+      //   },
+      // }
 
-      match update_qty(&app, &ws, &ctx_str, &mut after) {
+      match update_qty(&app, &ws, ctx, &mut after) {
         Ok(_) => {},
         Err(_) => {
           // log::debug!("skip_update_qty");
@@ -319,35 +318,14 @@ async fn reindex(
 fn update_qty(
   app: &Application,
   ws: &Workspace,
-  ctx: &Vec<&str>,
+  ctx: &Vec<String>,
   after: &mut JsonValue,
 ) -> io::Result<()> {
-  let uom_params = json::object! {oid: ws.id.to_string().as_str(), ctx: ["uom"], enrich: false };
-
-  let mut box_uom = String::new();
-  let mut roll_uom = String::new();
-
-  match app.service("memories").find(service::Context::local(), uom_params.clone()) {
-    Ok(mut res) => {
-      // println!("uoms= {res:?}");
-      res["data"].members().for_each(|o| {
-        if &(o["name"].string()) == "Кор" {
-          box_uom = o["_uuid"].string()
-        } else if &(o["name"].string()) == "Рул" {
-          roll_uom = o["_uuid"].string()
-        }
-      });
-    },
-    Err(_) => {},
-  }
-  // log::debug!("box: {box_uom}");
-  // log::debug!("roll: {roll_uom}");
-
   // update qty structure
   let qty = after["qty"].clone();
 
   let goods =
-    |ctx_str: Vec<&str>, data: &JsonValue, params: JsonValue| -> Result<JsonValue, WHError> {
+    |ctx_str: &Vec<&str>, data: &JsonValue, params: JsonValue| -> Result<JsonValue, WHError> {
       let goods_id = match ctx_str[..] {
         ["production", "produce"] => {
           let document = match app.service("memories").get(
@@ -400,7 +378,9 @@ fn update_qty(
   if !qty.is_null() && !qty["number"].is_null() {
     let params = json::object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
 
-    let goods = match goods(ctx.clone(), &after, params.clone()) {
+    let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+
+    let goods = match goods(&ctx_str, &after, params.clone()) {
       Ok(g) => g,
       Err(e) => {
         log::debug!("goods_error: {e:?}, after: {after:?}");
@@ -408,12 +388,13 @@ fn update_qty(
       },
     };
 
+    // get whole object cause we need an uuid
     let uom = match app.service("memories").get(
       service::Context::local(),
       goods["uom"].string(),
       params.clone(),
     ) {
-      Ok(uom) => uom,
+      Ok(uom) => uom[_UUID].clone(),
       Err(e) => {
         // log::debug!("uom_error {e}");
         return Err(Error::new(ErrorKind::NotFound, e.to_string()));
@@ -428,15 +409,19 @@ fn update_qty(
       qty["uom"]["number"].clone()
     };
 
+    let box_uom = String::from("76db8665-68bf-4088-857a-cce650bac352");
+    let roll_uom = String::from("3c887c88-964c-4ce2-b1f0-c7f1709e233a");
+
     match <JsonValue as TryInto<Qty>>::try_into(qty.clone()) {
       Ok(_q) => {
         // workaround to fix roll production uom
-        match ctx[..] {
+        match ctx_str[..] {
           ["production", "produce"] => {
             if goods["name"].string().starts_with("Пленка") {
               after["qty"]["number"] = Decimal::from(1).into();
-              after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": roll_uom.clone()};
-              println!("RULON1 {:?}", after["qty"]);
+              after["qty"]["uom"] =
+                json::object! {"number": tmp_number, "uom": uom, "in": roll_uom.clone()};
+              // println!("RULON1 {:?}", after["qty"]);
             }
           },
           _ => {},
@@ -444,20 +429,22 @@ fn update_qty(
       }, // nothing to do
       Err(_) => {
         log::debug!("change_qty {qty:?}");
-        match ctx[..] {
+        match ctx_str[..] {
           ["production", "produce"] => {
             // if qty["uom"].is_null() {
             //   after["qty"]["number"] = Decimal::from(1).into();
-            //   after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": box_uom.clone()};
+            //   after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom, "in": box_uom.clone()};
             // }
 
             if goods["name"].string().starts_with("Пленка") {
               // println!("RULON2");
               after["qty"]["number"] = Decimal::from(1).into();
-              after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": roll_uom.clone()};
+              after["qty"]["uom"] =
+                json::object! {"number": tmp_number, "uom": uom, "in": roll_uom.clone()};
             } else {
               after["qty"]["number"] = Decimal::from(1).into();
-              after["qty"]["uom"] = json::object! {"number": tmp_number, "uom": uom["_uuid"].clone(), "in": box_uom.clone()};
+              after["qty"]["uom"] =
+                json::object! {"number": tmp_number, "uom": uom, "in": box_uom.clone()};
             }
           },
           _ => {
@@ -465,7 +452,7 @@ fn update_qty(
               after["qty"]["number"] = qty.clone();
             }
             if !qty["uom"].is_object() {
-              after["qty"]["uom"] = uom["_uuid"].clone();
+              after["qty"]["uom"] = uom;
             }
           },
         }

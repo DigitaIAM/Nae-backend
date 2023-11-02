@@ -65,8 +65,8 @@ impl Enrich for JsonValue {
       for element in data["qty"].members_mut() {
         enrich_qty(ws, element);
       }
-      // } else if data["qty"].is_object() {
-      //   enrich_qty(ws, &mut data["qty"]);
+    } else if data["qty"].is_object() {
+      enrich_qty(ws, &mut data["qty"]);
     }
 
     fn enrich_qty(ws: &Workspace, element: &mut JsonValue) {
