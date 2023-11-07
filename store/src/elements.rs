@@ -303,15 +303,9 @@ where
 
   log::debug!("DOCUMENT: {:?}", document.dump());
 
-  let date = match ctx_str[..] {
-    ["production", "produce"] => match data["date"].date_with_check() {
-      Ok(d) => d,
-      Err(_) => return Ok(ops),
-    },
-    _ => match document["date"].date_with_check() {
-      Ok(d) => d,
-      Err(_) => return Ok(ops),
-    },
+  let date = match document["date"].date_with_check() {
+    Ok(d) => d,
+    Err(_) => return Ok(ops),
   };
 
   let (store_from, store_into) =
