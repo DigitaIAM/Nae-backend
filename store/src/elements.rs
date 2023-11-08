@@ -305,7 +305,10 @@ where
 
   let date = match document["date"].date_with_check() {
     Ok(d) => d,
-    Err(_) => return Ok(ops),
+    Err(_) => match data["date"].date_with_check() {
+      Ok(d) => d,
+      Err(_) => return Ok(ops),
+    },
   };
 
   let (store_from, store_into) =
