@@ -24,6 +24,16 @@ impl Enrich for JsonValue {
       data["product"] = product.resolve_to_json_object(ws);
     }
 
+    // workaround for operator
+    if let Some(operator) = data["operator"].as_str() {
+      data["operator"] = operator.resolve_to_json_object(ws);
+    }
+
+    // workaround for area
+    if let Some(area) = data["area"].as_str() {
+      data["area"] = area.resolve_to_json_object(ws);
+    }
+
     // workaround for goods
     if let Some(goods) = data["goods"].as_str() {
       data["goods"] = goods.resolve_to_json_object(ws);
