@@ -222,7 +222,7 @@ impl Service for MemoriesInFiles {
 
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
-      for order in &mut list {
+      for mut order in &mut list {
         let order_uuid = order[_UUID].uuid()?;
 
         let produced = self
@@ -253,11 +253,11 @@ impl Service for MemoriesInFiles {
         order["produced"] = object! { "piece": sum_produced.to_json(), "box": boxes.to_string() };
 
         // workaround: ignore all areas except "экструдер"
-        let area = order["area"].string().resolve_to_json_object(&ws);
-
-        if area["name"].string() != "экструдер".to_string() {
-          continue;
-        }
+        // let area = order["area"].string().resolve_to_json_object(&ws);
+        //
+        // if area["name"].string() != "экструдер".to_string() {
+        //   continue;
+        // }
 
         let filters = vec![("document", &order[_ID])];
 
