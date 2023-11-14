@@ -583,6 +583,7 @@ impl Qty {
   pub fn inner(&self) -> &Vec<Number<Uom>> {
     &self.inner
   }
+
   pub fn is_positive(&self) -> bool {
     for qty in &self.inner {
       if !qty.is_positive() {
@@ -614,7 +615,7 @@ impl Qty {
     }
   }
 
-  pub(crate) fn lowering(&self, name: &Uom) -> Option<Number<Uom>> {
+  pub fn lowering(&self, name: &Uom) -> Option<Number<Uom>> {
     let mut result = Number::new(Decimal::ZERO, name.uuid(), name.named());
 
     for qty in &self.inner {
@@ -704,46 +705,33 @@ impl Qty {
     }
   }
 
-  pub(crate) fn plus_with_relax(&self, balance: &Self) -> Self {
-    let mut result = Qty::new(vec![]);
-    let len = self.inner.len();
-
-    for i in 0..len {
-      let first = &(self.inner[i]);
-      for j in i + 1..len {
-        let second = &(self.inner[j]);
-        if let Some(common) = first.common(second) {
-          if let (Some(low_first), Some(low_second)) =
-            (first.lowering(&common), second.lowering(&common))
-          {
-            // result.inner[i] = first + second;
-            let sum = low_first.number + low_second.number;
-            result.inner.append(
-              &mut Number::new(sum, low_first.uuid(), low_first.named())
-                .elevate_to_qty(&balance)
-                .inner,
-            );
-          }
+  pub fn agregate(&self, rhs: &Self) -> Self {
+    if let Some(left) = self.inner.first() {
+      if let Some(right) = rhs.inner.first() {
+        let l_base = left.base();
+        let r_base = right.base();
+        if l_base == r_base {
+          let mut l = self.lowering(&l_base).unwrap();
+          let r = rhs.lowering(&l_base).unwrap();
+          l.number += r.number;
+          let res = if left.name == l_base {
+            Qty::new(vec![Number::new(l.number, left.uuid(), None)])
+          } else {
+            Qty::new(vec![Number::new(left.number + right.number, left.uuid(), Some(Box::new(l)))])
+          };
+            
+          return res;
         } else {
-          let (first_base, second_base) = (first.base(), second.base());
-          if first_base == second_base {
-            if let (Some(low_first), Some(low_second)) =
-              (first.lowering(&first_base), second.lowering(&second_base))
-            {
-              // result.inner[i] = low_first + low_second;
-              let sum = low_first.number + low_second.number;
-              result.inner.append(
-                &mut Number::new(sum, low_first.uuid(), low_first.named())
-                  .elevate_to_qty(&balance)
-                  .inner,
-              );
-            }
-          }
+          return self + rhs;
         }
+      } else {
+        return self.clone();
       }
+    } else if let Some(right) = rhs.inner.first() {
+      return rhs.clone();
+    } else {
+      return Qty::new(vec![]);
     }
-
-    result
   }
 }
 
@@ -3056,25 +3044,46 @@ mod tests {
   }
 
   #[test]
-  fn relax() {
+  fn agregate() {
     let uom0 = Uuid::new_v4();
     let uom1 = Uuid::new_v4();
-    let uom2 = Uuid::new_v4();
 
-    let data0 = Qty::new(vec![
-      Number::new(Decimal::from(1), uom1, Some(Box::new(Number::new(Decimal::from(4), uom2, None)))),
-      Number::new(
-        Decimal::from(-1),
-        uom1,
-        Some(Box::new(Number::new(Decimal::from(3), uom2, None))),
-      ),
-    ]);
+    let data1 = Qty::new(vec![Number::new(
+      Decimal::from(1),
+      uom0,
+      Some(Box::new(Number::new(Decimal::from(4), uom1, None))),
+    )]);
 
-    let relax0 = data0.plus_with_relax(&Qty::new(vec![]));
-    println!("relax0 {relax0:?}");
+    let data2 = Qty::new(vec![Number::new(
+      Decimal::from(1),
+      uom0,
+      Some(Box::new(Number::new(Decimal::from(2), uom1, None))),
+    )]);
 
-    let check0 = Qty::new(vec![Number::new(Decimal::ONE, uom2, None)]);
+    let agr1: Qty = data1.agregate(&data2);
+    // println!("agr1 {agr1:?}");
 
-    assert_eq!(relax0, check0);
+    let check1 = Qty::new(vec![Number::new(
+      Decimal::from(2),
+      uom0,
+      Some(Box::new(Number::new(Decimal::from(6), uom1, None))),
+    )]);
+
+    assert_eq!(agr1, check1);
+
+    let data3 = Qty::new(vec![Number::new(Decimal::from(1), uom0, None)]);
+
+    let data4 = Qty::new(vec![Number::new(Decimal::from(2), uom0, None)]);
+
+    let agr2: Qty = data3.agregate(&data4);
+    println!("agr2 {agr2:?}");
+
+    let check2 = Qty::new(vec![Number::new(
+      Decimal::from(3),
+      uom0,
+      None,
+    )]);
+
+    assert_eq!(agr2, check2);
   }
 }

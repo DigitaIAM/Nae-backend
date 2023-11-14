@@ -19,6 +19,7 @@ use crate::commutator::Application;
 
 use crate::links::GetLinks;
 use stock::find_items;
+use store::error::WHError;
 use store::qty::Qty;
 use values::constants::{_ID, _STATUS, _UUID};
 
@@ -261,7 +262,7 @@ impl Service for MemoriesInFiles {
 
         let filters = vec![("document", &order[_ID])];
 
-        let mut sum_used_materials: HashMap<String, (JsonValue, Decimal)> = HashMap::new();
+        let mut sum_used_materials: HashMap<String, (JsonValue, Qty)> = HashMap::new();
 
         let materials_used = get_records(
           &self.app,
@@ -271,30 +272,40 @@ impl Service for MemoriesInFiles {
           &filters,
         )?;
 
-        let mut sum_material_used = Decimal::ZERO;
+        let mut sum_material_used = Qty::new(vec![]);
 
         for material_used in materials_used {
-          let qty = material_used["qty"]["number"].number();
+          let qty: Qty = material_used["qty"]
+            .clone()
+            .try_into()
+            .map_err(|e: WHError| Error::GeneralError(e.message()))?;
 
           let goods = material_used["goods"].clone();
 
-          (*sum_used_materials
+          let s = sum_used_materials
             .entry(goods["name"].string())
-            .or_insert((goods, Decimal::ZERO)))
-          .1 += qty;
+            .or_insert((goods, Qty::new(vec![])));
 
-          sum_material_used += qty;
+          s.1 = s.1.agregate(&qty);
+
+          sum_material_used = sum_material_used.agregate(&qty);
         }
+
+        // println!("__used__ {sum_used_materials:?}");
 
         let used: Vec<JsonValue> = sum_used_materials
           .into_iter()
           .map(|(_k, mut v)| {
-            v.0["used"] = v.1.to_json();
+            let mut q: JsonValue = (&v.1).into();
+            for element in q.members_mut() {
+              enrich_qty(&ws, element);
+            }
+            v.0["used"] = q;
             v.0
           })
           .collect();
 
-        let mut sum_produced_materials: HashMap<String, (JsonValue, Decimal)> = HashMap::new();
+        let mut sum_produced_materials: HashMap<String, (JsonValue, Qty)> = HashMap::new();
 
         let materials_produced = get_records(
           &self.app,
@@ -304,42 +315,64 @@ impl Service for MemoriesInFiles {
           &filters,
         )?;
 
-        let mut sum_material_produced = Decimal::ZERO;
+        let mut sum_material_produced = Qty::new(vec![]);
 
-        for material_produced in materials_produced {
-          let qty = material_produced["qty"]["number"].number();
+        println!("before_agreagte {:?}", materials_produced.clone());
+        for material_produced in &materials_produced {
+          let qty: Qty = material_produced["qty"]
+            .clone()
+            .try_into()
+            .map_err(|e: WHError| Error::GeneralError(e.message()))?;
 
           let goods = material_produced["goods"].clone();
 
-          (*sum_produced_materials
-            .entry(goods["_id"].string())
-            .or_insert((goods, Decimal::ZERO)))
-          .1 += qty;
+          let s = sum_produced_materials
+            .entry(goods["name"].string())
+            .or_insert((goods, Qty::new(vec![])));
 
-          sum_material_produced += qty;
+          s.1 = s.1.agregate(&qty);
+
+          sum_material_produced = sum_material_produced.agregate(&qty);
         }
+        println!("after_agreagte {:?}", sum_produced_materials.clone());
 
         let produced: Vec<JsonValue> = sum_produced_materials
           .into_iter()
           .map(|(_k, mut v)| {
-            v.0["produced"] = v.1.to_json();
+            let mut q: JsonValue = (&v.1).into();
+            for element in q.members_mut() {
+              enrich_qty(&ws, element);
+            }
+            v.0["produced"] = q;
             v.0
           })
           .collect();
 
-        let delta = sum_material_produced + sum_produced - sum_material_used;
+        // let delta = sum_material_produced + sum_produced - sum_material_used;
+        let delta = Decimal::ZERO;
 
         order["_material"] = object! {
           "used": used,
           "produced": produced,
         };
 
+        let mut json_sum_material_used: JsonValue = (&sum_material_used).into();
+        for element in json_sum_material_used.members_mut() {
+          enrich_qty(&ws, element);
+        }
+        println!("json_sum_material_used {json_sum_material_used:?}");
+
+        let mut json_sum_material_produced: JsonValue = (&sum_material_produced).into();
+        for element in json_sum_material_produced.members_mut() {
+          enrich_qty(&ws, element);
+        }
+
         order["_material"]
           .insert(
             "sum",
             object! {
-              "used": sum_material_used.to_json(),
-              "produced": sum_material_produced.to_json(),
+              "used": json_sum_material_used,
+              "produced": json_sum_material_produced,
               "delta": delta.to_json()
             },
           )

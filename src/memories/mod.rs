@@ -10,6 +10,25 @@ pub trait Enrich {
   fn enrich(&self, ws: &crate::storage::organizations::Workspace) -> JsonValue;
 }
 
+pub(crate) fn enrich_qty(ws: &Workspace, element: &mut JsonValue) {
+  let mut processing = element;
+  while processing.is_object() {
+    if let Some(uom) = processing["in"].as_str() {
+      processing["in"] = uom.resolve_to_json_object(ws);
+    }
+
+    let node = &processing["uom"];
+    if let Some(uom) = node.as_str() {
+      processing["uom"] = uom.resolve_to_json_object(ws);
+      break;
+    } else if node.is_object() {
+      processing = &mut processing["uom"];
+    } else {
+      break;
+    }
+  }
+}
+
 impl Enrich for JsonValue {
   fn enrich(&self, ws: &Workspace) -> JsonValue {
     let mut data = self.clone();
@@ -79,24 +98,20 @@ impl Enrich for JsonValue {
       enrich_qty(ws, &mut data["qty"]);
     }
 
-    fn enrich_qty(ws: &Workspace, element: &mut JsonValue) {
-      let mut processing = element;
-      while processing.is_object() {
-        if let Some(uom) = processing["in"].as_str() {
-          processing["in"] = uom.resolve_to_json_object(ws);
-        }
+    // if data["used"].is_array() && !data["used"].is_empty() {
+    //   println!("enrich_data {data:?}");
+    //   for element in data["used"].members_mut() {
+    //     enrich_qty(ws, element);
+    //   }
+    // }
 
-        let node = &processing["uom"];
-        if let Some(uom) = node.as_str() {
-          processing["uom"] = uom.resolve_to_json_object(ws);
-          break;
-        } else if node.is_object() {
-          processing = &mut processing["uom"];
-        } else {
-          break;
-        }
-      }
-    }
+    // if data["produced"].is_array() && !data["produced"].is_empty() {
+    //   println!("enrich_data {data:?}");
+    //   for element in data["produced"].members_mut() {
+    //     enrich_qty(ws, element);
+    //   }
+    // }
+
     // log::debug!("enrich_qty {:?}", data["qty"]);
     data
   }
