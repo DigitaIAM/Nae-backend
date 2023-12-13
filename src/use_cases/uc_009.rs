@@ -271,7 +271,7 @@ pub fn import(app: &Application) {
     println!("path ./import/receive_1s.csv already exists. Uploading from existing file to db...")
   }
 
-  store::process_records::receive_csv_to_json(
+  store::process_records::receive_csv_to_json_for_warehouse(
     app,
     "./import/receive_1s.csv",
     ["warehouse", "receive"].to_vec(),

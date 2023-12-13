@@ -578,6 +578,10 @@ async fn startup() -> io::Result<()> {
       }
       Ok(())
     },
+    "create" => match opt.case.as_str() {
+      "production" => use_cases::uc_create::create_production(&app),
+      _ => unreachable!(),
+    },
     "delete" => match opt.case.as_str() {
       "produce" => use_cases::uc_delete::delete_produce(&app),
       "transfer" => use_cases::uc_delete::delete_transfers_for_one_goods(

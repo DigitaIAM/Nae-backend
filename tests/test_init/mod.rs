@@ -18,7 +18,7 @@ use store::batch::Batch;
 use store::elements::{dt, Goods, Mode, Store};
 use store::error::WHError;
 use store::operations::{InternalOperation, OpMutation};
-use store::process_records::process_record;
+use store::process_records::process_warehouse_record;
 use store::qty::Qty;
 use store::GetWarehouse;
 use values::constants::_UUID;
@@ -75,7 +75,7 @@ pub fn create_record(
   for (record, ctx) in records {
     let data = csv::StringRecord::from(record);
 
-    process_record(app, &ctx, data)?;
+    process_warehouse_record(app, &ctx, data)?;
   }
 
   Ok(())

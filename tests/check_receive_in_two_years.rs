@@ -19,7 +19,7 @@ use store::balance::{BalanceForGoods, Cost};
 use store::batch::Batch;
 use store::elements::{dt, Goods, Mode, Store};
 use store::operations::{InternalOperation, OpMutation};
-use store::process_records::process_record;
+use store::process_records::process_warehouse_record;
 use store::qty::{Number, Qty};
 use store::GetWarehouse;
 
