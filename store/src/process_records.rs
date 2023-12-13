@@ -1,12 +1,12 @@
+use crate::elements::{dt, ToJson};
 use crate::GetWarehouse;
 use csv::{ReaderBuilder, StringRecord, Trim};
 use json::{object, JsonValue};
 use rust_decimal::Decimal;
-// use serde_json::json;
-use crate::elements::ToJson;
 use service::error::Error;
+use service::utils::json::JsonParams;
 use service::{Context, Services};
-use values::constants::_UUID;
+use values::constants::{_ID, _UUID};
 
 const COUNTERPARTY: [&str; 1] = ["counterparty"];
 const STORAGE: [&str; 2] = ["warehouse", "storage"];
@@ -43,7 +43,7 @@ pub fn report(
   log::debug!("report: {:#?}", result);
 }
 
-pub fn receive_csv_to_json(
+pub fn receive_csv_to_json_for_warehouse(
   app: &(impl GetWarehouse + Services),
   path: &str,
   ctx: Vec<&str>,
@@ -52,9 +52,27 @@ pub fn receive_csv_to_json(
   let mut reader = ReaderBuilder::new().delimiter(b',').trim(Trim::All).from_path(path).unwrap();
 
   for record in reader.records() {
-    process_record(app, &ctx, record.unwrap())?;
+    process_warehouse_record(app, &ctx, record.unwrap())?;
     // log::debug!("data: {_res:?}");
   }
+
+  Ok(())
+}
+
+pub fn receive_csv_to_json_for_production(
+  app: &(impl GetWarehouse + Services),
+  path: &str,
+) -> Result<(), Error> {
+  let mut reader = ReaderBuilder::new().delimiter(b',').trim(Trim::All).from_path(path).unwrap();
+
+  let mut count = 0;
+
+  for record in reader.records() {
+    process_production_record(app, record.unwrap())?;
+    count += 1;
+  }
+
+  println!("count: {count}");
 
   Ok(())
 }
@@ -101,7 +119,7 @@ fn json(
   }
 }
 
-pub fn process_record(
+pub fn process_warehouse_record(
   app: &(impl GetWarehouse + Services),
   ctx: &Vec<&str>,
   record: StringRecord,
@@ -319,6 +337,90 @@ pub fn process_record(
   }
 
   let _res = memories_create(app, data, ctx.clone())?;
+
+  // log::debug!("_res: {_res:#?}");
+
+  Ok(())
+}
+
+pub fn process_production_record(
+  app: &(impl GetWarehouse + Services),
+  record: StringRecord,
+) -> Result<(), Error> {
+  let (area_name, product_name) = match &record[0] {
+    "этикеровка" => match &record[4] {
+      "C95-230" => ("малые картонные этикетки", "стакан полипропилен"),
+      "A95-420" => ("большие картонные этикетки", "стакан полипропилен"),
+      "B95-270" => ("термоусадочная этикетка", "стакан полипропилен"),
+      _ => return Ok(()),
+    },
+    "крышка термоформовка" => ("крышка термоформовка", "крышка"),
+    "стакан термоформовка" => ("стакан термоформовка", "стакан полипропилен"),
+    _ => return Ok(()),
+  };
+
+  log::debug!("start process_production_record {record:?}");
+
+  let area = json(
+    app,
+    object! { name: area_name.to_string() },
+    vec!["production", "area"],
+    &|| object! { name: area_name.to_string() },
+  )?;
+
+  let product_filter = object! {
+    name: product_name.to_string().to_json(),
+    part_number: record[4].to_string().to_json(),
+  };
+
+  let product = json(app, product_filter.clone(), vec!["product"], &|| product_filter.clone())?;
+
+  let order_date = dt(&record[2]).unwrap();
+
+  let boxes_qty = record[7].parse::<usize>().unwrap();
+  let qty_in_box = record[8].parse::<usize>().unwrap();
+  let planned = boxes_qty * qty_in_box;
+
+  let order_id = if record[1].starts_with("production/") {
+    record[1].to_string()
+  } else {
+    let new_order = memories_create(
+      app,
+      object! { date: order_date.to_json(), area: area[_ID].clone(), product: product[_ID].clone(), planned: planned },
+      vec!["production", "order"],
+    )?;
+    new_order[_ID].string()
+  };
+
+  let piece_uom = String::from("1f93df2e-c423-45cf-8123-de02e0a0064e");
+  let box_uom = String::from("76db8665-68bf-4088-857a-cce650bac352");
+
+  let qty = object! {
+    "number": 1,
+    "uom": object! {
+      "number": qty_in_box,
+      "uom": piece_uom,
+      "in": box_uom,
+    }
+  };
+
+  for _ in 0..boxes_qty {
+    let mut data = object! {
+      document: order_id.to_json(),
+      date: order_date.to_json(),
+      qty: qty.clone(),
+    };
+
+    if &record[5] != "" {
+      data["customer"] = JsonValue::String(record[5].to_string());
+    }
+
+    if &record[6] != "" {
+      data["label"] = JsonValue::String(record[6].to_string());
+    }
+
+    let _res = memories_create(app, data, vec!["production", "produce"])?;
+  }
 
   // log::debug!("_res: {_res:#?}");
 

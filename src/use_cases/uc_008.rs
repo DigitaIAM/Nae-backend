@@ -3,7 +3,7 @@ use crate::commutator::Application;
 const WAREHOUSE_TRANSFER: [&str; 2] = ["warehouse", "transfer"];
 
 pub fn import(app: &Application) {
-  store::process_records::receive_csv_to_json(
+  store::process_records::receive_csv_to_json_for_warehouse(
     app,
     "./import/transfer.csv",
     WAREHOUSE_TRANSFER.to_vec(),

@@ -11,7 +11,7 @@ use nae_backend::memories::MemoriesInFiles;
 use nae_backend::storage::Workspaces;
 use service::utils::json::JsonParams;
 use service::{Context, Services};
-use store::process_records::process_record;
+use store::process_records::process_warehouse_record;
 use store::GetWarehouse;
 use values::constants::_UUID;
 use values::ID;
