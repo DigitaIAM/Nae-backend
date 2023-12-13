@@ -108,6 +108,20 @@ impl Service for MemoriesInFiles {
     let memories = ws.memories(ctx.clone());
     let list = memories.list(Some(reverse))?;
 
+    fn show_deleted(ctx: &Vec<String>) -> bool {
+      let ctx: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+
+      match ctx[..] {
+        ["warehouse", "receive"] => true,
+        ["warehouse", "transfer"] => true,
+        ["warehouse", "dispatch"] => true,
+        ["production", "material", "used"] => true,
+        ["production", "material", "produced"] => true,
+        ["production", "produce"] => true,
+        _ => false,
+      }
+    }
+
     let search = &self.params(&params)["search"];
     let filters = &self.params(&params)["filter"];
     let (total, mut list): (isize, Vec<JsonValue>) = if let Some(search) = search.as_str() {
@@ -186,17 +200,6 @@ impl Service for MemoriesInFiles {
           .collect::<Result<_, _>>()?,
       )
     };
-
-    fn show_deleted(ctx: &Vec<String>) -> bool {
-      let ctx: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
-
-      match ctx[..] {
-        ["warehouse", "receive"] => true,
-        ["warehouse", "transfer"] => true,
-        ["warehouse", "dispatch"] => true,
-        _ => false,
-      }
-    }
 
     fn get_records(
       app: &impl GetLinks,
