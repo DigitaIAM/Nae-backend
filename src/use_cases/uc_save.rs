@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::commutator::Application;
 use csv::{ReaderBuilder, Trim, Writer};
 use json::{object, JsonValue};
@@ -5,9 +6,12 @@ use service::utils::json::JsonParams;
 use service::{Context, Services};
 use std::fs::OpenOptions;
 use std::io::{Error, ErrorKind};
+use std::str::FromStr;
+use chrono::Utc;
+use rust_decimal::Decimal;
 use store::error::WHError;
 use store::process_records::memories_find;
-use values::constants::{_DOCUMENT, _ID};
+use values::constants::{_DOCUMENT, _ID, _STATUS};
 use values::ID;
 
 pub fn save_roll(app: &Application) -> Result<(), Error> {
@@ -100,7 +104,12 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
   Ok(())
 }
 
-pub fn save_half_stuff_cups(app: &Application) -> Result<(), Error> {
+pub(crate) enum Product {
+  CUPS,
+  CAPS
+}
+
+pub fn save_half_stuff_products(app: &Application, product_type: Product) -> Result<(), Error> {
   let mut count = 0;
 
   let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
@@ -111,6 +120,13 @@ pub fn save_half_stuff_cups(app: &Application) -> Result<(), Error> {
   let produce_docs = ws.memories(ctx).list(Some(false))?;
 
   let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+
+  let mut records: HashMap<(String, String), Vec<String>> = HashMap::new();
+
+  let (area_name, file_name) = match product_type {
+    Product::CUPS => ("стакан термоформовка", "cups"),
+    Product::CAPS => ("крышка термоформовка", "caps")
+  };
 
   for doc in produce_docs {
     let ctx = doc.mem.ctx.clone();
@@ -135,6 +151,10 @@ pub fn save_half_stuff_cups(app: &Application) -> Result<(), Error> {
 
         println!("_produce {produce:?}");
 
+        if produce[_STATUS] == "deleted" {
+          continue;
+        }
+
         let order = match app.service("memories").get(
           Context::local(),
           doc.json()?[_DOCUMENT].string(),
@@ -155,7 +175,7 @@ pub fn save_half_stuff_cups(app: &Application) -> Result<(), Error> {
             Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find an area")), // TODO handle IO error differently!!!!
           };
 
-        if area["name"].as_str() == Some("стакан термоформовка") {
+        if area["name"].as_str() == Some(area_name) {
           // println!("_area {area:?}");
 
           let product = match app.service("memories").get(
@@ -169,28 +189,176 @@ pub fn save_half_stuff_cups(app: &Application) -> Result<(), Error> {
 
           // println!("_product {product:?}");
 
-          let file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .append(true)
-            .open("production_half_stuff_cups.csv")
-            .unwrap();
-          let mut wtr = Writer::from_writer(file);
+          let id = order[_ID].string();
+          let number = produce["qty"]["uom"]["number"].string();
 
-          wtr
-            .write_record([
-              order["date"].string(),
-              produce["date"].string(),
-              product["part_number"].string(),
-              produce["qty"].string(),
-            ])
-            .unwrap();
+          let mut record = records.entry((id.clone(), number.clone())).or_insert(vec![
+            id.clone(),
+            order["date"].string(),
+            produce["date"].string(),
+            product["part_number"].string(),
+            "0".to_string(),
+            number.clone(),
+            "0".to_string(),
+          ]);
+
+          let boxes = usize::from_str(record[4].as_str()).unwrap() + 1;
+          let sum = Decimal::try_from(record[6].as_str()).unwrap() + Decimal::try_from(number.as_str()).unwrap();
+
+          record[4] = boxes.to_string();
+          record[6] = sum.to_string();
 
           count += 1;
         }
       },
       _ => continue,
     }
+  }
+
+  let mut time = Utc::now().to_string();
+  time.truncate(19);
+
+  let file = OpenOptions::new()
+      .write(true)
+      .create(true)
+      .append(true)
+      .open(format!("half_stuff_{file_name}_{time}.csv"))
+      .unwrap();
+  let mut wtr = Writer::from_writer(file);
+
+  for record in records.into_iter() {
+    wtr
+      .write_record(record.1)
+      .unwrap();
+  }
+
+  println!("count {count}");
+
+  Ok(())
+}
+
+pub fn save_cups_and_caps(app: &Application) -> Result<(), Error> {
+  let mut count = 0;
+
+  let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
+      .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
+  let ws = app.wss.get(&oid);
+
+  let ctx = ["production".to_string(), "produce".to_string()].to_vec();
+  let produce_docs = ws.memories(ctx).list(Some(false))?;
+
+  let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+
+  let mut records: HashMap<(String, String, String, String), Vec<String>> = HashMap::new();
+
+  for doc in produce_docs {
+    let ctx = doc.mem.ctx.clone();
+
+    let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+
+    match ctx_str[..] {
+      ["production", "produce"] => {
+        // let doc_id = doc.id;
+        println!("{:?} {:?}", doc.id, doc.json()?);
+
+        let produce = match app.service("memories").get(
+          Context::local(),
+          doc.json()?[_ID].string(),
+          params.clone(),
+        ) {
+          Ok(d) => d,
+          Err(_) => {
+            return Err(Error::new(ErrorKind::InvalidData, "can't find a produced operation"))
+          }, // TODO handle IO error differently!!!!
+        };
+
+        if produce[_STATUS] == "deleted" {
+          continue;
+        }
+
+        let order = match app.service("memories").get(
+          Context::local(),
+          doc.json()?[_DOCUMENT].string(),
+          params.clone(),
+        ) {
+          Ok(d) => d,
+          Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find an order")), // TODO handle IO error differently!!!!
+        };
+
+        let area =
+            match app
+                .service("memories")
+                .get(Context::local(), order["area"].string(), params.clone())
+            {
+              Ok(p) => p,
+              Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find an area")), // TODO handle IO error differently!!!!
+            };
+
+        if area["name"].as_str() == Some("термоусадочная этикетка") ||
+            area["name"].as_str() == Some("большие картонные этикетки") ||
+            area["name"].as_str() == Some("малые картонные этикетки") ||
+            area["name"].as_str() == Some("офсетная печать") ||
+            area["name"].as_str() == Some("крышка термоформовка") {
+          println!("_produce {produce:?}");
+          println!("_order {order:?}");
+          // println!("_area {area:?}");
+
+          let product = match app.service("memories").get(
+            Context::local(),
+            order["product"].string(),
+            params.clone(),
+          ) {
+            Ok(p) => p,
+            Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find a product")), // TODO handle IO error differently!!!!
+          };
+
+          println!("_product {product:?}");
+
+          let id = order[_ID].string();
+          let number = produce["qty"]["uom"]["number"].string();
+          let customer = produce["customer"].string();
+          let label = produce["label"].string();
+
+          let mut record = records.entry((id.clone(), number.clone(), customer.clone(), label.clone())).or_insert(vec![
+            id.clone(),
+            order["date"].string(),
+            produce["date"].string(),
+            product["part_number"].string(),
+            customer.clone(),
+            label.clone(),
+            "0".to_string(),
+            number.clone(),
+            "0".to_string(),
+          ]);
+
+          let boxes = usize::from_str(record[6].as_str()).unwrap() + 1;
+          let sum = Decimal::try_from(record[8].as_str()).unwrap() + Decimal::try_from(number.as_str()).unwrap();
+
+          record[6] = boxes.to_string();
+          record[8] = sum.to_string();
+
+          count += 1;
+        }
+      },
+      _ => continue,
+    }
+  }
+
+  let mut time = Utc::now().naive_local().to_string();
+  time.truncate(19);
+
+  let file = OpenOptions::new()
+      .write(true)
+      .create(true)
+      .append(true)
+      .open(format!("production_cups_caps_{time}.csv"))
+      .unwrap();
+  let mut wtr = Writer::from_writer(file);
+
+  for record in records.into_iter() {
+    wtr
+        .write_record(record.1)
+        .unwrap();
   }
 
   println!("count {count}");

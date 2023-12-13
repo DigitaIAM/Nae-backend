@@ -593,7 +593,9 @@ async fn startup() -> io::Result<()> {
     },
     "save" => match opt.case.as_str() {
       "roll" => use_cases::uc_save::save_roll(&app),
-      "cups" => use_cases::uc_save::save_half_stuff_cups(&app),
+      "cups" => use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CUPS),
+      "caps" => use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CAPS),
+      "products" => use_cases::uc_save::save_cups_and_caps(&app),
       "produced" => use_cases::uc_save::save_produced(&app),
       "file_transfer" => use_cases::uc_save::save_transfer_from_file(&app),
       "goods_transfer" => use_cases::uc_save::save_transfer_for_goods(&app),
