@@ -19,6 +19,8 @@ const GOODS: [&str; 1] = ["goods"];
 const CATEGORY: [&str; 2] = ["goods", "category"];
 const CURRENCY: [&str; 1] = ["currency"];
 
+const OID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
+
 pub fn report(
   app: &(impl GetWarehouse + Services),
   _company: &str,
@@ -27,8 +29,7 @@ pub fn report(
   till_date: &str,
 ) {
   log::debug!("CSV_REPORT");
-  // let oid = ID::from(company);
-  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
+
   let ctx = vec!["report"];
 
   let storage =
@@ -36,7 +37,7 @@ pub fn report(
 
   log::debug!("STORAGE: {:?}", storage[_UUID]);
 
-  let params: JsonValue = object! {ctx: ctx, oid: oid, storage: storage[_UUID].clone(), dates: {"from": from_date, "till": till_date}};
+  let params: JsonValue = object! {ctx: ctx, oid: OID, storage: storage[_UUID].clone(), dates: {"from": from_date, "till": till_date}};
 
   let result = app.service("inventory").find(Context::local(), params).unwrap();
 
@@ -51,10 +52,14 @@ pub fn receive_csv_to_json_for_warehouse(
 ) -> Result<(), Error> {
   let mut reader = ReaderBuilder::new().delimiter(b',').trim(Trim::All).from_path(path).unwrap();
 
+  let mut count = 0;
+
   for record in reader.records() {
     process_warehouse_record(app, &ctx, record.unwrap())?;
-    // log::debug!("data: {_res:?}");
+    count += 1;
   }
+
+  println!("count: {count}");
 
   Ok(())
 }
@@ -82,8 +87,7 @@ pub fn memories_find(
   filter: JsonValue,
   ctx: Vec<&str>,
 ) -> Result<Vec<JsonValue>, Error> {
-  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-  let params = object! {oid: oid, ctx: ctx, filter: filter, "$limit": 100};
+  let params = object! {oid: OID, ctx: ctx, filter: filter, "$limit": 100};
   let result = app.service("memories").find(Context::local(), params)?;
 
   Ok(result["data"].members().cloned().collect())
@@ -94,8 +98,7 @@ pub fn memories_create(
   data: JsonValue,
   ctx: Vec<&str>,
 ) -> Result<JsonValue, Error> {
-  let oid = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
-  let params = object! {oid: oid, ctx: ctx };
+  let params = object! {oid: OID, ctx: ctx };
   let result = app.service("memories").create(Context::local(), data, params)?;
 
   // log::debug!("create_result: {result:?}");
@@ -129,6 +132,7 @@ pub fn process_warehouse_record(
     "производственное сырьё" => "производственное сырьё",
     "стройматериалы" => "стройматериалы",
     "инструменты" => "инструменты",
+    "производство" => "производство",
     _ => return Ok(()),
   };
 
@@ -303,12 +307,12 @@ pub fn process_warehouse_record(
     object! {name: "uzd"}
   })?;
 
-  let _comment = match &record[11] {
-    "" => None,
-    s => Some(s),
-  };
-
-  let comment = record[11].trim();
+  // let _comment = match &record[11] {
+  //   "" => None,
+  //   s => Some(s),
+  // };
+  //
+  // let comment = record[11].trim();
 
   let mut data = object! {
     document: document["_id"].clone(),
@@ -332,9 +336,9 @@ pub fn process_warehouse_record(
     }
   }
 
-  if !comment.is_empty() {
-    data["comment"] = comment.into();
-  }
+  // if !comment.is_empty() {
+  //   data["comment"] = comment.into();
+  // }
 
   let _res = memories_create(app, data, ctx.clone())?;
 
@@ -343,37 +347,46 @@ pub fn process_warehouse_record(
   Ok(())
 }
 
+// production areas
+const SMALL_CARDBOARD_LABELS: &str = "production/area/2023-02-13T05:44:28.742Z"; // "малые картонные этикетки"
+const BIG_CARDBOARD_LABELS: &str = "production/area/2023-02-13T05:44:41.272Z"; // "большие картонные этикетки"
+const HEAT_SHRINK_LABELS: &str = "production/area/2023-11-10T11:18:57.746Z"; // "термоусадочная этикетка"
+const CAP_THERMOFORMING: &str = "production/area/2023-02-08T05:58:21.725Z"; // "крышка термоформовка"
+const CUPS_THERMOFORMING: &str = "production/area/2023-02-08T05:58:15.598Z"; // "стакан термоформовка"
+
+// products
+const C95_230: &str = "product/2023-02-13T05:52:46.192Z"; // "стакан полипропилен C95-230"
+const A95_420: &str = "product/2023-02-07T06:48:41.284Z"; // "стакан полипропилен A95-420"
+const B95_270: &str = "product/2023-02-13T05:53:30.198Z"; // "стакан полипропилен B95-270"
+const CA_35: &str = "product/2023-07-21T12:35:58.665Z"; // "крышка CA-35"
+const CA_50: &str = "product/2023-02-22T05:45:19.667Z"; // "крышка CA-50"
+
 pub fn process_production_record(
   app: &(impl GetWarehouse + Services),
   record: StringRecord,
 ) -> Result<(), Error> {
-  let (area_name, product_name) = match &record[0] {
+  let (area_id, product_id) = match &record[0] {
     "этикеровка" => match &record[4] {
-      "C95-230" => ("малые картонные этикетки", "стакан полипропилен"),
-      "A95-420" => ("большие картонные этикетки", "стакан полипропилен"),
-      "B95-270" => ("термоусадочная этикетка", "стакан полипропилен"),
+      "C95-230" => (SMALL_CARDBOARD_LABELS, C95_230),
+      "A95-420" => (BIG_CARDBOARD_LABELS, A95_420),
+      "B95-270" => (HEAT_SHRINK_LABELS, B95_270),
       _ => return Ok(()),
     },
-    "крышка термоформовка" => ("крышка термоформовка", "крышка"),
-    "стакан термоформовка" => ("стакан термоформовка", "стакан полипропилен"),
+    "крышка термоформовка" => match &record[4] {
+      "CA-35" => (CAP_THERMOFORMING, CA_35),
+      "CA-50" => (CAP_THERMOFORMING, CA_50),
+      _ => return Ok(()),
+    },
+    "стакан термоформовка" => match &record[4] {
+      "C95-230" => (CUPS_THERMOFORMING, C95_230),
+      "A95-420" => (CUPS_THERMOFORMING, A95_420),
+      "B95-270" => (CUPS_THERMOFORMING, B95_270),
+      _ => return Ok(()),
+    },
     _ => return Ok(()),
   };
 
   log::debug!("start process_production_record {record:?}");
-
-  let area = json(
-    app,
-    object! { name: area_name.to_string() },
-    vec!["production", "area"],
-    &|| object! { name: area_name.to_string() },
-  )?;
-
-  let product_filter = object! {
-    name: product_name.to_string().to_json(),
-    part_number: record[4].to_string().to_json(),
-  };
-
-  let product = json(app, product_filter.clone(), vec!["product"], &|| product_filter.clone())?;
 
   let order_date = dt(&record[2]).unwrap();
 
@@ -386,7 +399,7 @@ pub fn process_production_record(
   } else {
     let new_order = memories_create(
       app,
-      object! { date: order_date.to_json(), area: area[_ID].clone(), product: product[_ID].clone(), planned: planned },
+      object! { date: order_date.to_json(), area: area_id.to_string().to_json(), product: product_id.to_string().to_json(), planned: planned },
       vec!["production", "order"],
     )?;
     new_order[_ID].string()
@@ -420,9 +433,8 @@ pub fn process_production_record(
     }
 
     let _res = memories_create(app, data, vec!["production", "produce"])?;
+    // log::debug!("_res: {_res:#?}");
   }
-
-  // log::debug!("_res: {_res:#?}");
 
   Ok(())
 }
