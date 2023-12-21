@@ -14,6 +14,16 @@ use store::process_records::memories_find;
 use values::constants::{_DOCUMENT, _ID, _STATUS};
 use values::ID;
 
+pub enum Product {
+  CUPS,
+  CAPS,
+}
+
+pub enum Material {
+  PRODUCED,
+  USED,
+}
+
 pub fn save_roll(app: &Application) -> Result<(), Error> {
   let mut count = 0;
 
@@ -25,6 +35,11 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
   let produce_docs = ws.memories(ctx).list(Some(false))?;
 
   let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+
+  let mut records: HashMap<(String, String), Vec<String>> = HashMap::new();
+
+  let mut time = Utc::now().to_string();
+  time.truncate(19);
 
   for doc in produce_docs {
     let ctx = doc.mem.ctx.clone();
@@ -71,26 +86,46 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
 
         // println!("_product {product:?}");
 
-        if product["name"].as_str() == Some("Рулон полипропилен") {
+        // "Рулон полипропилен"
+        if product[_ID].as_str() == Some("product/2023-04-10T11:37:09.735Z") {
           let material = order["material"].string().replace(',', ".");
-          let file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .append(true)
-            .open("production_roll.csv")
-            .unwrap();
-          let mut wtr = Writer::from_writer(file);
 
-          wtr
-            .write_record([
-              order["date"].string(),
-              produce["date"].string(),
-              order["thickness"].string(),
-              material,
-              produce["qty"].string(),
-              produce[_ID].string(),
-            ])
-            .unwrap();
+          let id = order[_ID].string();
+          let thickness = order["thickness"].string();
+
+          let inner_number = produce["qty"]["uom"]["number"].string();
+          let outer_number = produce["qty"]["number"].string();
+          let number = if inner_number != "" {
+            inner_number
+          } else if outer_number != "" {
+            outer_number
+          } else {
+            continue;
+          };
+
+          //       order[_ID].string(),
+          //       order["date"].string(),
+          //       produce["date"].string(),
+          //       order["thickness"].string(),
+          //       material,
+          //       produce["qty"]["uom"]["number"].string(),
+          //       produce[_ID].string(),
+          let mut record = records.entry((id.clone(), thickness.clone())).or_insert(vec![
+            id.clone(),
+            order["date"].string(),
+            produce["date"].string(),
+            thickness,
+            material,
+            "0".to_string(),
+            "0".to_string(),
+          ]);
+
+          let boxes = usize::from_str(record[5].as_str()).unwrap() + 1;
+          let sum = Decimal::try_from(record[6].as_str()).unwrap()
+            + Decimal::try_from(number.as_str()).unwrap();
+
+          record[5] = boxes.to_string();
+          record[6] = sum.to_string();
 
           count += 1;
         }
@@ -99,14 +134,34 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
     }
   }
 
+  let file = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .append(true)
+    .open(format!("production_roll_{time}.csv"))
+    .unwrap();
+
+  let mut wtr = Writer::from_writer(file);
+
+  for record in records.into_iter() {
+    wtr.write_record(record.1).unwrap();
+  }
+
+  // wtr
+  //     .write_record([
+  //       order[_ID].string(),
+  //       order["date"].string(),
+  //       produce["date"].string(),
+  //       order["thickness"].string(),
+  //       material,
+  //       produce["qty"]["uom"]["number"].string(),
+  //       produce[_ID].string(),
+  //     ])
+  //     .unwrap();
+
   println!("count {count}");
 
   Ok(())
-}
-
-pub enum Product {
-  CUPS,
-  CAPS,
 }
 
 pub fn save_half_stuff_products(app: &Application, product_type: Product) -> Result<(), Error> {
@@ -190,7 +245,15 @@ pub fn save_half_stuff_products(app: &Application, product_type: Product) -> Res
           // println!("_product {product:?}");
 
           let id = order[_ID].string();
-          let number = produce["qty"]["uom"]["number"].string();
+          let inner_number = produce["qty"]["uom"]["number"].string();
+          let outer_number = produce["qty"]["number"].string();
+          let number = if inner_number != "" {
+            inner_number
+          } else if outer_number != "" {
+            outer_number
+          } else {
+            continue;
+          };
 
           let mut record = records.entry((id.clone(), number.clone())).or_insert(vec![
             id.clone(),
@@ -367,144 +430,204 @@ pub fn save_cups_and_caps(app: &Application) -> Result<(), Error> {
   Ok(())
 }
 
-pub fn save_produced(app: &Application) -> Result<(), Error> {
+pub fn save_material(app: &Application, material: Material) -> Result<(), Error> {
   let mut count = 0;
 
   let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
     .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
   let ws = app.wss.get(&oid);
 
-  let ctx = ["production".to_string(), "material".to_string(), "produced".to_string()].to_vec();
-  let produced_docs = ws.memories(ctx).list(None)?;
+  let (ctx, file_name) = match material {
+    Material::PRODUCED => {
+      (vec!["production".to_string(), "material".to_string(), "produced".to_string()], "produced")
+    },
+    Material::USED => {
+      (vec!["production".to_string(), "material".to_string(), "used".to_string()], "used")
+    },
+  };
+
+  // let ctx = ["production".to_string(), "material".to_string(), "produced".to_string()].to_vec();
+  let docs = ws.memories(ctx.clone()).list(None)?;
 
   let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
 
-  for doc in produced_docs {
-    let ctx = doc.mem.ctx.clone();
+  let mut time = Utc::now().to_string();
+  time.truncate(19);
 
-    let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+  let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
 
-    match ctx_str[..] {
-      ["production", "material", "produced"] => {
-        // let doc_id = doc.id;
-        println!("{:?} {:?}", doc.id, doc.json()?);
+  let mut records: HashMap<(String, String), Vec<String>> = HashMap::new();
 
-        let produced = match app.service("memories").get(
-          Context::local(),
-          doc.json()?[_ID].string(),
-          params.clone(),
-        ) {
-          Ok(d) => d,
-          Err(_) => {
-            return Err(Error::new(ErrorKind::InvalidData, "can't find a produce operation"))
-          }, // TODO handle IO error differently!!!!
-        };
+  for doc in docs {
+    let doc_ctx = doc.mem.ctx.clone();
 
-        println!("_produced {produced:?}");
+    let doc_ctx_str: Vec<&str> = doc_ctx.iter().map(|s| s.as_str()).collect();
 
-        let order = match app.service("memories").get(
-          Context::local(),
-          doc.json()?[_DOCUMENT].string(),
-          params.clone(),
-        ) {
-          Ok(d) => d,
-          Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find an order")), // TODO handle IO error differently!!!!
-        };
+    if doc_ctx_str[..] == ctx_str[..] {
+      // let doc_id = doc.id;
+      println!("{:?} {:?}", doc.id, doc.json()?);
 
-        println!("_order {order:?}");
+      let used_or_produced_record = match app.service("memories").get(
+        Context::local(),
+        doc.json()?[_ID].string(),
+        params.clone(),
+      ) {
+        Ok(d) => d,
+        Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find a produce operation")), // TODO handle IO error differently!!!!
+      };
 
-        let area =
-          match app
-            .service("memories")
-            .get(Context::local(), order["area"].string(), params.clone())
-          {
-            Ok(p) => p,
-            Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find an area")), // TODO handle IO error differently!!!!
-          };
+      println!("used_or_produced_record {used_or_produced_record:?}");
 
-        let product = match app.service("memories").get(
-          Context::local(),
-          order["product"].string(),
-          params.clone(),
-        ) {
+      let order = match app.service("memories").get(
+        Context::local(),
+        doc.json()?[_DOCUMENT].string(),
+        params.clone(),
+      ) {
+        Ok(d) => d,
+        Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find an order")), // TODO handle IO error differently!!!!
+      };
+
+      println!("_order {order:?}");
+
+      let area =
+        match app
+          .service("memories")
+          .get(Context::local(), order["area"].string(), params.clone())
+        {
           Ok(p) => p,
-          Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find a product")), // TODO handle IO error differently!!!!
+          Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find an area")), // TODO handle IO error differently!!!!
         };
 
-        let goods = match app.service("memories").get(
-          Context::local(),
-          produced["goods"].string(),
-          params.clone(),
-        ) {
-          Ok(p) => p,
-          Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find a goods")), // TODO handle IO error differently!!!!
-        };
+      let _product = match app.service("memories").get(
+        Context::local(),
+        order["product"].string(),
+        params.clone(),
+      ) {
+        Ok(p) => p,
+        Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find a product")), // TODO handle IO error differently!!!!
+      };
 
-        println!("_goods {goods:?}");
+      let goods = match app.service("memories").get(
+        Context::local(),
+        used_or_produced_record["goods"].string(),
+        params.clone(),
+      ) {
+        Ok(p) => p,
+        Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find a goods")), // TODO handle IO error differently!!!!
+      };
 
-        let mut uom = produced["qty"]["uom"].clone();
+      println!("_goods {goods:?}");
 
-        let mut qty_str = String::new();
+      let mut uom = used_or_produced_record["qty"]["uom"].clone();
 
-        qty_str = format!("{} {} ", qty_str, produced["qty"]["number"].string());
+      let mut qty_str = String::new();
 
-        while uom.is_object() {
-          if !uom["in"].is_null() {
-            let in_name =
-              match app
-                .service("memories")
-                .get(Context::local(), uom["in"].string(), params.clone())
-              {
-                Ok(i) => i["name"].string(),
-                Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find in_uom")), // TODO handle IO error differently!!!!
-              };
-            qty_str = format!("{} {} ", qty_str, in_name);
-          }
+      qty_str = format!("{} {} ", qty_str, used_or_produced_record["qty"]["number"].string());
 
-          qty_str = format!("{} {} ", qty_str, uom["number"].string());
-
-          uom = uom["uom"].clone();
+      while uom.is_object() {
+        if !uom["in"].is_null() {
+          let in_name =
+            match app
+              .service("memories")
+              .get(Context::local(), uom["in"].string(), params.clone())
+            {
+              Ok(i) => i["name"].string(),
+              Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find in_uom")), // TODO handle IO error differently!!!!
+            };
+          qty_str = format!("{} {} ", qty_str, in_name);
         }
 
-        let uom_name =
-          match app.service("memories").get(Context::local(), uom.string(), params.clone()) {
-            Ok(u) => u["name"].string(),
-            Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find uom")), // TODO handle IO error differently!!!!
-          };
-        qty_str = format!("{} {} ", qty_str, uom_name);
+        qty_str = format!("{} {} ", qty_str, uom["number"].string());
 
-        // println!("qty_str {qty_str}");
+        uom = uom["uom"].clone();
+      }
 
-        let file = OpenOptions::new()
-          .write(true)
-          .create(true)
-          .append(true)
-          .open("production_produced.csv")
-          .unwrap();
-        let mut wtr = Writer::from_writer(file);
+      let uom_name =
+        match app.service("memories").get(Context::local(), uom.string(), params.clone()) {
+          Ok(u) => u["name"].string(),
+          Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find uom")), // TODO handle IO error differently!!!!
+        };
+      qty_str = format!("{} {} ", qty_str, uom_name);
 
-        wtr
-          .write_record([
-            order["date"].string(),
-            area["name"].string(),
-            format!(
-              "{} {} {} ",
-              product["name"].string(),
-              product["part_number"].string(),
-              order["thickness"].string()
-            ),
-            goods["name"].string(),
-            produced["qty"]["number"].string(),
-            qty_str,
-            produced[_ID].string(),
-          ])
-          .unwrap();
+      // println!("qty_str {qty_str}");
 
-        count += 1;
-      },
-      _ => continue,
+      let id = order[_ID].string();
+      let goods_name = goods["name"].string();
+
+      let inner_number = used_or_produced_record["qty"]["uom"]["number"].string().replace(',', ".");
+      let outer_number = used_or_produced_record["qty"]["number"].string().replace(',', ".");
+      let number = if inner_number != "" {
+        inner_number
+      } else if outer_number != "" {
+        outer_number
+      } else {
+        continue;
+      };
+
+      //       order[_ID].string(),
+      //       order["date"].string(),
+      //       area["name"].string(),
+      //       format!(
+      //         "{} {} {} ",
+      //         product["name"].string(),
+      //         product["part_number"].string(),
+      //         order["thickness"].string()
+      //       ),
+      //       goods["name"].string(),
+      //       produced["qty"]["number"].string(),
+      //       qty_str,
+      //       produced[_ID].string(),
+      let mut record = records.entry((id.clone(), goods_name.clone())).or_insert(vec![
+        id.clone(),
+        order["date"].string(),
+        area["name"].string(),
+        goods_name,
+        "0".to_string(),
+        "0".to_string(),
+      ]);
+
+      let boxes = usize::from_str(record[4].as_str()).unwrap() + 1;
+      let sum =
+        Decimal::try_from(record[5].as_str()).unwrap() + Decimal::try_from(number.as_str()).unwrap();
+
+      record[4] = boxes.to_string();
+      record[5] = sum.to_string();
+
+      count += 1;
+    } else {
+      continue;
     }
   }
+
+  let file = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .append(true)
+    .open(format!("production_material_{file_name}_{time}.csv"))
+    .unwrap();
+  let mut wtr = Writer::from_writer(file);
+
+  for record in records.into_iter() {
+    wtr.write_record(record.1).unwrap();
+  }
+
+  // wtr
+  //     .write_record([
+  //       order[_ID].string(),
+  //       order["date"].string(),
+  //       area["name"].string(),
+  //       format!(
+  //         "{} {} {} ",
+  //         product["name"].string(),
+  //         product["part_number"].string(),
+  //         order["thickness"].string()
+  //       ),
+  //       goods["name"].string(),
+  //       produced["qty"]["number"].string(),
+  //       qty_str,
+  //       produced[_ID].string(),
+  //     ])
+  //     .unwrap();
 
   println!("count {count}");
 
