@@ -49,6 +49,7 @@ use crate::memories::MemoriesInFiles;
 use crate::settings::Settings;
 use crate::storage::organizations::Workspace;
 use crate::storage::Workspaces;
+use crate::use_cases::uc_save::Material;
 use crate::warehouse::primitive_types::Decimal;
 use animo::db::AnimoDB;
 use animo::memory::Memory;
@@ -593,10 +594,15 @@ async fn startup() -> io::Result<()> {
     },
     "save" => match opt.case.as_str() {
       "roll" => use_cases::uc_save::save_roll(&app),
-      "cups" => use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CUPS),
-      "caps" => use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CAPS),
+      "cups" => {
+        use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CUPS)
+      },
+      "caps" => {
+        use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CAPS)
+      },
       "products" => use_cases::uc_save::save_cups_and_caps(&app),
-      "produced" => use_cases::uc_save::save_produced(&app),
+      "produced" => use_cases::uc_save::save_material(&app, Material::PRODUCED),
+      "used" => use_cases::uc_save::save_material(&app, Material::USED),
       "file_transfer" => use_cases::uc_save::save_transfer_from_file(&app),
       "goods_transfer" => use_cases::uc_save::save_transfer_for_goods(&app),
       _ => unreachable!(),
@@ -604,6 +610,9 @@ async fn startup() -> io::Result<()> {
     "replace" => match opt.case.as_str() {
       "goods" => {
         use_cases::uc_replace::replace_goods(&app, "Полипропилен дробленный", "Полипропилен (дроб)")
+      },
+      "goods_with_uom" => {
+        use_cases::uc_replace::replace_uom_and_goods(&app, "./import/uom_and_goods.csv")
       },
       _ => unreachable!(),
     },
