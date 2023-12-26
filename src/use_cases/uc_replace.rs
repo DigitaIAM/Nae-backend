@@ -11,7 +11,7 @@ use std::string::ToString;
 use store::elements::ToJson;
 use store::error::WHError;
 use store::process_records::{memories_create, memories_find};
-use values::constants::_ID;
+use values::constants::{_ID, _UUID};
 use values::ID;
 
 fn patch(app: &Application, ws: &Workspace, item: JsonValue, ctx: Vec<String>) -> Result<(), Error> {
@@ -130,7 +130,7 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
     {
       match items.len() {
         0 => Err(WHError::new("not found")),
-        1 => Ok(items[0][_ID].string()),
+        1 => Ok(items[0][_UUID].string()),
         _ => Err(WHError::new("too many goods found")),
       }
     } else {
@@ -143,6 +143,18 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
 
     let new_goods_name = record[3].to_string();
 
+    let old_uom = if old_goods["uom"].is_object() {
+      old_goods["uom"][_ID].string()
+    } else {
+      old_goods["uom"].string()
+    };
+
+    let old_category = if old_goods["category"].is_object() {
+      old_goods["category"][_ID].string()
+    } else {
+      old_goods["category"].string()
+    };
+
     let new_goods_id = if let Ok(items) =
       memories_find(app, object! { name: new_goods_name.clone() }, goods_ctx.clone())
     {
@@ -152,8 +164,8 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
             app,
             object! {
               name: new_goods_name,
-              uom: old_goods["uom"].string(),
-              category: old_goods["category"].string(),
+              uom: old_uom,
+              category: old_category,
             },
             goods_ctx.clone(),
           )?[_ID]
@@ -199,6 +211,7 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
 
             let pieces = Decimal::try_from(string_number.as_str()).unwrap();
 
+            // TODO need to be only pieces for used material
             let new_qty = pieces / capacity;
             let one = Decimal::ONE;
 
@@ -216,9 +229,11 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
               // make an array of qty
               let remainder = pieces % capacity;
 
+              // println!("new_qty {} vs. remainder {}", new_qty, remainder);
+
               after["qty"] = JsonValue::Array(vec![
                 object! {
-                  number: (new_qty - remainder).to_json(),
+                  number: (new_qty.trunc()).to_json(),
                   uom: inner_qty.clone(),
                 },
                 object! {
@@ -230,6 +245,7 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
               // normal case
               after["qty"] = object! {number: new_qty.to_json(), uom: inner_qty.clone()};
             }
+            // println!("after[\"qty\"] {:?}", after["qty"]);
 
             patch(app, &ws, after, ctx)?;
             count += 1;
