@@ -585,10 +585,19 @@ async fn startup() -> io::Result<()> {
     },
     "delete" => match opt.case.as_str() {
       "produce" => use_cases::uc_delete::delete_produce(&app),
-      "transfer" => use_cases::uc_delete::delete_transfers_for_one_goods(
+      "transfer" => use_cases::uc_delete::delete_ops_for_goods(
         &app,
-        Some("склад"),
-        "Полипропилен (дроб)",
+        vec!["warehouse".to_string(), "transfer".to_string()],
+        // Some("склад"),
+        None,
+        "Скотч односторонний бесцветный широкий",
+      ),
+      "receive" => use_cases::uc_delete::delete_ops_for_goods(
+        &app,
+        vec!["warehouse".to_string(), "receive".to_string()],
+        // Some("склад"),
+        None,
+        "Скотч односторонний бесцветный широкий",
       ),
       _ => unreachable!(),
     },

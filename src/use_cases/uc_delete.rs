@@ -72,8 +72,9 @@ pub fn delete_produce(app: &Application) -> Result<(), Error> {
   Ok(())
 }
 
-pub fn delete_transfers_for_one_goods(
+pub fn delete_ops_for_goods(
   app: &Application,
+  ctx: Vec<String>,
   storage_name: Option<&str>,
   goods_name: &str,
 ) -> Result<(), Error> {
@@ -83,10 +84,9 @@ pub fn delete_transfers_for_one_goods(
     .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
   let ws = app.wss.get(&oid);
 
-  let ctx = ["warehouse".to_string(), "transfer".to_string()].to_vec();
-  let transfer_ops = ws.memories(ctx).list(Some(false))?;
+  let ops = ws.memories(ctx.clone()).list(Some(false))?;
 
-  println!("transfer_ops {:?}", transfer_ops.len());
+  println!("ops for deleting: {:?}", ops.len());
 
   let storage_id = if let Some(storage_name) = storage_name {
     find_object_field(
@@ -108,10 +108,15 @@ pub fn delete_transfers_for_one_goods(
 
   println!("_goods {goods_id:?}");
 
-  for op in transfer_ops {
-    let ctx = op.mem.clone().ctx;
+  let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
 
-    let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+  // warehouse/transfer
+  let op_id_str = ctx_str.join("/");
+
+  for op in ops {
+    let op_ctx = op.mem.clone().ctx;
+
+    let op_ctx_str: Vec<&str> = op_ctx.iter().map(|s| s.as_str()).collect();
 
     let op_id = op.id.clone();
 
@@ -119,13 +124,18 @@ pub fn delete_transfers_for_one_goods(
 
     println!("_operationn {op:?}");
 
-    match ctx_str[..] {
-      ["warehouse", "transfer"] => {
+    match op_ctx_str {
+      context => {
+        if context != ctx_str { continue; }
+
         if !storage_id.is_empty() {
+          let mut doc_ctx = ctx_str.clone();
+          doc_ctx.push("document");
+
           let document = if let Ok(docs) = memories_find(
             app,
             object! { _id: op[_DOCUMENT].string() },
-            ["warehouse", "transfer", "document"].to_vec(),
+            doc_ctx,
           ) {
             match docs.len() {
               0 => Err(WHError::new("zero found")),
@@ -139,7 +149,8 @@ pub fn delete_transfers_for_one_goods(
 
           println!("_doc {document:?}");
 
-          if document["from"]["_id"].string() != storage_id
+          if document["storage"]["_id"].string() != storage_id
+            && document["from"]["_id"].string() != storage_id
             && document["into"]["_id"].string() != storage_id
           {
             continue;
@@ -150,7 +161,7 @@ pub fn delete_transfers_for_one_goods(
           let params = object! {oid: ws.id.to_string(), ctx: [], enrich: false };
           let mut operation = match app.service("memories").get(
             Context::local(),
-            format!("warehouse/transfer/{}", op_id),
+            format!("{}/{}", op_id_str, op_id),
             params,
           ) {
             Ok(d) => d,
@@ -158,10 +169,10 @@ pub fn delete_transfers_for_one_goods(
           };
           operation[_STATUS] = "deleted".into();
 
-          let params = object! {oid: ws.id.to_string(), ctx: vec!["warehouse", "transfer"] };
+          let params = object! {oid: ws.id.to_string(), ctx: ctx_str.clone() };
           let _op = app.service("memories").patch(
             Context::local(),
-            format!("warehouse/transfer/{}", op_id),
+            format!("{}/{}", op_id_str, op_id),
             operation,
             params,
           )?;
@@ -170,7 +181,6 @@ pub fn delete_transfers_for_one_goods(
           count += 1;
         }
       },
-      _ => continue,
     }
   }
   println!("count {count}");
