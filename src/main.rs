@@ -79,7 +79,7 @@ struct Opt {
   data: PathBuf,
 }
 
-async fn fix_topologies(app: Application) -> io::Result<()> {
+async fn log_or_fix_topology_errors(app: Application, operation_type: &str) -> io::Result<()> {
   let mut count = 0;
 
   // let mut prev_op: Option<Op> = None;
@@ -88,7 +88,7 @@ async fn fix_topologies(app: Application) -> io::Result<()> {
   let topology = &app.warehouse.database.ordered_topologies[0];
 
   let time = Utc::now().to_string();
-  let path = format!("./fix_logs/fix_log_{}.txt", &time);
+  let path = format!("./fix_logs/{}_log_{}.txt", operation_type, &time);
   let mut log_file = File::create(path.clone())?;
 
   for item in topology.db().iterator_cf(&topology.cf().unwrap(), rocksdb::IteratorMode::Start) {
@@ -175,42 +175,50 @@ async fn fix_topologies(app: Application) -> io::Result<()> {
       let old = format!("op {:?}\nold: balance {:?}", cur, op_balance);
       let new = format!("\nnew: balance {:?}\n\n", cur_balance);
 
+      let (old, new) = if operation_type == "fix" {
+        (format!("op {:?}\nold: balance {:?}", cur, op_balance), format!("\nnew: balance {:?}\n\n", cur_balance))
+      } else {
+        (format!("op {:?}\ntopology: balance {:?}", cur, op_balance), format!("\nmust be: balance {:?}\n\n", cur_balance))
+      };
+
       log_file.write_all(old.as_bytes())?;
       log_file.write_all(new.as_bytes())?;
 
-      let next_op_date = match topology.operation_after(&cur, true) {
-        Ok(res) => {
-          if let Some((next_op, _)) = res {
-            Some(next_op.date)
-          } else {
-            None
-          }
-        },
-        Err(e) => {
-          println!("check_ops ERROR: {}", e.message());
-          return Err(Error::new(ErrorKind::NotFound, "check_ops ERROR"));
-        },
-      };
+      if operation_type == "fix" {
+        let next_op_date = match topology.operation_after(&cur, true) {
+          Ok(res) => {
+            if let Some((next_op, _)) = res {
+              Some(next_op.date)
+            } else {
+              None
+            }
+          },
+          Err(e) => {
+            println!("check_ops ERROR: {}", e.message());
+            return Err(Error::new(ErrorKind::NotFound, "check_ops ERROR"));
+          },
+        };
 
-      let cur_mut = OpMutation::new(
-        cur.id,
-        cur.date,
-        cur.store,
-        cur.store_into,
-        cur.goods,
-        cur.batch.clone(),
-        Some(cur.op.clone()),
-        Some(cur.op.clone()),
-      );
+        let cur_mut = OpMutation::new(
+          cur.id,
+          cur.date,
+          cur.store,
+          cur.store_into,
+          cur.goods,
+          cur.batch.clone(),
+          Some(cur.op.clone()),
+          Some(cur.op.clone()),
+        );
 
-      for ordered_topology in app.warehouse.database.ordered_topologies.iter() {
-        ordered_topology.put(&cur, cur_balance).unwrap();
-      }
+        for ordered_topology in app.warehouse.database.ordered_topologies.iter() {
+          ordered_topology.put(&cur, cur_balance).unwrap();
+        }
 
-      for checkpoint_topology in app.warehouse.database.checkpoint_topologies.iter() {
-        checkpoint_topology
-          .checkpoint_update(&cur_mut, next_op_date, cur_balance)
-          .unwrap();
+        for checkpoint_topology in app.warehouse.database.checkpoint_topologies.iter() {
+          checkpoint_topology
+              .checkpoint_update(&cur_mut, next_op_date, cur_balance)
+              .unwrap();
+        }
       }
     }
   }
@@ -625,7 +633,8 @@ async fn startup() -> io::Result<()> {
       },
       _ => unreachable!(),
     },
-    "fix" => fix_topologies(app).await,
+    "fix" => log_or_fix_topology_errors(app, "fix").await,
+    "log_errors" => log_or_fix_topology_errors(app, "errors").await,
     _ => unreachable!(),
   }
 }
