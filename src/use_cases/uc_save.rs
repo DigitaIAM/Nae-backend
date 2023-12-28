@@ -478,6 +478,10 @@ pub fn save_material(app: &Application, material: Material) -> Result<(), Error>
 
       println!("used_or_produced_record {used_or_produced_record:?}");
 
+      if used_or_produced_record[_STATUS] == "deleted" {
+        continue;
+      }
+
       let order = match app.service("memories").get(
         Context::local(),
         doc.json()?[_DOCUMENT].string(),
@@ -488,6 +492,15 @@ pub fn save_material(app: &Application, material: Material) -> Result<(), Error>
       };
 
       println!("_order {order:?}");
+
+      let product = match app.service("memories").get(
+        Context::local(),
+        order["product"].string(),
+        params.clone(),
+      ) {
+        Ok(d) => d,
+        Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find a product")), // TODO handle IO error differently!!!!
+      };
 
       let area =
         match app
@@ -564,34 +577,22 @@ pub fn save_material(app: &Application, material: Material) -> Result<(), Error>
         continue;
       };
 
-      //       order[_ID].string(),
-      //       order["date"].string(),
-      //       area["name"].string(),
-      //       format!(
-      //         "{} {} {} ",
-      //         product["name"].string(),
-      //         product["part_number"].string(),
-      //         order["thickness"].string()
-      //       ),
-      //       goods["name"].string(),
-      //       produced["qty"]["number"].string(),
-      //       qty_str,
-      //       produced[_ID].string(),
       let mut record = records.entry((id.clone(), goods_name.clone())).or_insert(vec![
         id.clone(),
         order["date"].string(),
         area["name"].string(),
+        format!("{} {}", product["part_number"].string(), order["thickness"].string()),
         goods_name,
         "0".to_string(),
         "0".to_string(),
       ]);
 
-      let boxes = usize::from_str(record[4].as_str()).unwrap() + 1;
+      let boxes = usize::from_str(record[5].as_str()).unwrap() + 1;
       let sum =
-        Decimal::try_from(record[5].as_str()).unwrap() + Decimal::try_from(number.as_str()).unwrap();
+        Decimal::try_from(record[6].as_str()).unwrap() + Decimal::try_from(number.as_str()).unwrap();
 
-      record[4] = boxes.to_string();
-      record[5] = sum.to_string();
+      record[5] = boxes.to_string();
+      record[6] = sum.to_string();
 
       count += 1;
     } else {
@@ -610,24 +611,6 @@ pub fn save_material(app: &Application, material: Material) -> Result<(), Error>
   for record in records.into_iter() {
     wtr.write_record(record.1).unwrap();
   }
-
-  // wtr
-  //     .write_record([
-  //       order[_ID].string(),
-  //       order["date"].string(),
-  //       area["name"].string(),
-  //       format!(
-  //         "{} {} {} ",
-  //         product["name"].string(),
-  //         product["part_number"].string(),
-  //         order["thickness"].string()
-  //       ),
-  //       goods["name"].string(),
-  //       produced["qty"]["number"].string(),
-  //       qty_str,
-  //       produced[_ID].string(),
-  //     ])
-  //     .unwrap();
 
   println!("count {count}");
 
@@ -771,21 +754,20 @@ pub fn save_transfer_for_goods(app: &Application) -> Result<(), Error> {
 
   let filter = object! {goods: goods[_ID].string()};
 
-  let transfer_ops =
-    if let Ok(items) = memories_find(app, filter, ["warehouse", "receive"].to_vec()) {
-      match items.len() {
-        0 => Err(WHError::new("not found")),
-        1 => Ok(items),
-        _ => Ok(items),
-      }
-    } else {
-      Err(WHError::new("not found"))
+  let ops = if let Ok(items) = memories_find(app, filter, ["warehouse", "receive"].to_vec()) {
+    match items.len() {
+      0 => Err(WHError::new("not found")),
+      1 => Ok(items),
+      _ => Ok(items),
     }
-    .unwrap();
+  } else {
+    Err(WHError::new("not found"))
+  }
+  .unwrap();
 
-  println!("_transfers: {:?}", transfer_ops.len());
+  println!("_ops: {:?}", ops.len());
 
-  for transfer in transfer_ops {
+  for transfer in ops {
     let document = match app.service("memories").get(
       Context::local(),
       transfer[_DOCUMENT].string(),
@@ -852,6 +834,91 @@ pub fn save_transfer_for_goods(app: &Application) -> Result<(), Error> {
       .unwrap();
 
     count += 1;
+  }
+
+  println!("count {count}");
+
+  Ok(())
+}
+
+pub fn save_all_ops_for_goods(app: &Application) -> Result<(), Error> {
+  let mut count = 0;
+
+  let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
+    .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
+  let ws = app.wss.get(&oid);
+
+  let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+
+  let file = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .append(true)
+    .open("paper_labels.csv")
+    .unwrap();
+  let mut wtr = Writer::from_writer(file);
+
+  for doc in ws.clone().into_iter() {
+    let ctx = doc.mem.ctx.clone();
+
+    let data = doc.json().unwrap();
+
+    // {"document":"warehouse/transfer/document/2023-05-12T09:08:24.970Z","goods":"goods/2023-05-12T09:08:16.838Z",
+    // "qty":{"number":"21000","uom":"1f93df2e-c423-45cf-8123-de02e0a0064e"},"storage_into":"warehouse/storage/2023-04-20T06:53:15.222Z",
+    // "_id":"warehouse/transfer/2023-05-12T09:08:24.990Z","_uuid":"3173617d-60f7-4dff-83ce-0aa2fc7b3b6b"}
+
+    let goods_params = object! {oid: ws.id.to_string().as_str(), ctx: ["goods"], enrich: false };
+    let goods = match app.service("memories").get(
+      Context::local(),
+      data["goods"].string(),
+      goods_params.clone(),
+    ) {
+      Ok(p) => p,
+      Err(_) => JsonValue::Null,
+    };
+
+    if goods["name"].string().starts_with("Этикетка картон. Каймак Pure Milky 350гр")
+    {
+      let document = app
+        .service("memories")
+        .get(Context::local(), data[_DOCUMENT].string(), params.clone())
+        .unwrap_or_else(|_| JsonValue::Null);
+
+      let counterparty = app
+        .service("memories")
+        .get(Context::local(), document["counterparty"].string(), params.clone())
+        .unwrap_or_else(|_| JsonValue::Null);
+
+      let storage = app
+        .service("memories")
+        .get(Context::local(), document["storage"].string(), params.clone())
+        .unwrap_or_else(|_| JsonValue::Null);
+
+      let from = app
+        .service("memories")
+        .get(Context::local(), document["from"].string(), params.clone())
+        .unwrap_or_else(|_| JsonValue::Null);
+
+      let into = app
+        .service("memories")
+        .get(Context::local(), document["into"].string(), params.clone())
+        .unwrap_or_else(|_| JsonValue::Null);
+
+      wtr
+        .write_record([
+          ctx.join("_"),
+          document["date"].string(),
+          goods["name"].string(),
+          data["qty"].to_string(),
+          counterparty["name"].string(),
+          storage["name"].string(),
+          from["name"].string(),
+          into["name"].string(),
+        ])
+        .unwrap();
+
+      count += 1;
+    }
   }
 
   println!("count {count}");

@@ -176,9 +176,15 @@ async fn log_or_fix_topology_errors(app: Application, operation_type: &str) -> i
       let new = format!("\nnew: balance {:?}\n\n", cur_balance);
 
       let (old, new) = if operation_type == "fix" {
-        (format!("op {:?}\nold: balance {:?}", cur, op_balance), format!("\nnew: balance {:?}\n\n", cur_balance))
+        (
+          format!("op {:?}\nold: balance {:?}", cur, op_balance),
+          format!("\nnew: balance {:?}\n\n", cur_balance),
+        )
       } else {
-        (format!("op {:?}\ntopology: balance {:?}", cur, op_balance), format!("\nmust be: balance {:?}\n\n", cur_balance))
+        (
+          format!("op {:?}\ntopology: balance {:?}", cur, op_balance),
+          format!("\nmust be: balance {:?}\n\n", cur_balance),
+        )
       };
 
       log_file.write_all(old.as_bytes())?;
@@ -216,8 +222,8 @@ async fn log_or_fix_topology_errors(app: Application, operation_type: &str) -> i
 
         for checkpoint_topology in app.warehouse.database.checkpoint_topologies.iter() {
           checkpoint_topology
-              .checkpoint_update(&cur_mut, next_op_date, cur_balance)
-              .unwrap();
+            .checkpoint_update(&cur_mut, next_op_date, cur_balance)
+            .unwrap();
         }
       }
     }
@@ -622,6 +628,7 @@ async fn startup() -> io::Result<()> {
       "used" => use_cases::uc_save::save_material(&app, Material::USED),
       "file_transfer" => use_cases::uc_save::save_transfer_from_file(&app),
       "goods_transfer" => use_cases::uc_save::save_transfer_for_goods(&app),
+      "goods_ops" => use_cases::uc_save::save_all_ops_for_goods(&app),
       _ => unreachable!(),
     },
     "replace" => match opt.case.as_str() {

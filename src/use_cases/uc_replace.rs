@@ -107,7 +107,7 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
     .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
   let ws = app.wss.get(&oid);
 
-  for record in reader.records().skip(0) {
+  for record in reader.records().skip(1) {
     let record = record.unwrap();
     let old_goods_name = record[0].to_string();
     let new_uom_name = record[1].to_string();
@@ -204,30 +204,29 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
             let mut inner_qty = after["qty"].clone();
             let old_uom = after["qty"]["uom"].clone();
 
-            let string_number = inner_qty["number"].to_string(); // TODO why .string() doesn't work there?
+            let pieces = inner_qty["number"].number_or_none().unwrap(); // TODO why .string() doesn't work there?
 
             println!("inner_qty: {}", inner_qty.clone());
-            println!("string_number: {}", string_number);
-
-            let pieces = Decimal::try_from(string_number.as_str()).unwrap();
+            println!("pieces: {}", pieces);
 
             // TODO need to be only pieces for used material
+            let remainder = pieces % capacity;
             let new_qty = pieces / capacity;
-            let one = Decimal::ONE;
 
-            if new_qty < one {
+            if new_qty < Decimal::ONE {
               // do not change qty
               patch(app, &ws, after, ctx)?;
               count += 1;
               continue;
             }
 
-            inner_qty["number"] = capacity.to_json();
-            inner_qty["in"] = new_uom_id.to_json();
+            let inner_qty = object! {
+             "number": capacity.to_json(),
+              "in": new_uom_id.to_json(),
+            };
 
-            if (new_qty % one) > Decimal::ZERO {
+            if remainder != Decimal::ZERO {
               // make an array of qty
-              let remainder = pieces % capacity;
 
               // println!("new_qty {} vs. remainder {}", new_qty, remainder);
 
