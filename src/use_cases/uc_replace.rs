@@ -24,6 +24,19 @@ fn patch(app: &Application, ws: &Workspace, item: JsonValue, ctx: Vec<String>) -
   Ok(())
 }
 
+fn create(
+  app: &Application,
+  ws: &Workspace,
+  item: JsonValue,
+  ctx: Vec<String>,
+) -> Result<(), Error> {
+  let params = object! {oid: ws.id.to_string(), ctx: ctx };
+  let _rec = app.service("memories").create(Context::local(), item, params)?;
+  log::debug!("__rec {:#?}", _rec.dump());
+
+  Ok(())
+}
+
 pub fn replace_goods(app: &Application, old_name: &str, new_name: &str) -> Result<(), Error> {
   let mut count = 0;
 
@@ -107,10 +120,12 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
     .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
   let ws = app.wss.get(&oid);
 
-  for record in reader.records().skip(1) {
+  for record in reader.records() {
     let record = record.unwrap();
     let old_goods_name = record[0].to_string();
     let new_uom_name = record[1].to_string();
+
+    println!("old_goods_name {old_goods_name} new_uom_name {new_uom_name}");
 
     let mut old_goods = if let Ok(items) =
       memories_find(app, object! { name: old_goods_name.to_string() }, goods_ctx.clone())
@@ -187,7 +202,9 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
       let mut after = doc.json().unwrap();
 
       match ctx_str[..] {
-        ["goods"] => continue,
+        ["goods"] | ["production", "material", "used"] | ["production", "material", "produced"] => {
+          continue
+        },
         _ => {
           if !after["goods"].is_null() && after["goods"].string() == old_goods[_ID].string() {
             // println!("_goods {} vs {}", after["goods"].string(), old_goods[_ID].string());
@@ -204,14 +221,16 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
             let mut inner_qty = after["qty"].clone();
             let old_uom = after["qty"]["uom"].clone();
 
-            let pieces = inner_qty["number"].number_or_none().unwrap(); // TODO why .string() doesn't work there?
+            let pieces = inner_qty["number"].number_or_none().unwrap();
 
-            println!("inner_qty: {}", inner_qty.clone());
+            println!("inner_qty: {}", inner_qty);
             println!("pieces: {}", pieces);
 
-            // TODO need to be only pieces for used material
             let remainder = pieces % capacity;
             let new_qty = pieces / capacity;
+
+            println!("new_qty: {}", new_qty);
+            println!("remainder: {}", remainder);
 
             if new_qty < Decimal::ONE {
               // do not change qty
@@ -222,29 +241,46 @@ pub fn replace_uom_and_goods(app: &Application, path: &str) -> Result<(), Error>
 
             let inner_qty = object! {
              "number": capacity.to_json(),
+              "uom": old_uom.clone(),
               "in": new_uom_id.to_json(),
             };
 
             if remainder != Decimal::ZERO {
-              // make an array of qty
+              // make two different records for different uoms
 
               // println!("new_qty {} vs. remainder {}", new_qty, remainder);
+              let insert_new = object! {
+                number: remainder.to_json(),
+                uom: old_uom.clone(),
+              };
 
-              after["qty"] = JsonValue::Array(vec![
-                object! {
-                  number: (new_qty.trunc()).to_json(),
-                  uom: inner_qty.clone(),
-                },
-                object! {
-                  number: remainder.to_json(),
-                  uom: old_uom.clone(),
-                },
-              ]);
+              let mut new_data = after.clone();
+              new_data["qty"] = insert_new;
+              new_data.remove(_ID);
+              new_data.remove(_UUID);
+
+              if !after["cost"].is_null() {
+                let old_cost = after["cost"]["number"].number_or_none().unwrap();
+                let price = old_cost / pieces;
+                let new_cost = price * remainder;
+
+                new_data["cost"]["number"] = new_cost.to_json();
+                after["cost"]["number"] = (old_cost - new_cost).to_json();
+              }
+
+              create(app, &ws, new_data, ctx.clone())?;
+
+              after["qty"] = object! {
+                number: (new_qty.trunc()).to_json(),
+                uom: inner_qty.clone(),
+              };
             } else {
               // normal case
               after["qty"] = object! {number: new_qty.to_json(), uom: inner_qty.clone()};
             }
             // println!("after[\"qty\"] {:?}", after["qty"]);
+
+            println!("after {after:?}");
 
             patch(app, &ws, after, ctx)?;
             count += 1;

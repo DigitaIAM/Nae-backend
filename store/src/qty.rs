@@ -17,6 +17,26 @@ pub enum Uom {
   In(Uuid, Option<Box<Number<Uom>>>),
 }
 
+impl Uom {
+  pub fn contain(&self, other: &Uom) -> bool {
+    let mut check = self;
+    loop {
+      if check == other {
+        break true;
+      }
+      match check {
+        Uom::In(_, qty) => {
+          if let Some(q) = qty {
+            check = &q.name
+          } else {
+            break false;
+          }
+        },
+      }
+    }
+  }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, PartialOrd, Eq, Hash, Serialize, Deserialize)]
 pub struct Number<N> {
   pub number: Decimal,
@@ -436,7 +456,7 @@ impl Number<Uom> {
 
       if left_depth == right_depth {
         while let (Some(l), Some(r)) = (left.named(), right.named()) {
-          println!("{l:?} vs {r:?}");
+          // println!("{l:?} vs {r:?}");
           if left.name == right.name {
             return Some(left.name);
           } else if l.name == r.name {
@@ -594,11 +614,11 @@ impl Qty {
 
   pub fn is_negative(&self) -> bool {
     for qty in &self.inner {
-      if qty.is_positive() || qty.is_zero() {
-        return false;
+      if qty.is_negative() {
+        return true;
       }
     }
-    true
+    false
   }
 
   pub fn is_zero(&self) -> bool {
@@ -639,6 +659,28 @@ impl Qty {
       }
     }
     result
+  }
+
+  pub fn have(&self, rhs: &Self) -> bool {
+    for right in &rhs.inner {
+      for left in &self.inner {
+        if &left.name == &right.name {
+          return true;
+        }
+      }
+    }
+    false
+  }
+
+  pub fn contain(&self, rhs: &Self) -> bool {
+    for right in &rhs.inner {
+      for left in &self.inner {
+        if left.name.contain(&right.name) {
+          return true;
+        }
+      }
+    }
+    false
   }
 
   pub fn common(&self, rhs: &Self) -> Option<Uom> {

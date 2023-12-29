@@ -172,7 +172,7 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     for (_k, value) in (bytes_from.clone()..bytes_till.clone()).lookup(&self.db, &self.cf()?)? {
       let (op, b) = self.from_bytes(&value)?;
 
-      debug!("loaded_op {op:#?}\n > {b:?}");
+      // debug!("loaded_op {op:#?}\n > {b:?}");
 
       // exclude virtual nodes
       if op.dependant.is_empty() {

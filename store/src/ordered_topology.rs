@@ -5,6 +5,7 @@ use crate::db::Db;
 use crate::elements::{dt, Goods, Mode, Report, Store, WHError};
 use crate::operations::{Dependant, InternalOperation, Op, OpMutation};
 
+use crate::qty::Qty;
 use chrono::{DateTime, Utc};
 use json::JsonValue;
 use rocksdb::{BoundColumnFamily, ColumnFamilyDescriptor, IteratorMode, Options, DB};
@@ -934,25 +935,30 @@ impl<'a> PropagationFront<'a> {
 
     let mut new_dependant: Vec<Dependant> = vec![];
 
-    for (batch, balance) in balances_before_operation {
-      if qty.is_zero() {
-        break;
-      }
+    let mut balances_before_operation = balances_before_operation;
 
-      if !balance.qty.is_positive() || batch == Batch::no() {
-        continue;
-      } else if let Some(common) = qty.common(&balance.qty) {
-        let left = qty.lowering(&common).unwrap();
-        let right = balance.qty.lowering(&common).unwrap();
+    'top: for exactly_match in [true, false] {
+      let mut new_balances_before_operation = vec![];
+      for (batch, balance) in balances_before_operation {
+        if qty.is_zero() {
+          break 'top;
+        }
 
-        if left.number() == right.number() {
-          let result = &balance.qty - &qty;
-          if result.is_zero() {
+        if !balance.qty.is_positive() || batch == Batch::no() {
+          continue;
+        } else if (exactly_match && balance.qty.have(&qty))
+          || (!exactly_match && balance.qty.contain(&qty))
+        {
+          // TODO rethink this as [1box, 2each] - [3box] still should allow to reduce by 2each
+          let uom = qty.common(&qty).unwrap();
+          let recalculated = balance.qty.lowering(&uom).unwrap();
+          let result = &Qty::new(vec![recalculated]) - &qty;
+          if result.is_zero() || result.is_negative() {
             let mut new = op.clone();
             new.is_dependent = true;
             new.dependant = vec![];
             new.batch = batch;
-            new.op = InternalOperation::Issue(qty.clone(), balance.cost, Mode::Auto);
+            new.op = InternalOperation::Issue(balance.qty.clone(), balance.cost.clone(), Mode::Auto);
             log::debug!("NEW_OP partly: qty {qty:?} balance {balance:?} op {new:#?}");
 
             // let balance_before = self.mt.balance_before(&new)?;
@@ -961,58 +967,45 @@ impl<'a> PropagationFront<'a> {
             new_dependant.push(Dependant::from(&new));
             self.insert(new)?;
 
-            qty = result;
+            qty -= &balance.qty;
           } else {
-            continue;
+            let price = if let Some(price) = qty.price(&balance) {
+              price
+            } else {
+              continue;
+            };
+
+            let mut new = op.clone();
+            new.is_dependent = true;
+            new.dependant = vec![];
+            new.batch = batch.clone();
+            let cost = &qty * price;
+            new.op = InternalOperation::Issue(qty.clone(), cost.clone(), Mode::Auto);
+            log::debug!("NEW_OP full: qty {qty:?} balance {balance:?} op {new:#?}");
+
+            let mut new_balance = balance.clone();
+            new_balance.qty -= &qty;
+            new_balance.cost -= &cost;
+            new_balances_before_operation.push((batch, new_balance));
+
+            // let balance_before = self.balance_before(&new)?;
+            // assert_eq!(balance, balance_before);
+
+            new_dependant.push(Dependant::from(&new));
+            self.insert(new)?;
+
+            qty -= &qty.clone();
+            // log::debug!("NEW_OP: qty {:?}", qty);
           }
-        } else if left.number() > right.number() {
-          let issue = right.elevate_to_qty(&qty);
 
-          let mut new = op.clone();
-          new.is_dependent = true;
-          new.dependant = vec![];
-          new.batch = batch;
-          new.op = InternalOperation::Issue(issue.clone(), balance.cost, Mode::Auto);
-          log::debug!("NEW_OP partly: qty {qty:?} balance {balance:?} op {new:#?}");
-
-          // let balance_before = self.mt.balance_before(&new)?;
-          // assert_eq!(balance, balance_before);
-
-          new_dependant.push(Dependant::from(&new));
-          self.insert(new)?;
-
-          qty -= &issue;
-
-          // log::debug!("NEW_OP: qty {:?}", qty);
+          if !qty.is_positive() {
+            break;
+          }
         } else {
-          let price = if let Some(price) = qty.price(&balance) {
-            price
-          } else {
-            continue;
-          };
-
-          let mut new = op.clone();
-          new.is_dependent = true;
-          new.dependant = vec![];
-          new.batch = batch;
-          let cost = &qty * price;
-          new.op = InternalOperation::Issue(qty.clone(), cost, Mode::Auto);
-          log::debug!("NEW_OP full: qty {qty:?} balance {balance:?} op {new:#?}");
-
-          // let balance_before = self.balance_before(&new)?;
-          // assert_eq!(balance, balance_before);
-
-          new_dependant.push(Dependant::from(&new));
-          self.insert(new)?;
-
-          qty -= &qty.clone();
-          // log::debug!("NEW_OP: qty {:?}", qty);
-        }
-
-        if !qty.is_positive() {
-          break;
+          new_balances_before_operation.push((batch, balance));
         }
       }
+      balances_before_operation = new_balances_before_operation;
     }
 
     log::debug!("issue qty left {qty:?}");

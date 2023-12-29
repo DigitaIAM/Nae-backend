@@ -72,7 +72,7 @@ impl OrderedTopology for StoreBatchDateTypeId {
   }
 
   fn balance_before(&self, op: &Op) -> Result<BalanceForGoods, WHError> {
-    log::debug!("balance_before {:#?}", op);
+    // log::debug!("balance_before {:#?}", op);
 
     let key = self.key(op);
 
@@ -89,7 +89,7 @@ impl OrderedTopology for StoreBatchDateTypeId {
 
       let (loaded_op, balance) = self.from_bytes(&v)?;
 
-      log::debug!("fn_balance_before: loaded_op {loaded_op:#?}\nbalance {balance:#?}");
+      // log::debug!("fn_balance_before: loaded_op {loaded_op:#?}\nbalance {balance:#?}");
 
       if loaded_op.store != op.store || loaded_op.goods != op.goods || loaded_op.batch != op.batch {
         // log::debug!("break");

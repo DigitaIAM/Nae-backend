@@ -8,10 +8,11 @@ use actix_web_httpauth::extractors::bearer::{BearerAuth, Config};
 use actix_web_httpauth::extractors::AuthenticationError;
 use actix_web_httpauth::middleware::HttpAuthentication;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use dbase::{FieldValue, Record};
-use json::JsonValue;
+use json::{object, JsonValue};
 use lazy_static::lazy_static;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Write};
@@ -79,7 +80,7 @@ struct Opt {
   data: PathBuf,
 }
 
-async fn log_or_fix_topology_errors(app: Application, operation_type: &str) -> io::Result<()> {
+async fn log_or_fix_topology_errors(app: Application, fixing: bool) -> io::Result<()> {
   let mut count = 0;
 
   // let mut prev_op: Option<Op> = None;
@@ -88,7 +89,7 @@ async fn log_or_fix_topology_errors(app: Application, operation_type: &str) -> i
   let topology = &app.warehouse.database.ordered_topologies[0];
 
   let time = Utc::now().to_string();
-  let path = format!("./fix_logs/{}_log_{}.txt", operation_type, &time);
+  let path = format!("./fix_logs/{}_log_{}.txt", fixing, &time);
   let mut log_file = File::create(path.clone())?;
 
   for item in topology.db().iterator_cf(&topology.cf().unwrap(), rocksdb::IteratorMode::Start) {
@@ -168,14 +169,17 @@ async fn log_or_fix_topology_errors(app: Application, operation_type: &str) -> i
 
     // assert_eq!(cur_balance, &op_balance, "\ncount {}", count);
 
+    if cur_balance.qty.is_negative() {
+      println!("op {:?}", cur);
+      println!("balance after {:?}", cur_balance);
+      panic!();
+    }
+
     if cur_balance != &op_balance {
       count += 1;
       println!("NOT_EQUAL \n{cur_balance:?} \nvs. {op_balance:?}");
 
-      let old = format!("op {:?}\nold: balance {:?}", cur, op_balance);
-      let new = format!("\nnew: balance {:?}\n\n", cur_balance);
-
-      let (old, new) = if operation_type == "fix" {
+      let (old, new) = if fixing {
         (
           format!("op {:?}\nold: balance {:?}", cur, op_balance),
           format!("\nnew: balance {:?}\n\n", cur_balance),
@@ -190,7 +194,7 @@ async fn log_or_fix_topology_errors(app: Application, operation_type: &str) -> i
       log_file.write_all(old.as_bytes())?;
       log_file.write_all(new.as_bytes())?;
 
-      if operation_type == "fix" {
+      if fixing {
         let next_op_date = match topology.operation_after(&cur, true) {
           Ok(res) => {
             if let Some((next_op, _)) = res {
@@ -241,18 +245,55 @@ async fn reindex(
 ) -> io::Result<()> {
   let mut count = 0;
   for ws in app.wss.list()? {
+    let mut docs = vec![];
     for doc in ws.clone().into_iter() {
+      // println!("{:?} {:?}", doc.id, doc.json().unwrap());
+
+      let ctx = doc.mem.ctx.clone();
+      let mut after = doc.json().unwrap();
+
+      if after["goods"].string() != "goods/2023-12-29T12:56:04.785Z".to_string() {
+        continue;
+      }
+
+      let date = after["date"].date_with_check().unwrap_or_else(|_| {
+        let doc_id = after[_DOCUMENT].string();
+        match ws.resolve_id(doc_id.as_str()) {
+          Some(d) => d.json().unwrap()["date"]
+            .date_with_check()
+            .unwrap_or_else(|_| DateTime::default()),
+          None => DateTime::default(),
+        }
+      });
+
+      docs.push((doc, ctx, date));
+    }
+    docs.sort_by(|a, b| {
+      let c = a.2.cmp(&b.2);
+      if c == Ordering::Equal {
+        if a.1 == b.1 {
+          c
+        } else {
+          if a.1 == vec!["warehouse", "receive"] {
+            Ordering::Greater
+          } else if a.1 == vec!["warehouse", "issue"] {
+            Ordering::Less
+          } else {
+            Ordering::Equal
+          }
+        }
+      } else {
+        c
+      }
+    });
+
+    for (doc, ..) in docs {
       // println!("{:?} {:?}", doc.id, doc.json().unwrap());
 
       let ctx = &doc.mem.ctx;
 
       let before = JsonValue::Null;
       let mut after = doc.json().unwrap();
-
-      // goods/2023-05-12T09:08:16.827Z
-      // if after["goods"].string() != "goods/2023-05-12T09:08:16.827Z".to_string() {
-      //   continue;
-      // }
 
       count += 1;
 
@@ -640,8 +681,8 @@ async fn startup() -> io::Result<()> {
       },
       _ => unreachable!(),
     },
-    "fix" => log_or_fix_topology_errors(app, "fix").await,
-    "log_errors" => log_or_fix_topology_errors(app, "errors").await,
+    "fix" => log_or_fix_topology_errors(app, true).await,
+    "log_errors" => log_or_fix_topology_errors(app, false).await,
     _ => unreachable!(),
   }
 }
