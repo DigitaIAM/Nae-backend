@@ -669,7 +669,7 @@ async fn startup() -> io::Result<()> {
       "used" => use_cases::uc_save::save_material(&app, Material::USED),
       "file_transfer" => use_cases::uc_save::save_transfer_from_file(&app),
       "goods_transfer" => use_cases::uc_save::save_transfer_for_goods(&app),
-      "goods_ops" => use_cases::uc_save::save_all_ops_for_goods(&app),
+      "goods_ops" => use_cases::uc_save::save_all_ops_for_goods(&app, "Скотч односторонний бесцветный широкий"),
       _ => unreachable!(),
     },
     "replace" => match opt.case.as_str() {

@@ -841,7 +841,7 @@ pub fn save_transfer_for_goods(app: &Application) -> Result<(), Error> {
   Ok(())
 }
 
-pub fn save_all_ops_for_goods(app: &Application) -> Result<(), Error> {
+pub fn save_all_ops_for_goods(app: &Application, goods_name: &str) -> Result<(), Error> {
   let mut count = 0;
 
   let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
@@ -854,7 +854,7 @@ pub fn save_all_ops_for_goods(app: &Application) -> Result<(), Error> {
     .write(true)
     .create(true)
     .append(true)
-    .open("paper_labels.csv")
+    .open(format!("{goods_name}.csv"))
     .unwrap();
   let mut wtr = Writer::from_writer(file);
 
@@ -877,7 +877,9 @@ pub fn save_all_ops_for_goods(app: &Application) -> Result<(), Error> {
       Err(_) => JsonValue::Null,
     };
 
-    if goods["name"].string().starts_with("Этикетка картон. Каймак Pure Milky 350гр")
+    // "Этикетка картон. Каймак Pure Milky 350гр"
+    // "Скотч односторонний бесцветный широкий"
+    if goods["name"].string().starts_with(goods_name)
     {
       let document = app
         .service("memories")
