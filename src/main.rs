@@ -657,7 +657,8 @@ async fn startup() -> io::Result<()> {
       _ => unreachable!(),
     },
     "save" => match opt.case.as_str() {
-      "roll" => use_cases::uc_save::save_roll(&app),
+      "roll" => use_cases::uc_save::save_roll(&app, false),
+      "roll_pieces" => use_cases::uc_save::save_roll(&app, true),
       "cups" => {
         use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CUPS)
       },
@@ -665,11 +666,15 @@ async fn startup() -> io::Result<()> {
         use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CAPS)
       },
       "products" => use_cases::uc_save::save_cups_and_caps(&app),
-      "produced" => use_cases::uc_save::save_material(&app, Material::PRODUCED),
-      "used" => use_cases::uc_save::save_material(&app, Material::USED),
+      "produced" => use_cases::uc_save::save_material(&app, Material::PRODUCED, false),
+      "produced_pieces" => use_cases::uc_save::save_material(&app, Material::PRODUCED, true),
+      "used" => use_cases::uc_save::save_material(&app, Material::USED, false),
+      "used_pieces" => use_cases::uc_save::save_material(&app, Material::USED, true),
       "file_transfer" => use_cases::uc_save::save_transfer_from_file(&app),
       "goods_transfer" => use_cases::uc_save::save_transfer_for_goods(&app),
-      "goods_ops" => use_cases::uc_save::save_all_ops_for_goods(&app, "Скотч односторонний бесцветный широкий"),
+      "goods_ops" => {
+        use_cases::uc_save::save_all_ops_for_goods(&app, "Скотч односторонний бесцветный широкий")
+      },
       _ => unreachable!(),
     },
     "replace" => match opt.case.as_str() {

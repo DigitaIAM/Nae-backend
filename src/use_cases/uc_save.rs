@@ -24,7 +24,7 @@ pub enum Material {
   USED,
 }
 
-pub fn save_roll(app: &Application) -> Result<(), Error> {
+pub fn save_roll(app: &Application, by_piece: bool) -> Result<(), Error> {
   let mut count = 0;
 
   let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
@@ -40,6 +40,15 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
 
   let mut time = Utc::now().to_string();
   time.truncate(19);
+
+  let file = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .append(true)
+    .open(format!("production_roll_{time}.csv"))
+    .unwrap();
+
+  let mut wtr = Writer::from_writer(file);
 
   for doc in produce_docs {
     let ctx = doc.mem.ctx.clone();
@@ -103,30 +112,36 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
             continue;
           };
 
-          //       order[_ID].string(),
-          //       order["date"].string(),
-          //       produce["date"].string(),
-          //       order["thickness"].string(),
-          //       material,
-          //       produce["qty"]["uom"]["number"].string(),
-          //       produce[_ID].string(),
-          let mut record = records.entry((id.clone(), thickness.clone())).or_insert(vec![
-            id.clone(),
-            order["date"].string(),
-            produce["date"].string(),
-            thickness,
-            material,
-            "0".to_string(),
-            "0".to_string(),
-          ]);
+          if by_piece {
+            wtr
+              .write_record([
+                order[_ID].string(),
+                order["date"].string(),
+                produce["date"].string(),
+                order["thickness"].string(),
+                material,
+                produce["qty"]["uom"]["number"].string(),
+                produce[_ID].string(),
+              ])
+              .unwrap();
+          } else {
+            let mut record = records.entry((id.clone(), thickness.clone())).or_insert(vec![
+              id.clone(),
+              order["date"].string(),
+              produce["date"].string(),
+              thickness,
+              material,
+              "0".to_string(),
+              "0".to_string(),
+            ]);
 
-          let boxes = usize::from_str(record[5].as_str()).unwrap() + 1;
-          let sum = Decimal::try_from(record[6].as_str()).unwrap()
-            + Decimal::try_from(number.as_str()).unwrap();
+            let boxes = usize::from_str(record[5].as_str()).unwrap() + 1;
+            let sum = Decimal::try_from(record[6].as_str()).unwrap()
+              + Decimal::try_from(number.as_str()).unwrap();
 
-          record[5] = boxes.to_string();
-          record[6] = sum.to_string();
-
+            record[5] = boxes.to_string();
+            record[6] = sum.to_string();
+          }
           count += 1;
         }
       },
@@ -134,30 +149,9 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
     }
   }
 
-  let file = OpenOptions::new()
-    .write(true)
-    .create(true)
-    .append(true)
-    .open(format!("production_roll_{time}.csv"))
-    .unwrap();
-
-  let mut wtr = Writer::from_writer(file);
-
   for record in records.into_iter() {
     wtr.write_record(record.1).unwrap();
   }
-
-  // wtr
-  //     .write_record([
-  //       order[_ID].string(),
-  //       order["date"].string(),
-  //       produce["date"].string(),
-  //       order["thickness"].string(),
-  //       material,
-  //       produce["qty"]["uom"]["number"].string(),
-  //       produce[_ID].string(),
-  //     ])
-  //     .unwrap();
 
   println!("count {count}");
 
@@ -430,7 +424,7 @@ pub fn save_cups_and_caps(app: &Application) -> Result<(), Error> {
   Ok(())
 }
 
-pub fn save_material(app: &Application, material: Material) -> Result<(), Error> {
+pub fn save_material(app: &Application, material: Material, by_piece: bool) -> Result<(), Error> {
   let mut count = 0;
 
   let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
@@ -439,10 +433,14 @@ pub fn save_material(app: &Application, material: Material) -> Result<(), Error>
 
   let (ctx, file_name) = match material {
     Material::PRODUCED => {
-      (vec!["production".to_string(), "material".to_string(), "produced".to_string()], "produced")
+      let ctx = vec!["production".to_string(), "material".to_string(), "produced".to_string()];
+      let name = if by_piece { "produced_pieces" } else { "produced" };
+      (ctx, name)
     },
     Material::USED => {
-      (vec!["production".to_string(), "material".to_string(), "used".to_string()], "used")
+      let ctx = vec!["production".to_string(), "material".to_string(), "used".to_string()];
+      let name = if by_piece { "used_pieces" } else { "used" };
+      (ctx, name)
     },
   };
 
@@ -457,6 +455,14 @@ pub fn save_material(app: &Application, material: Material) -> Result<(), Error>
   let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
 
   let mut records: HashMap<(String, String), Vec<String>> = HashMap::new();
+
+  let file = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .append(true)
+    .open(format!("production_material_{file_name}_{time}.csv"))
+    .unwrap();
+  let mut wtr = Writer::from_writer(file);
 
   for doc in docs {
     let doc_ctx = doc.mem.ctx.clone();
@@ -577,36 +583,41 @@ pub fn save_material(app: &Application, material: Material) -> Result<(), Error>
         continue;
       };
 
-      let mut record = records.entry((id.clone(), goods_name.clone())).or_insert(vec![
-        id.clone(),
-        order["date"].string(),
-        area["name"].string(),
-        format!("{} {}", product["part_number"].string(), order["thickness"].string()),
-        goods_name,
-        "0".to_string(),
-        "0".to_string(),
-      ]);
+      if by_piece {
+        wtr
+          .write_record(vec![
+            id.clone(),
+            order["date"].string(),
+            area["name"].string(),
+            format!("{} {}", product["part_number"].string(), order["thickness"].string()),
+            goods_name,
+            number,
+          ])
+          .unwrap();
+      } else {
+        let mut record = records.entry((id.clone(), goods_name.clone())).or_insert(vec![
+          id.clone(),
+          order["date"].string(),
+          area["name"].string(),
+          format!("{} {}", product["part_number"].string(), order["thickness"].string()),
+          goods_name,
+          "0".to_string(),
+          "0".to_string(),
+        ]);
 
-      let boxes = usize::from_str(record[5].as_str()).unwrap() + 1;
-      let sum =
-        Decimal::try_from(record[6].as_str()).unwrap() + Decimal::try_from(number.as_str()).unwrap();
+        let boxes = usize::from_str(record[5].as_str()).unwrap() + 1;
+        let sum = Decimal::try_from(record[6].as_str()).unwrap()
+          + Decimal::try_from(number.as_str()).unwrap();
 
-      record[5] = boxes.to_string();
-      record[6] = sum.to_string();
+        record[5] = boxes.to_string();
+        record[6] = sum.to_string();
+      }
 
       count += 1;
     } else {
       continue;
     }
   }
-
-  let file = OpenOptions::new()
-    .write(true)
-    .create(true)
-    .append(true)
-    .open(format!("production_material_{file_name}_{time}.csv"))
-    .unwrap();
-  let mut wtr = Writer::from_writer(file);
 
   for record in records.into_iter() {
     wtr.write_record(record.1).unwrap();
@@ -879,8 +890,7 @@ pub fn save_all_ops_for_goods(app: &Application, goods_name: &str) -> Result<(),
 
     // "Этикетка картон. Каймак Pure Milky 350гр"
     // "Скотч односторонний бесцветный широкий"
-    if goods["name"].string().starts_with(goods_name)
-    {
+    if goods["name"].string().starts_with(goods_name) {
       let document = app
         .service("memories")
         .get(Context::local(), data[_DOCUMENT].string(), params.clone())
