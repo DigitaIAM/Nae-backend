@@ -252,9 +252,9 @@ async fn reindex(
       let ctx = doc.mem.ctx.clone();
       let mut after = doc.json().unwrap();
 
-      if after["goods"].string() != "goods/2023-12-29T12:56:04.785Z".to_string() {
-        continue;
-      }
+      // if after["goods"].string() != "goods/2023-12-29T12:56:04.785Z".to_string() {
+      //   continue;
+      // }
 
       let date = after["date"].date_with_check().unwrap_or_else(|_| {
         let doc_id = after[_DOCUMENT].string();
@@ -675,6 +675,7 @@ async fn startup() -> io::Result<()> {
       "goods_ops" => {
         use_cases::uc_save::save_all_ops_for_goods(&app, "Скотч односторонний бесцветный широкий")
       },
+      "uuids" => use_cases::uc_save::save_uuids(&app),
       _ => unreachable!(),
     },
     "replace" => match opt.case.as_str() {
