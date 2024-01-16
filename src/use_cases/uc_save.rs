@@ -11,7 +11,7 @@ use std::io::{Error, ErrorKind};
 use std::str::FromStr;
 use store::error::WHError;
 use store::process_records::memories_find;
-use values::constants::{_DOCUMENT, _ID, _STATUS};
+use values::constants::{_DOCUMENT, _ID, _STATUS, _UUID};
 use values::ID;
 
 pub enum Product {
@@ -874,6 +874,10 @@ pub fn save_all_ops_for_goods(app: &Application, goods_name: &str) -> Result<(),
 
     let data = doc.json().unwrap();
 
+    if data[_STATUS] == "deleted" {
+      continue;
+    }
+
     // {"document":"warehouse/transfer/document/2023-05-12T09:08:24.970Z","goods":"goods/2023-05-12T09:08:16.838Z",
     // "qty":{"number":"21000","uom":"1f93df2e-c423-45cf-8123-de02e0a0064e"},"storage_into":"warehouse/storage/2023-04-20T06:53:15.222Z",
     // "_id":"warehouse/transfer/2023-05-12T09:08:24.990Z","_uuid":"3173617d-60f7-4dff-83ce-0aa2fc7b3b6b"}
@@ -921,7 +925,7 @@ pub fn save_all_ops_for_goods(app: &Application, goods_name: &str) -> Result<(),
           ctx.join("_"),
           document["date"].string(),
           goods["name"].string(),
-          data["qty"].to_string(),
+          data["qty"]["number"].to_string(),
           counterparty["name"].string(),
           storage["name"].string(),
           from["name"].string(),
@@ -930,6 +934,64 @@ pub fn save_all_ops_for_goods(app: &Application, goods_name: &str) -> Result<(),
         .unwrap();
 
       count += 1;
+    }
+  }
+
+  println!("count {count}");
+
+  Ok(())
+}
+
+pub fn save_uuids(app: &Application) -> Result<(), Error> {
+  let mut count = 0;
+
+  let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ")
+    .map_err(|e| Error::new(ErrorKind::NotFound, e.to_string()))?;
+  let ws = app.wss.get(&oid);
+
+  let params = object! {oid: ws.id.to_string().as_str(), ctx: [], enrich: false };
+
+  let file = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .append(true)
+    .open(format!("uuids.csv"))
+    .unwrap();
+
+  let mut wtr = Writer::from_writer(file);
+
+  for doc in ws.clone().into_iter() {
+    let ctx = doc.mem.ctx.clone();
+
+    let ctx_str: Vec<&str> = ctx.iter().map(|s| s.as_str()).collect();
+
+    match ctx_str[..] {
+      ["goods"] | ["product"] | ["warehouse", "storage"] => {
+        // let doc_id = doc.id;
+        println!("{:?} {:?}", doc.id, doc.json()?);
+
+        let data = match app.service("memories").get(
+          Context::local(),
+          doc.json()?[_ID].string(),
+          params.clone(),
+        ) {
+          Ok(d) => d,
+          Err(_) => {
+            return Err(Error::new(ErrorKind::InvalidData, "can't find a produce operation"))
+          },
+        };
+
+        if data[_STATUS] == "deleted" {
+          continue;
+        }
+
+        wtr
+          .write_record([data["name"].string(), data["part_number"].string(), data[_UUID].string()])
+          .unwrap();
+
+        count += 1;
+      },
+      _ => continue,
     }
   }
 
