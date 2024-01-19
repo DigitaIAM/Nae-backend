@@ -687,6 +687,7 @@ async fn startup() -> io::Result<()> {
       },
       _ => unreachable!(),
     },
+    "convert" => use_cases::uc_convert::convert_csv(&app),
     "fix" => log_or_fix_topology_errors(app, true).await,
     "log_errors" => log_or_fix_topology_errors(app, false).await,
     _ => unreachable!(),
