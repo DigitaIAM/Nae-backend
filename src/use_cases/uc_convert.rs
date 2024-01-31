@@ -14,7 +14,7 @@ pub fn convert_csv(app: &Application) -> Result<(), Error> {
   let mut old_date = String::from("");
   let mut global_count = 0;
 
-  for i in 0..1 {
+  for i in 0..12 {
     convert_csv_inner(
       app,
       &format!("./data for 1C/upload/labeling/old_{i}.csv"),
@@ -63,7 +63,7 @@ pub fn convert_csv_inner(
       let mut uom = String::new();
       let header_name = h.to_lowercase();
 
-      println!("header_name {header_name}");
+      // println!("header_name {header_name}");
 
       let filter = object! {name: h};
       if let Ok(g) = memories_find(app, filter, vec!["goods"]) {
@@ -94,10 +94,8 @@ pub fn convert_csv_inner(
 
       if uuid == "".to_string() {
         uuid = if header_name.starts_with("клей") {
-          println!("1");
           "fc7072bc-838a-4c97-9ccc-76949403a54c".to_string()
         } else {
-          println!("2");
           "нет".to_string()
         };
       }
@@ -123,19 +121,20 @@ pub fn convert_csv_inner(
       let h = headers[i].clone();
 
       // hardcoded for labels area
-      if date == *old_date && (h.0.to_lowercase().starts_with("стакан pure milky")) {
+      let is_product =
+        h.0.to_lowercase().starts_with("стакан") && !h.0.to_lowercase().starts_with("стакан midas");
+
+      if date == *old_date && is_product {
         *global_count += 1;
       }
 
       // hardcoded for concrete table
-      if i < 1 {
-        wtr
-          .write_record([&global_count.to_string(), date, &h.0, "", r, &h.1, &h.2])
-          .unwrap();
+      let str_count = format!("{global_count}Э");
+
+      if is_product {
+        wtr.write_record([&str_count, date, &h.0, "", r, &h.1, &h.2]).unwrap();
       } else {
-        wtr
-          .write_record([&global_count.to_string(), date, "", &h.0, r, &h.1, &h.2])
-          .unwrap();
+        wtr.write_record([&str_count, date, "", &h.0, r, &h.1, &h.2]).unwrap();
       }
     }
 
