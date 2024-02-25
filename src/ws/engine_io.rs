@@ -1,4 +1,3 @@
-
 pub(crate) const OPEN: &str = "0";
 pub(crate) const CLOSE: &str = "1";
 pub(crate) const PING: &str = "2";

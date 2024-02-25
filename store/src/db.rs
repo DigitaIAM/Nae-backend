@@ -278,11 +278,7 @@ impl Db {
     let mut it = self.checkpoint_topologies.iter();
     let (from_date, checkpoints) = loop {
       if let Some(checkpoint_topology) = it.next() {
-        match checkpoint_topology.get_checkpoints_for_one_goods_with_date(
-          *storage,
-          *goods,
-          date,
-        ) {
+        match checkpoint_topology.get_checkpoints_for_one_goods_with_date(*storage, *goods, date) {
           Ok(result) => {
             break result;
           },

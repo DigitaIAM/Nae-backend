@@ -41,9 +41,7 @@ impl ID {
       Err(IDError::from(format!("ID require {} bytes, but got {}", ID_BYTES, data.len())))
     } else {
       let mut a = [0; ID_BYTES];
-      for i in 0..ID_BYTES {
-        a[i] = data[i];
-      }
+      a[..ID_BYTES].copy_from_slice(&data[..ID_BYTES]);
       Ok(ID(a))
     }
   }
@@ -60,7 +58,7 @@ impl ID {
   }
 
   pub fn to_clear(&self) -> String {
-    self.to_base64().replace("_", "").replace("-", "")[..12].to_string()
+    self.to_base64().replace(['_', '-'], "")[..12].to_string()
   }
 
   // TODO make `const`

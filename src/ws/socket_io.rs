@@ -1,4 +1,3 @@
-
 pub(crate) const CONNECT: &str = "0";
 pub(crate) const DISCONNECT: &str = "1";
 pub(crate) const EVENT: &str = "2";

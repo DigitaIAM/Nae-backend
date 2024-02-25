@@ -36,9 +36,6 @@ fn csv_to_json(path: &str) -> Vec<JsonValue> {
     if record_id.is_empty() {
       continue;
     }
-
-    
-
   }
 
   // ***
@@ -122,35 +119,33 @@ async fn app_csv_to_json() {
   let oid = ID::from("Midas-plastics");
 
   for record in records {
-
     let req = TestRequest::post()
-    .uri(&format!("/api/docs?oid={}&ctx=warehouse,receive", oid.to_base64()))
-    .set_payload(record.dump())
-    .insert_header(ContentType::json())
-    .to_request();
+      .uri(&format!("/api/docs?oid={}&ctx=warehouse,receive", oid.to_base64()))
+      .set_payload(record.dump())
+      .insert_header(ContentType::json())
+      .to_request();
 
     let response = call_and_read_body(&app, req).await;
     println!("response: {response:?}");
   }
 
-//report storage1
-let from_date = "2022-12-20";
-let till_date = "2022-12-22";
+  //report storage1
+  let from_date = "2022-12-20";
+  let till_date = "2022-12-22";
 
-let req = TestRequest::get()
+  let req = TestRequest::get()
     .uri(&format!(
-        "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
-        oid,
-        Uuid::from_u128(0).to_string(),
-        from_date,
-        till_date,
+      "/api/inventory?oid={}&ctx=report&storage={}&from_date={}&till_date={}",
+      oid,
+      Uuid::from_u128(0).to_string(),
+      from_date,
+      till_date,
     ))
     .to_request();
 
-let response = call_and_read_body(&app, req).await;
-// println!("RESPONSE: {response:#?}\n");
+  let response = call_and_read_body(&app, req).await;
+  // println!("RESPONSE: {response:#?}\n");
 
-let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
-println!("REPORT1: {result:#?}");
-
+  let result: serde_json::Value = serde_json::from_slice(&response).unwrap();
+  println!("REPORT1: {result:#?}");
 }

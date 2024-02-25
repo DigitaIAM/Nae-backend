@@ -58,8 +58,7 @@ impl Service for Authentication {
         let email = data["email"].as_str().unwrap_or("").trim().to_lowercase();
         let password = data["password"].as_str().unwrap_or("").to_string();
 
-        let request =
-          crate::auth::LoginRequest { password, email, remember_me: false };
+        let request = crate::auth::LoginRequest { password, email, remember_me: false };
 
         match crate::auth::login_procedure(&self.app, request) {
           Ok((account, token)) => {
