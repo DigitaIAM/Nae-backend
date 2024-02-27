@@ -36,7 +36,7 @@ mod animo;
 mod api;
 mod hr;
 pub mod links;
-mod memories;
+pub mod memories;
 mod text_search;
 mod use_cases;
 pub mod warehouse;
@@ -76,6 +76,10 @@ struct Opt {
   /// Data folder
   #[structopt(short, long, default_value = "./data", parse(from_os_str))]
   data: PathBuf,
+
+  /// port
+  #[structopt(short, long, default_value = "3030")]
+  port: u16,
 }
 
 async fn fix_topologies(app: Application) -> io::Result<()> {
@@ -463,10 +467,16 @@ fn update_qty(
   Ok(())
 }
 
-async fn server(settings: Arc<Settings>, app: Application, com: Addr<Commutator>) -> io::Result<()> {
+async fn server(
+  settings: Arc<Settings>,
+  app: Application,
+  com: Addr<Commutator>,
+  port: u16,
+) -> io::Result<()> {
   let domain = "https://animi.ws";
-  let address = "localhost"; // "127.0.0.1"
-  let port = 3030;
+  // "127.0.0.1"
+  let address = "localhost";
+  // let port = 3030;
 
   log::info!("starting up {address}:{port} for {domain}");
 
@@ -547,7 +557,7 @@ async fn startup() -> io::Result<()> {
   match opt.mode.as_str() {
     // "reindex" => reindex(settings, app, com).await,
     "reindex" => reindex(app).await,
-    "server" => server(settings, app, com).await,
+    "server" => server(settings, app, com, opt.port).await,
     "import" => {
       match opt.case.as_str() {
         "001" => use_cases::uc_001::import(&app.db),
@@ -593,8 +603,12 @@ async fn startup() -> io::Result<()> {
     },
     "save" => match opt.case.as_str() {
       "roll" => use_cases::uc_save::save_roll(&app),
-      "cups" => use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CUPS),
-      "caps" => use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CAPS),
+      "cups" => {
+        use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CUPS)
+      },
+      "caps" => {
+        use_cases::uc_save::save_half_stuff_products(&app, use_cases::uc_save::Product::CAPS)
+      },
       "products" => use_cases::uc_save::save_cups_and_caps(&app),
       "produced" => use_cases::uc_save::save_produced(&app),
       "file_transfer" => use_cases::uc_save::save_transfer_from_file(&app),
