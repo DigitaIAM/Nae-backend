@@ -9,6 +9,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use service::utils::json::JsonParams;
 use std::cmp::Ordering;
+use std::iter::Sum;
 use std::ops::{Add, AddAssign, Deref, Div, Mul, Neg, Sub, SubAssign};
 use uuid::Uuid;
 
@@ -436,7 +437,7 @@ impl Number<Uom> {
 
       if left_depth == right_depth {
         while let (Some(l), Some(r)) = (left.named(), right.named()) {
-          println!("{l:?} vs {r:?}");
+          // println!("{l:?} vs {r:?}");
           if left.name == right.name {
             return Some(left.name);
           } else if l.name == r.name {
@@ -571,8 +572,49 @@ impl Neg for Number<Uom> {
 }
 
 impl Qty {
+  pub fn zero() -> Self {
+    Qty::new(vec![])
+  }
+
   pub fn new(inner: Vec<Number<Uom>>) -> Self {
     Qty { inner }
+  }
+
+  pub fn lower(&self) -> Qty {
+    // println!("lowering {:?}", self);
+    let mut nums: Vec<Number<Uom>> = vec![];
+
+    for num in &self.inner {
+      // println!("num {:?}", num);
+      let mut number = num.number.clone();
+      let mut name = &num.name;
+      let name = loop {
+        match &name {
+          Uom::In(_, Some(deeper)) => {
+            number *= deeper.number;
+            name = &deeper.name;
+          },
+          Uom::In(_, None) => break name.clone(),
+        }
+      };
+
+      // println!("res {:?} {:?}", number, name);
+      if let Some(num) = nums.iter_mut().find(|v| v.name == name) {
+        num.number += number;
+      } else {
+        nums.push(Number { number, name });
+      }
+    }
+    Qty { inner: nums }
+  }
+
+  pub fn to_json(&self) -> JsonValue {
+    if self.inner.len() == 1 {
+      let num = self.inner.get(0).unwrap();
+      Into::<JsonValue>::into(num)
+    } else {
+      Into::<JsonValue>::into(self)
+    }
   }
 
   fn sort(&mut self) {
@@ -759,113 +801,123 @@ impl Mul<Price> for &Qty {
   }
 }
 
+impl Add for Qty {
+  type Output = Qty;
+
+  fn add(self, rhs: Self) -> Self::Output {
+    add(&self, &rhs)
+  }
+}
+
 impl Add for &Qty {
   type Output = Qty;
 
   fn add(self, rhs: Self) -> Self::Output {
-    if self.is_zero() && rhs.is_zero() {
-      return Qty::default();
-    } else if self.is_zero() {
-      return rhs.clone();
-    } else if rhs.is_zero() {
-      return self.clone();
-    }
-
-    let mut ls = self.inner.clone();
-
-    // println!("negative qty {q:?}");
-    let mut rs = rhs.inner.clone();
-
-    loop {
-      if rs.is_empty() {
-        break;
-      }
-
-      if ls.is_empty() {
-        ls = rs.into_iter().map(|n| -n).collect();
-
-        break;
-      }
-
-      let mut r = rs.remove(0);
-      // println!("right {r:?}");
-      for i in 0..ls.len() {
-        if r.is_zero() {
-          break;
-        }
-        // let l = &ls[i];
-        let l = &ls[i];
-        // println!("left {l:?}");
-        if &l.name == &r.name {
-          let l = ls.remove(i);
-          let product = &l.number + &r.number;
-          // println!("ADD1: {:?} + {:?} = {:?}", l.number, r.number, product);
-          r.number = Decimal::ZERO;
-          if product != Decimal::ZERO {
-            ls.push(Number::new_named(product, l.name));
-          }
-        }
-      }
-
-      if r.is_zero() {
-        continue;
-      }
-
-      let mut named: Vec<(usize, Uom)> = ls
-        .iter()
-        .enumerate()
-        .map(|(i, l)| (i, l, l.common(&r)))
-        .filter(|(_, l, c)| c.is_some())
-        .map(|(i, l, c)| (i, l, c.unwrap()))
-        .filter(|(_, l, c)| {
-          (c.depth() == r.name.depth()
-            && (l.number().is_sign_positive() && r.number().is_sign_negative()))
-            || (c.depth() == l.name.depth()
-              && (l.number().is_sign_negative() && r.number().is_sign_positive()))
-        })
-        .map(|(i, l, c)| (i, c)) // if only base uom is the same, skip
-        .collect();
-
-      named.sort_by(|(li, ln), (ri, rn)| {
-        let l_depth = ln.depth();
-        let r_depth = rn.depth();
-
-        if r_depth == l_depth {
-          if let (Some(l_number), Some(r_number)) = (ln.number(), rn.number()) {
-            r_number.cmp(&l_number)
-          } else {
-            Ordering::Equal
-          }
-        } else {
-          r_depth.cmp(&l_depth)
-        }
-      });
-
-      if named.is_empty() {
-        ls.push(r);
-      } else {
-        let (i, common) = named.remove(0); // TODO can be
-
-        let l = ls.remove(i);
-
-        let ll = l.lowering(&common).unwrap();
-        let rl = r.lowering(&common).unwrap();
-
-        let product = ll.number() + rl.number();
-        // println!("ADD2: {:?} + {:?} = {:?}", ll.number(), rl.number(), product);
-        r.number = Decimal::ZERO;
-        let upper_uom = if l.name.depth() > r.name.depth() { &l.name } else { &r.name };
-        if product != Decimal::ZERO {
-          ls.append(
-            &mut Number::new_named(product, ll.name.clone()).elevate_to_uom(upper_uom).inner,
-          );
-        }
-      }
-    }
-    let mut result = Qty::new(ls.clone());
-    result.sort();
-    result
+    add(&self, rhs)
   }
+}
+
+fn add(lhs: &Qty, rhs: &Qty) -> Qty {
+  if lhs.is_zero() && rhs.is_zero() {
+    return Qty::default();
+  } else if lhs.is_zero() {
+    return rhs.clone();
+  } else if rhs.is_zero() {
+    return lhs.clone();
+  }
+
+  let mut ls = lhs.inner.clone();
+
+  // println!("negative qty {q:?}");
+  let mut rs = rhs.inner.clone();
+
+  loop {
+    if rs.is_empty() {
+      break;
+    }
+
+    if ls.is_empty() {
+      ls = rs.into_iter().map(|n| -n).collect();
+
+      break;
+    }
+
+    let mut r = rs.remove(0);
+    // println!("right {r:?}");
+    for i in 0..ls.len() {
+      if r.is_zero() {
+        break;
+      }
+      // let l = &ls[i];
+      let l = &ls[i];
+      // println!("left {l:?}");
+      if &l.name == &r.name {
+        let l = ls.remove(i);
+        let product = &l.number + &r.number;
+        // println!("ADD1: {:?} + {:?} = {:?}", l.number, r.number, product);
+        r.number = Decimal::ZERO;
+        if product != Decimal::ZERO {
+          ls.push(Number::new_named(product, l.name));
+        }
+      }
+    }
+
+    if r.is_zero() {
+      continue;
+    }
+
+    let mut named: Vec<(usize, Uom)> = ls
+      .iter()
+      .enumerate()
+      .map(|(i, l)| (i, l, l.common(&r)))
+      .filter(|(_, _, c)| c.is_some())
+      .map(|(i, l, c)| (i, l, c.unwrap()))
+      .filter(|(_, l, c)| {
+        (c.depth() == r.name.depth()
+          && (l.number().is_sign_positive() && r.number().is_sign_negative()))
+          || (c.depth() == l.name.depth()
+            && (l.number().is_sign_negative() && r.number().is_sign_positive()))
+      })
+      .map(|(i, l, c)| (i, c)) // if only base uom is the same, skip
+      .collect();
+
+    named.sort_by(|(li, ln), (ri, rn)| {
+      let l_depth = ln.depth();
+      let r_depth = rn.depth();
+
+      if r_depth == l_depth {
+        if let (Some(l_number), Some(r_number)) = (ln.number(), rn.number()) {
+          r_number.cmp(&l_number)
+        } else {
+          Ordering::Equal
+        }
+      } else {
+        r_depth.cmp(&l_depth)
+      }
+    });
+
+    if named.is_empty() {
+      ls.push(r);
+    } else {
+      let (i, common) = named.remove(0); // TODO can be
+
+      let l = ls.remove(i);
+
+      let ll = l.lowering(&common).unwrap();
+      let rl = r.lowering(&common).unwrap();
+
+      let product = ll.number() + rl.number();
+      // println!("ADD2: {:?} + {:?} = {:?}", ll.number(), rl.number(), product);
+      r.number = Decimal::ZERO;
+      let upper_uom = if l.name.depth() > r.name.depth() { &l.name } else { &r.name };
+      if product != Decimal::ZERO {
+        ls.append(&mut Number::new_named(product, ll.name.clone()).elevate_to_uom(upper_uom).inner);
+      }
+    }
+  }
+  let mut result = Qty::new(ls);
+  result.sort();
+  result
 }
 
 impl AddAssign<&Qty> for Qty {
@@ -875,119 +927,127 @@ impl AddAssign<&Qty> for Qty {
   }
 }
 
+impl Sub for Qty {
+  type Output = Qty;
+
+  fn sub(self, rhs: Self) -> Self::Output {
+    sub(&self, &rhs)
+  }
+}
+
 impl Sub for &Qty {
   type Output = Qty;
 
   fn sub(self, rhs: Self) -> Self::Output {
-    if self.is_zero() && rhs.is_zero() {
-      return Qty::default();
-    } else if self.is_zero() {
-      return -rhs.clone();
-    } else if rhs.is_zero() {
-      return self.clone();
-    }
-
-    let mut ls = self.inner.clone();
-
-    // println!("negative qty {q:?}");
-    let mut rs = rhs.inner.clone();
-
-    loop {
-      if rs.is_empty() {
-        break;
-      }
-
-      if ls.is_empty() {
-        ls = rs.into_iter().map(|n| -n).collect();
-
-        break;
-      }
-
-      let mut r = rs.remove(0);
-      // println!("right {r:?}");
-      for i in 0..ls.len() {
-        if r.is_zero() {
-          break;
-        }
-        // let l = &ls[i];
-        let l = &ls[i];
-        // println!("left {l:?}");
-        if &l.name == &r.name {
-          let l = ls.remove(i);
-          let product = &l.number - &r.number;
-          // println!("SUB1: {:?} - {:?} = {:?}", l.number, r.number, product);
-          r.number = Decimal::ZERO;
-          if product > Decimal::ZERO {
-            ls.push(Number::new_named(product, l.name));
-          } else if product < Decimal::ZERO {
-            rs.push(Number::new_named(-product, l.name));
-          }
-        }
-      }
-
-      if r.is_zero() {
-        continue;
-      }
-
-      let mut named: Vec<(usize, Uom)> = ls
-        .iter()
-        .enumerate()
-        .map(|(i, l)| (i, l, l.common(&r)))
-        .filter(|(_, l, c)| c.is_some())
-        .map(|(i, l, c)| (i, l, c.unwrap()))
-        .filter(|(_, l, c)| {
-          (c.depth() == r.name.depth()
-            && (l.number().is_sign_positive() && r.number().is_sign_positive()))
-            || (c.depth() == l.name.depth()
-              && (l.number().is_sign_negative() && r.number().is_sign_negative()))
-        })
-        .map(|(i, l, c)| (i, c)) // if only base uom is the same, skip
-        .collect();
-
-      named.sort_by(|(li, ln), (ri, rn)| {
-        let l_depth = ln.depth();
-        let r_depth = rn.depth();
-
-        if r_depth == l_depth {
-          if let (Some(l_number), Some(r_number)) = (ln.number(), rn.number()) {
-            r_number.cmp(&l_number)
-          } else {
-            Ordering::Equal
-          }
-        } else {
-          r_depth.cmp(&l_depth)
-        }
-      });
-
-      if named.is_empty() {
-        ls.push(-r);
-      } else {
-        let (i, common) = named.remove(0); // TODO can be
-
-        let l = ls.remove(i);
-
-        let ll = l.lowering(&common).unwrap();
-        let rl = r.lowering(&common).unwrap();
-
-        let product = ll.number() - rl.number();
-        // println!("SUB2: {:?} - {:?} = {:?}", ll.number(), rl.number(), product);
-        r.number = Decimal::ZERO;
-        let upper_uom = if l.name.depth() > r.name.depth() { &l.name } else { &r.name };
-        if product > Decimal::ZERO {
-          ls.append(
-            &mut Number::new_named(product, ll.name.clone()).elevate_to_uom(upper_uom).inner,
-          );
-        } else if product < Decimal::ZERO {
-          rs.append(
-            &mut Number::new_named(-product, rl.name.clone()).elevate_to_uom(upper_uom).inner,
-          );
-        }
-      }
-    }
-    let mut result = Qty::new(ls.clone());
-    result.sort();
-    result
+    sub(&self, rhs)
   }
+}
+
+fn sub(lhs: &Qty, rhs: &Qty) -> Qty {
+  if lhs.is_zero() && rhs.is_zero() {
+    return Qty::default();
+  } else if lhs.is_zero() {
+    return -rhs.clone();
+  } else if rhs.is_zero() {
+    return lhs.clone();
+  }
+
+  let mut ls = lhs.inner.clone();
+
+  // println!("negative qty {q:?}");
+  let mut rs = rhs.inner.clone();
+
+  loop {
+    if rs.is_empty() {
+      break;
+    }
+
+    if ls.is_empty() {
+      ls = rs.into_iter().map(|n| -n).collect();
+
+      break;
+    }
+
+    let mut r = rs.remove(0);
+    // println!("right {r:?}");
+    for i in 0..ls.len() {
+      if r.is_zero() {
+        break;
+      }
+      // let l = &ls[i];
+      let l = &ls[i];
+      // println!("left {l:?}");
+      if &l.name == &r.name {
+        let l = ls.remove(i);
+        let product = &l.number - &r.number;
+        // println!("SUB1: {:?} - {:?} = {:?}", l.number, r.number, product);
+        r.number = Decimal::ZERO;
+        if product > Decimal::ZERO {
+          ls.push(Number::new_named(product, l.name));
+        } else if product < Decimal::ZERO {
+          rs.push(Number::new_named(-product, l.name));
+        }
+      }
+    }
+
+    if r.is_zero() {
+      continue;
+    }
+
+    let mut named: Vec<(usize, Uom)> = ls
+      .iter()
+      .enumerate()
+      .map(|(i, l)| (i, l, l.common(&r)))
+      .filter(|(_, l, c)| c.is_some())
+      .map(|(i, l, c)| (i, l, c.unwrap()))
+      .filter(|(_, l, c)| {
+        (c.depth() == r.name.depth()
+          && (l.number().is_sign_positive() && r.number().is_sign_positive()))
+          || (c.depth() == l.name.depth()
+            && (l.number().is_sign_negative() && r.number().is_sign_negative()))
+      })
+      .map(|(i, l, c)| (i, c)) // if only base uom is the same, skip
+      .collect();
+
+    named.sort_by(|(li, ln), (ri, rn)| {
+      let l_depth = ln.depth();
+      let r_depth = rn.depth();
+
+      if r_depth == l_depth {
+        if let (Some(l_number), Some(r_number)) = (ln.number(), rn.number()) {
+          r_number.cmp(&l_number)
+        } else {
+          Ordering::Equal
+        }
+      } else {
+        r_depth.cmp(&l_depth)
+      }
+    });
+
+    if named.is_empty() {
+      ls.push(-r);
+    } else {
+      let (i, common) = named.remove(0); // TODO can be
+
+      let l = ls.remove(i);
+
+      let ll = l.lowering(&common).unwrap();
+      let rl = r.lowering(&common).unwrap();
+
+      let product = ll.number() - rl.number();
+      // println!("SUB2: {:?} - {:?} = {:?}", ll.number(), rl.number(), product);
+      r.number = Decimal::ZERO;
+      let upper_uom = if l.name.depth() > r.name.depth() { &l.name } else { &r.name };
+      if product > Decimal::ZERO {
+        ls.append(&mut Number::new_named(product, ll.name.clone()).elevate_to_uom(upper_uom).inner);
+      } else if product < Decimal::ZERO {
+        rs.append(&mut Number::new_named(-product, rl.name.clone()).elevate_to_uom(upper_uom).inner);
+      }
+    }
+  }
+  let mut result = Qty::new(ls);
+  result.sort();
+  result
 }
 
 impl SubAssign<&Qty> for Qty {
@@ -1008,6 +1068,16 @@ impl Neg for Qty {
     }
 
     result
+  }
+}
+
+impl Sum for Qty {
+  fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+    let mut qty = Qty::zero();
+    for q in iter {
+      qty += &q;
+    }
+    qty
   }
 }
 

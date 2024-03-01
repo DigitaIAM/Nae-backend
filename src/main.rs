@@ -61,7 +61,7 @@ use store::error::WHError;
 use store::operations::OpMutation;
 use store::qty::Qty;
 use store::GetWarehouse;
-use values::constants::{_DOCUMENT, _STATUS, _UUID};
+use values::c;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "basic")]
@@ -246,9 +246,9 @@ async fn reindex(
       count += 1;
 
       // inject uuid if missing
-      if after[_UUID].is_null() {
+      if after[c::UUID].is_null() {
         let uuid = Uuid::new_v4().to_string();
-        after[_UUID] = uuid.clone().into();
+        after[c::UUID] = uuid.clone().into();
 
         storage::memories::index_uuid(
           &doc.mem.top_folder,
@@ -260,19 +260,19 @@ async fn reindex(
         storage::memories::index_uuid(
           &doc.mem.top_folder,
           &doc.path.parent().unwrap().into(),
-          &after[_UUID].string(),
+          &after[c::UUID].string(),
         )?;
       }
 
       // replace "status" for "_status"
       if !after["status"].is_null() {
-        after[_STATUS] = after["status"].clone();
+        after[c::STATUS] = after["status"].clone();
         after.remove("status");
       }
 
       // replace "order" for "document"
       if !after["order"].is_null() {
-        after[_DOCUMENT] = after["order"].clone();
+        after[c::DOCUMENT] = after["order"].clone();
         after.remove("order");
       }
 
@@ -398,7 +398,7 @@ fn update_qty(
       goods["uom"].string(),
       params.clone(),
     ) {
-      Ok(uom) => uom[_UUID].clone(),
+      Ok(uom) => uom[c::UUID].clone(),
       Err(e) => {
         // log::debug!("uom_error {e}");
         return Err(Error::new(ErrorKind::NotFound, e.to_string()));
@@ -661,7 +661,7 @@ mod tests {
   use store::elements::dt;
   use store::qty::Number;
   use store::GetWarehouse;
-  use values::constants::_ID;
+  use values::c;
   const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
   #[actix_web::test]

@@ -5,7 +5,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use std::array::TryFromSliceError;
 use std::fmt::{Display, Formatter};
 
-pub mod constants;
+pub mod c;
 
 type Hasher = blake2::Blake2s256;
 

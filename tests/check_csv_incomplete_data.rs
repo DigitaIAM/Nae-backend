@@ -13,7 +13,7 @@ use service::utils::json::JsonParams;
 use service::{Context, Services};
 use store::process_records::process_warehouse_record;
 use store::GetWarehouse;
-use values::constants::_UUID;
+use values::c;
 use values::ID;
 
 #[actix_web::test]

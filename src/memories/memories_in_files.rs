@@ -2,10 +2,9 @@ use super::*;
 
 use chrono::Utc;
 use json::{object, JsonValue};
-use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::{JsonMerge, JsonParams};
-use service::{Context, Service, Services};
+use service::{Context, Service};
 use std::collections::HashMap;
 use std::sync::Arc;
 use store::balance::BalanceForGoods;
@@ -20,7 +19,8 @@ use crate::commutator::Application;
 use crate::links::GetLinks;
 use stock::find_items;
 use store::qty::Qty;
-use values::constants::{_ID, _STATUS, _UUID};
+use values::c;
+use values::c::IntoDomain;
 
 // warehouse: { receiving, Put-away, transfer,  }
 // production: { manufacturing }
@@ -131,7 +131,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| show_deleted(&ctx) || o[_STATUS].string() != *"deleted")
+        .filter(|o| show_deleted(&ctx) || o[c::STATUS].string().as_str() != c::DELETED)
         .filter(|o| {
           for (_name, v) in o.entries() {
             if let Some(str) = v.as_str() {
@@ -161,7 +161,7 @@ impl Service for MemoriesInFiles {
         .into_iter()
         .map(|o| o.json().unwrap_or_else(|_| JsonValue::Null))
         .filter(|o| o.is_object())
-        .filter(|o| show_deleted(&ctx) || o[_STATUS].string() != *"deleted")
+        .filter(|o| show_deleted(&ctx) || o[c::STATUS].string().as_str() != c::DELETED)
         .filter(|o| {
           filters.entries().all(|(n, v)| {
             if n == "$starts-with" {
@@ -215,7 +215,7 @@ impl Service for MemoriesInFiles {
         .map(|uuid| uuid.resolve_to_json_object(ws))
         .filter(|o| o.is_object())
         .filter(|o| filters.clone().into_iter().all(|(n, v)| &o[n] == v))
-        .filter(|o| o[_STATUS].string() != *"deleted")
+        .filter(|o| o[c::STATUS].string().as_str() != c::DELETED)
         .collect();
 
       // println!("get_records: {result:?}");
@@ -226,127 +226,98 @@ impl Service for MemoriesInFiles {
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
       for mut order in &mut list {
-        let order_uuid = order[_UUID].uuid()?;
+        let order_uuid = order[c::UUID].uuid()?;
 
-        let produced = self
-          .app
-          .links()
-          .get_source_links_for_ctx(order_uuid, &vec!["production".into(), "produce".into()])?;
+        let produced =
+          self.app.links().get_source_links_for_ctx(order_uuid, &c::P_PRODUCE.domain())?;
 
-        let mut boxes = Decimal::ZERO;
-        let sum_produced: Decimal = produced
+        // let mut boxes = Decimal::ZERO;
+        let sum_produced: Qty = produced
           .iter()
           .map(|uuid| uuid.resolve_to_json_object(&ws))
           .filter(|o| o.is_object())
-          .filter(|o| o[_STATUS].string() != *"deleted")
-          .map(|o| {
-            let qty: Qty = o["qty"].clone().try_into().unwrap_or_default();
-            let mut pieces = Decimal::ZERO;
-            qty.inner.iter().for_each(|q| {
-              boxes += q.number;
-              if let Some(number) = q.name.number() {
-                pieces += number;
-              }
-            });
-            pieces
-          })
+          .filter(|o| o[c::STATUS].string().as_str() != c::DELETED)
+          .map(|o| o["qty"].clone().try_into().unwrap_or_else(|_| Qty::zero()))
           .sum();
 
         // TODO rolls - kg, caps - piece
-        order["produced"] = object! { "piece": sum_produced.to_json(), "box": boxes.to_string() };
+        // order["produced"] = object! { "piece": sum_produced.to_json(), "box": boxes.to_string() };
+        order["produced"] = sum_produced.to_json();
 
-        // workaround: ignore all areas except "экструдер"
-        // let area = order["area"].string().resolve_to_json_object(&ws);
-        //
-        // if area["name"].string() != "экструдер".to_string() {
-        //   continue;
-        // }
+        let filters = vec![("document", &order[c::ID])];
 
-        let filters = vec![("document", &order[_ID])];
+        let mut sum_used_materials: HashMap<String, (JsonValue, Qty)> = HashMap::new();
 
-        let mut sum_used_materials: HashMap<String, (JsonValue, Decimal)> = HashMap::new();
+        let materials_used =
+          get_records(&self.app, order_uuid, &c::PM_USED.domain(), &ws, &filters)?;
 
-        let materials_used = get_records(
-          &self.app,
-          order_uuid,
-          &vec!["production".into(), "material".into(), "used".into()],
-          &ws,
-          &filters,
-        )?;
+        let mut sum_material_used = Qty::zero();
 
-        let mut sum_material_used = Decimal::ZERO;
+        for rec in materials_used {
+          let qty: Qty = rec["qty"].clone().try_into().unwrap_or_default();
+          let goods = &rec["goods"];
 
-        for material_used in materials_used {
-          let qty = material_used["qty"]["number"].number();
+          let sum = sum_used_materials
+            .entry(goods["_id"].string())
+            .or_insert((goods.clone(), Qty::zero()));
 
-          let goods = material_used["goods"].clone();
+          sum.1 += &qty;
 
-          (*sum_used_materials
-            .entry(goods["name"].string())
-            .or_insert((goods, Decimal::ZERO)))
-          .1 += qty;
-
-          sum_material_used += qty;
+          sum_material_used += &qty;
         }
 
         let used: Vec<JsonValue> = sum_used_materials
           .into_iter()
           .map(|(_k, mut v)| {
-            v.0["used"] = v.1.to_json();
-            v.0
+            object! {
+              "goods": v.0,
+              "qty": enrich_own_qty(&ws, v.1.to_json()),
+            }
           })
           .collect();
 
-        let mut sum_produced_materials: HashMap<String, (JsonValue, Decimal)> = HashMap::new();
+        let mut sum_produced_materials: HashMap<String, (JsonValue, Qty)> = HashMap::new();
 
-        let materials_produced = get_records(
-          &self.app,
-          order_uuid,
-          &vec!["production".into(), "material".into(), "produced".into()],
-          &ws,
-          &filters,
-        )?;
+        let materials_produced =
+          get_records(&self.app, order_uuid, &c::PM_PRODUCED.domain(), &ws, &filters)?;
 
-        let mut sum_material_produced = Decimal::ZERO;
+        let mut sum_material_produced = Qty::zero();
 
-        for material_produced in materials_produced {
-          let qty = material_produced["qty"]["number"].number();
+        for rec in materials_produced {
+          let qty: Qty = rec["qty"].clone().try_into().unwrap_or_default();
 
-          let goods = material_produced["goods"].clone();
+          let goods = &rec["goods"];
 
-          (*sum_produced_materials
+          let sum = sum_produced_materials
             .entry(goods["_id"].string())
-            .or_insert((goods, Decimal::ZERO)))
-          .1 += qty;
+            .or_insert((goods.clone(), Qty::zero()));
 
-          sum_material_produced += qty;
+          sum.1 += &qty;
+
+          sum_material_produced += &qty;
         }
 
         let produced: Vec<JsonValue> = sum_produced_materials
           .into_iter()
           .map(|(_k, mut v)| {
-            v.0["produced"] = v.1.to_json();
-            v.0
+            object! {
+              "goods": v.0,
+              "qty": enrich_own_qty(&ws, v.1.to_json()),
+            }
           })
           .collect();
 
-        let delta = sum_material_produced + sum_produced - sum_material_used;
+        let delta = sum_material_produced.lower() + sum_produced.lower() - sum_material_used.lower();
 
         order["_material"] = object! {
           "used": used,
           "produced": produced,
+          "sum": object! {
+            "used": sum_material_used.to_json(),
+            "produced": sum_material_produced.to_json(),
+            "delta": enrich_own_qty(&ws, delta.to_json()),
+          }
         };
-
-        order["_material"]
-          .insert(
-            "sum",
-            object! {
-              "used": sum_material_used.to_json(),
-              "produced": sum_material_produced.to_json(),
-              "delta": delta.to_json()
-            },
-          )
-          .map_err(|e| Error::GeneralError(e.to_string()))?;
       }
     }
 
@@ -360,7 +331,7 @@ impl Service for MemoriesInFiles {
 
       let mut list_of_goods: Vec<Uuid> = Vec::new();
       for goods in &list {
-        if let Some(uuid) = goods[_UUID].uuid_or_none() {
+        if let Some(uuid) = goods[c::UUID].uuid_or_none() {
           list_of_goods.push(uuid);
         }
       }
@@ -370,7 +341,7 @@ impl Service for MemoriesInFiles {
         .map_err(|e| Error::GeneralError(e.message()))?;
 
       for goods in &mut list {
-        if let Some(uuid) = goods[_UUID].uuid_or_none() {
+        if let Some(uuid) = goods[c::UUID].uuid_or_none() {
           if let Some(balance) = balances.get(&uuid) {
             goods["_balance"] = balance.to_json();
           }
@@ -462,7 +433,7 @@ impl Service for MemoriesInFiles {
       let mut obj = doc.json()?;
 
       let mut patch = data;
-      patch.remove(_ID); // TODO check id?
+      patch.remove(c::ID); // TODO check id?
 
       let obj = obj.merge(&patch);
 

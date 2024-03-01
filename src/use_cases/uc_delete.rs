@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind};
 use store::error::WHError;
 use store::process_records::memories_find;
-use values::constants::{_DOCUMENT, _STATUS};
+use values::c;
 use values::ID;
 
 pub fn delete_produce(app: &Application) -> Result<(), Error> {
@@ -49,7 +49,7 @@ pub fn delete_produce(app: &Application) -> Result<(), Error> {
               Ok(d) => d,
               Err(e) => return Err(Error::from(e)), // TODO handle IO error differently!!!!
             };
-            document[_STATUS] = "deleted".into();
+            document[c::STATUS] = c::DELETED.into();
 
             let params = object! {oid: ws.id.to_string(), ctx: vec!["production", "produce"] };
             let _doc = app.service("memories").patch(
@@ -124,7 +124,7 @@ pub fn delete_transfers_for_one_goods(
         if !storage_id.is_empty() {
           let document = if let Ok(docs) = memories_find(
             app,
-            object! { _id: op[_DOCUMENT].string() },
+            object! { _id: op[c::DOCUMENT].string() },
             ["warehouse", "transfer", "document"].to_vec(),
           ) {
             match docs.len() {
@@ -156,7 +156,7 @@ pub fn delete_transfers_for_one_goods(
             Ok(d) => d,
             Err(e) => return Err(Error::from(e)), // TODO handle IO error differently!!!!
           };
-          operation[_STATUS] = "deleted".into();
+          operation[c::STATUS] = c::DELETED.into();
 
           let params = object! {oid: ws.id.to_string(), ctx: vec!["warehouse", "transfer"] };
           let _op = app.service("memories").patch(

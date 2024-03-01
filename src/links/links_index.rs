@@ -10,7 +10,7 @@ use service::utils::json::JsonParams;
 use std::path::Path;
 use std::sync::Arc;
 use uuid::Uuid;
-use values::constants::{_DOCUMENT, _UUID};
+use values::c;
 use zerocopy::AsBytes;
 
 const CF_TARGET_CTX_SOURCE: &str = "target_ctx_source";
@@ -81,7 +81,7 @@ impl LinksIndex {
   }
 
   fn source_and_target(&self, ws: &Workspace, data: &JsonValue) -> Option<(Uuid, Uuid)> {
-    let doc_id = match data[_DOCUMENT].string_or_none() {
+    let doc_id = match data[c::DOCUMENT].string_or_none() {
       None => return None,
       Some(id) => id,
     };
@@ -91,14 +91,14 @@ impl LinksIndex {
       Err(_) => {
         let document = doc_id.resolve_to_json_object(ws);
 
-        match document[_UUID].uuid_or_none() {
+        match document[c::UUID].uuid_or_none() {
           Some(uuid) => uuid,
           None => return None, // return Err(ErrorKind::Incomplete),
         }
       },
     };
 
-    let source = match data[_UUID].uuid_or_none() {
+    let source = match data[c::UUID].uuid_or_none() {
       Some(uuid) => uuid,
       None => return None, // return Err(Error::NotFound("after uuid not found".into())),
     };
@@ -124,7 +124,7 @@ impl LinksIndex {
     before: &JsonValue,
     after: &JsonValue,
   ) -> Result<(), Error> {
-    if before[_DOCUMENT].string() == after[_DOCUMENT].string() {
+    if before[c::DOCUMENT].string() == after[c::DOCUMENT].string() {
       // do nothing
     } else {
       self.delete(ws, ctx, before)?;

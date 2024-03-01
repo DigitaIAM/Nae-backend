@@ -4,7 +4,7 @@ use service::{Context, Services};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::time::Instant;
-use values::constants::_UUID;
+use values::c;
 
 const DRUGS: [&str; 1] = ["drugs"];
 
@@ -48,7 +48,7 @@ fn print_only_name(result: JsonValue) {
     println!(
       "\t{index:>2}) {} {}",
       item["name"].as_str().unwrap_or_default(),
-      item[_UUID].as_str().unwrap_or_default()
+      item[c::UUID].as_str().unwrap_or_default()
     );
     index += 1
   }

@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use store::elements::receive_data;
 use uuid::Uuid;
-use values::constants::{_ID, _STATUS, _UUID};
+use values::c;
 
 static LOCK: Mutex<Vec<u8>> = Mutex::new(vec![]);
 
@@ -79,11 +79,11 @@ fn save_data(
     let before = match load(&path_latest) {
       Ok(b) => {
         //WORKAROUND: make sure that id & uuid stay same
-        if !b[_ID].is_null() {
-          data[_ID] = b[_ID].clone();
+        if !b[c::ID].is_null() {
+          data[c::ID] = b[c::ID].clone();
         }
-        if !b[_UUID].is_null() {
-          data[_UUID] = b[_UUID].clone();
+        if !b[c::UUID].is_null() {
+          data[c::UUID] = b[c::UUID].clone();
         }
         b
       },
@@ -100,7 +100,7 @@ fn save_data(
 
     app.links().save_links(ws, ctx, &data, &before)?;
 
-    let uuid = data[_UUID].as_str();
+    let uuid = data[c::UUID].as_str();
 
     save(&path_current, data.dump())?;
 
@@ -117,9 +117,9 @@ fn save_data(
 
   log::debug!("_Before {before:?}\n_After {after:?}");
 
-  stack.insert(before[_ID].string(), (before, after.clone()));
+  stack.insert(before[c::ID].string(), (before, after.clone()));
 
-  let sources = app.links().get_source_links_without_ctx(data[_UUID].uuid()?)?;
+  let sources = app.links().get_source_links_without_ctx(data[c::UUID].uuid()?)?;
 
   log::debug!("_sources {sources:?}");
 
@@ -127,9 +127,9 @@ fn save_data(
     .iter()
     .map(|uuid| uuid.resolve_to_json_object(&ws))
     .filter(|o| o.is_object())
-    .filter(|o| o[_STATUS].string() != *"deleted")
+    .filter(|o| o[c::STATUS].string().as_str() != c::DELETED)
     .map(|o| {
-      let mut _ctx: Vec<String> = o[_ID].string().split('/').map(|s| s.to_string()).collect();
+      let mut _ctx: Vec<String> = o[c::ID].string().split('/').map(|s| s.to_string()).collect();
       _ctx.pop();
       let _ = receive_data(app, ws.id.to_string().as_str(), o.clone(), o.clone(), &_ctx, &stack) // TODO
         .map_err(|e| Error::GeneralError(e.message()));
@@ -242,8 +242,8 @@ impl Memories {
 
     let uuid = Uuid::new_v4();
 
-    data[_ID] = id.clone().into();
-    data[_UUID] = uuid.to_string().into();
+    data[c::ID] = id.clone().into();
+    data[c::UUID] = uuid.to_string().into();
 
     let data =
       save_data(app, &self.ws, &self.top_folder, &folder, &self.ctx, &id, Some(uuid), time, data)?;

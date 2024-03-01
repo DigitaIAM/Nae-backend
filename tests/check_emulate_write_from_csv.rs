@@ -14,7 +14,7 @@ use service::{Context, Services};
 use store::process_records::process_warehouse_record;
 use store::qty::Qty;
 use store::GetWarehouse;
-use values::constants::_UUID;
+use values::c::_UUID;
 
 #[actix_web::test]
 async fn check_emulate_write_from_csv() {

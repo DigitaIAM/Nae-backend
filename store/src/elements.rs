@@ -20,7 +20,7 @@ use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
 use crate::qty::Qty;
 use service::utils::json::JsonParams;
-use values::constants::{_DOCUMENT, _ID, _STATUS, _UUID};
+use values::c;
 
 pub type Goods = Uuid;
 pub type Store = Uuid;
@@ -275,7 +275,7 @@ where
     return Ok(ops);
   }
 
-  if data[_STATUS].string() == *"deleted" {
+  if data[c::STATUS].string() == c::DELETED {
     return Ok(ops);
   }
 
@@ -294,7 +294,7 @@ where
     _ => return Ok(ops),
   };
 
-  let doc_id = data[_DOCUMENT].string();
+  let doc_id = data[c::DOCUMENT].string();
 
   let document = match resolve_doc(doc_id) {
     Some(d) => d,
@@ -328,7 +328,7 @@ where
     }
   };
 
-  let goods_uuid = match goods[_UUID].uuid_or_none() {
+  let goods_uuid = match goods[c::UUID].uuid_or_none() {
     Some(uuid) => uuid,
     None => return Ok(ops),
   };
@@ -404,7 +404,7 @@ where
 
   log::debug!("after op {op:?}");
 
-  let tid = if let Some(tid) = data[_UUID].uuid_or_none() {
+  let tid = if let Some(tid) = data[c::UUID].uuid_or_none() {
     tid
   } else {
     return Ok(ops);
@@ -412,7 +412,7 @@ where
 
   let batch = if type_of_operation == OpType::Receive {
     if ctx == &vec!["production".to_owned(), "produce".to_owned()] {
-      match document[_UUID].uuid_or_none() {
+      match document[c::UUID].uuid_or_none() {
         Some(id) => Batch { id, date },
         None => return Ok(ops), // TODO: assert!(false)
       }
@@ -421,13 +421,13 @@ where
     }
   } else if type_of_operation == OpType::Inventory {
     match &data["batch"] {
-      JsonValue::Object(d) => Batch { id: d[_UUID].uuid()?, date: d["date"].date_with_check()? },
+      JsonValue::Object(d) => Batch { id: d[c::UUID].uuid()?, date: d["date"].date_with_check()? },
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? }, // TODO is it ok?
     }
   } else {
     match &data["batch"] {
       JsonValue::Object(d) => {
-        let id = if let Some(id) = d["id"].uuid_or_none() { id } else { d[_UUID].uuid()? };
+        let id = if let Some(id) = d["id"].uuid_or_none() { id } else { d[c::UUID].uuid()? };
         Batch { id, date: data["batch"]["date"].date_with_check()? }
       },
       _ => Batch { id: UUID_NIL, date: dt("1970-01-01")? },
@@ -580,5 +580,5 @@ fn resolve_store(
   let params = object! {oid: wid, ctx: vec!["warehouse", "storage"] };
   let storage = app.service("memories").get(Context::local(), store_id, params)?;
   log::debug!("storage {:?}", storage.dump());
-  storage[_UUID].uuid()
+  storage[c::UUID].uuid()
 }

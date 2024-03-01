@@ -11,7 +11,7 @@ use std::io::{Error, ErrorKind};
 use std::str::FromStr;
 use store::error::WHError;
 use store::process_records::memories_find;
-use values::constants::{_DOCUMENT, _ID, _STATUS};
+use values::c;
 use values::ID;
 
 pub fn save_roll(app: &Application) -> Result<(), Error> {
@@ -38,7 +38,7 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
 
         let produce = match app.service("memories").get(
           Context::local(),
-          doc.json()?[_ID].string(),
+          doc.json()?[c::ID].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -51,7 +51,7 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
 
         let order = match app.service("memories").get(
           Context::local(),
-          doc.json()?[_DOCUMENT].string(),
+          doc.json()?[c::DOCUMENT].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -88,7 +88,7 @@ pub fn save_roll(app: &Application) -> Result<(), Error> {
               order["thickness"].string(),
               material,
               produce["qty"].string(),
-              produce[_ID].string(),
+              produce[c::ID].string(),
             ])
             .unwrap();
 
@@ -140,7 +140,7 @@ pub fn save_half_stuff_products(app: &Application, product_type: Product) -> Res
 
         let produce = match app.service("memories").get(
           Context::local(),
-          doc.json()?[_ID].string(),
+          doc.json()?[c::ID].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -151,13 +151,13 @@ pub fn save_half_stuff_products(app: &Application, product_type: Product) -> Res
 
         println!("_produce {produce:?}");
 
-        if produce[_STATUS] == "deleted" {
+        if produce[c::STATUS] == c::DELETED {
           continue;
         }
 
         let order = match app.service("memories").get(
           Context::local(),
-          doc.json()?[_DOCUMENT].string(),
+          doc.json()?[c::DOCUMENT].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -189,7 +189,7 @@ pub fn save_half_stuff_products(app: &Application, product_type: Product) -> Res
 
           // println!("_product {product:?}");
 
-          let id = order[_ID].string();
+          let id = order[c::ID].string();
           let number = produce["qty"]["uom"]["number"].string();
 
           let mut record = records.entry((id.clone(), number.clone())).or_insert(vec![
@@ -262,7 +262,7 @@ pub fn save_cups_and_caps(app: &Application) -> Result<(), Error> {
 
         let produce = match app.service("memories").get(
           Context::local(),
-          doc.json()?[_ID].string(),
+          doc.json()?[c::ID].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -271,13 +271,13 @@ pub fn save_cups_and_caps(app: &Application) -> Result<(), Error> {
           }, // TODO handle IO error differently!!!!
         };
 
-        if produce[_STATUS] == "deleted" {
+        if produce[c::STATUS] == c::DELETED {
           continue;
         }
 
         let order = match app.service("memories").get(
           Context::local(),
-          doc.json()?[_DOCUMENT].string(),
+          doc.json()?[c::DOCUMENT].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -314,7 +314,7 @@ pub fn save_cups_and_caps(app: &Application) -> Result<(), Error> {
 
           println!("_product {product:?}");
 
-          let id = order[_ID].string();
+          let id = order[c::ID].string();
           let number = produce["qty"]["uom"]["number"].string();
           let customer = produce["customer"].string();
           let label = produce["label"].string();
@@ -391,7 +391,7 @@ pub fn save_produced(app: &Application) -> Result<(), Error> {
 
         let produced = match app.service("memories").get(
           Context::local(),
-          doc.json()?[_ID].string(),
+          doc.json()?[c::ID].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -404,7 +404,7 @@ pub fn save_produced(app: &Application) -> Result<(), Error> {
 
         let order = match app.service("memories").get(
           Context::local(),
-          doc.json()?[_DOCUMENT].string(),
+          doc.json()?[c::DOCUMENT].string(),
           params.clone(),
         ) {
           Ok(d) => d,
@@ -496,7 +496,7 @@ pub fn save_produced(app: &Application) -> Result<(), Error> {
             goods["name"].string(),
             produced["qty"]["number"].string(),
             qty_str,
-            produced[_ID].string(),
+            produced[c::ID].string(),
           ])
           .unwrap();
 
@@ -563,8 +563,7 @@ pub fn save_transfer_from_file(app: &Application) -> Result<(), Error> {
     }
     .unwrap();
 
-    let filter =
-      object! {number: number, from: from[_ID].clone(), into: into[_ID].clone(), date: date.clone()};
+    let filter = object! {number: number, from: from[c::ID].clone(), into: into[c::ID].clone(), date: date.clone()};
 
     let doc = if let Ok(items) = memories_find(app, filter, doc_ctx.clone()) {
       match items.len() {
@@ -577,7 +576,7 @@ pub fn save_transfer_from_file(app: &Application) -> Result<(), Error> {
     }
     .unwrap();
 
-    let operations = memories_find(app, object! { document: doc[_ID].string() }, op_ctx.clone())?;
+    let operations = memories_find(app, object! { document: doc[c::ID].string() }, op_ctx.clone())?;
 
     // println!("_OPERS {operations:?}");
 
@@ -646,7 +645,7 @@ pub fn save_transfer_for_goods(app: &Application) -> Result<(), Error> {
 
   println!("_goods: {:?}", goods);
 
-  let filter = object! {goods: goods[_ID].string()};
+  let filter = object! {goods: goods[c::ID].string()};
 
   let transfer_ops =
     if let Ok(items) = memories_find(app, filter, ["warehouse", "receive"].to_vec()) {
@@ -665,7 +664,7 @@ pub fn save_transfer_for_goods(app: &Application) -> Result<(), Error> {
   for transfer in transfer_ops {
     let document = match app.service("memories").get(
       Context::local(),
-      transfer[_DOCUMENT].string(),
+      transfer[c::DOCUMENT].string(),
       params.clone(),
     ) {
       Ok(p) => p,

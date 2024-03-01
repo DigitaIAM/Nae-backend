@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use json::JsonValue;
 use simsearch::SimSearch;
 use uuid::Uuid;
-use values::constants::_UUID;
+use values::c;
 
 use crate::{
   commutator::Application, storage::Workspaces, text_search::engine_tantivy::TantivyEngine,
@@ -56,7 +56,7 @@ impl SearchEngine {
       for mem in memories.list(None)? {
         let jdoc = mem.json()?;
         let name = jdoc["name"].as_str().unwrap();
-        let uuid = jdoc[_UUID].as_str().unwrap();
+        let uuid = jdoc[c::UUID].as_str().unwrap();
         let uuid = Uuid::parse_str(uuid).unwrap();
 
         self.sim.insert(uuid, name);
@@ -196,7 +196,7 @@ pub fn handle_mutation(
   data: &JsonValue,
 ) -> Result<(), Error> {
   if ctx == &vec!["drugs"] {
-    let id = data[_UUID]
+    let id = data[c::UUID]
       .as_str()
       .map(|data| Uuid::parse_str(data).unwrap_or(UUID_NIL))
       .unwrap_or(UUID_NIL);

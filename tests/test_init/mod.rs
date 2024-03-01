@@ -21,7 +21,7 @@ use store::operations::{InternalOperation, OpMutation};
 use store::process_records::process_warehouse_record;
 use store::qty::Qty;
 use store::GetWarehouse;
-use values::constants::_UUID;
+use values::c;
 
 const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 

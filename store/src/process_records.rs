@@ -6,7 +6,7 @@ use rust_decimal::Decimal;
 use service::error::Error;
 use service::utils::json::JsonParams;
 use service::{Context, Services};
-use values::constants::{_ID, _UUID};
+use values::c;
 
 const COUNTERPARTY: [&str; 1] = ["counterparty"];
 const STORAGE: [&str; 2] = ["warehouse", "storage"];
@@ -35,9 +35,9 @@ pub fn report(
   let storage =
     json(app, object! { name: storage }, STORAGE.to_vec(), &|| object! { name: storage }).unwrap();
 
-  log::debug!("STORAGE: {:?}", storage[_UUID]);
+  log::debug!("STORAGE: {:?}", storage[c::UUID]);
 
-  let params: JsonValue = object! {ctx: ctx, oid: OID, storage: storage[_UUID].clone(), dates: {"from": from_date, "till": till_date}};
+  let params: JsonValue = object! {ctx: ctx, oid: OID, storage: storage[c::UUID].clone(), dates: {"from": from_date, "till": till_date}};
 
   let result = app.service("inventory").find(Context::local(), params).unwrap();
 
@@ -402,7 +402,7 @@ pub fn process_production_record(
       object! { date: order_date.to_json(), area: area_id.to_string().to_json(), product: product_id.to_string().to_json(), planned: planned },
       vec!["production", "order"],
     )?;
-    new_order[_ID].string()
+    new_order[c::ID].string()
   };
 
   let piece_uom = String::from("1f93df2e-c423-45cf-8123-de02e0a0064e");

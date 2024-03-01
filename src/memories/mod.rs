@@ -7,7 +7,7 @@ pub use memories_in_files::MemoriesInFiles;
 use uuid::Uuid;
 
 pub trait Enrich {
-  fn enrich(&self, ws: &crate::storage::organizations::Workspace) -> JsonValue;
+  fn enrich(&self, ws: &Workspace) -> JsonValue;
 }
 
 impl Enrich for JsonValue {
@@ -79,26 +79,47 @@ impl Enrich for JsonValue {
       enrich_qty(ws, &mut data["qty"]);
     }
 
-    fn enrich_qty(ws: &Workspace, element: &mut JsonValue) {
-      let mut processing = element;
-      while processing.is_object() {
-        if let Some(uom) = processing["in"].as_str() {
-          processing["in"] = uom.resolve_to_json_object(ws);
-        }
-
-        let node = &processing["uom"];
-        if let Some(uom) = node.as_str() {
-          processing["uom"] = uom.resolve_to_json_object(ws);
-          break;
-        } else if node.is_object() {
-          processing = &mut processing["uom"];
-        } else {
-          break;
-        }
-      }
-    }
     // log::debug!("enrich_qty {:?}", data["qty"]);
     data
+  }
+}
+
+pub fn enrich_own_qty(ws: &Workspace, mut element: JsonValue) -> JsonValue {
+  let mut processing = &mut element;
+  while processing.is_object() {
+    if let Some(uom) = processing["in"].as_str() {
+      processing["in"] = uom.resolve_to_json_object(ws);
+    }
+
+    let node = &processing["uom"];
+    if let Some(uom) = node.as_str() {
+      processing["uom"] = uom.resolve_to_json_object(ws);
+      break;
+    } else if node.is_object() {
+      processing = &mut processing["uom"];
+    } else {
+      break;
+    }
+  }
+  element
+}
+
+pub fn enrich_qty(ws: &Workspace, element: &mut JsonValue) {
+  let mut processing = element;
+  while processing.is_object() {
+    if let Some(uom) = processing["in"].as_str() {
+      processing["in"] = uom.resolve_to_json_object(ws);
+    }
+
+    let node = &processing["uom"];
+    if let Some(uom) = node.as_str() {
+      processing["uom"] = uom.resolve_to_json_object(ws);
+      break;
+    } else if node.is_object() {
+      processing = &mut processing["uom"];
+    } else {
+      break;
+    }
   }
 }
 

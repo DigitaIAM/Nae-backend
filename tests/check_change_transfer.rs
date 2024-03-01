@@ -20,7 +20,7 @@ use store::qty::{Number, Qty};
 use store::GetWarehouse;
 use tantivy::HasLen;
 use uuid::Uuid;
-use values::constants::_UUID;
+use values::c;
 use values::ID;
 
 #[actix_web::test]
