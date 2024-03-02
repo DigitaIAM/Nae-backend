@@ -50,19 +50,17 @@ impl Service for Inventory {
 
       let batch_id = filter["batch_id"].uuid()?;
 
-      println!("1");
       let batch_date: DateTime<Utc> = filter["batch_date"].date_with_check()?;
 
       let batch = Batch { id: batch_id, date: batch_date };
 
-      println!("2");
       let dates = if let Some(dates) = self.date_range(&filter)? {
         dates
       } else {
         return Err(Error::GeneralError("dates not defined".into()));
       };
 
-      println!("get_report_for_goods {batch:?}");
+      // println!("get_report_for_goods {batch:?}");
 
       let report = match self
         .app

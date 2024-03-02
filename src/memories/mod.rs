@@ -4,6 +4,7 @@ pub(crate) mod stock;
 use crate::storage::organizations::Workspace;
 use json::JsonValue;
 pub use memories_in_files::MemoriesInFiles;
+use store::qty::Qty;
 use uuid::Uuid;
 
 pub trait Enrich {
@@ -84,41 +85,35 @@ impl Enrich for JsonValue {
   }
 }
 
-pub fn enrich_own_qty(ws: &Workspace, mut element: JsonValue) -> JsonValue {
-  let mut processing = &mut element;
-  while processing.is_object() {
-    if let Some(uom) = processing["in"].as_str() {
-      processing["in"] = uom.resolve_to_json_object(ws);
-    }
+pub fn enrich_own_qty(ws: &Workspace, qty: Qty) -> JsonValue {
+  let mut element = qty.to_json();
 
-    let node = &processing["uom"];
-    if let Some(uom) = node.as_str() {
-      processing["uom"] = uom.resolve_to_json_object(ws);
-      break;
-    } else if node.is_object() {
-      processing = &mut processing["uom"];
-    } else {
-      break;
-    }
-  }
+  enrich_qty(ws, &mut element);
+
   element
 }
 
 pub fn enrich_qty(ws: &Workspace, element: &mut JsonValue) {
-  let mut processing = element;
-  while processing.is_object() {
-    if let Some(uom) = processing["in"].as_str() {
-      processing["in"] = uom.resolve_to_json_object(ws);
+  if element.is_array() {
+    for el in element.members_mut() {
+      enrich_qty(ws, el);
     }
+  } else {
+    let mut processing = element;
+    while processing.is_object() {
+      if let Some(uom) = processing["in"].as_str() {
+        processing["in"] = uom.resolve_to_json_object(ws);
+      }
 
-    let node = &processing["uom"];
-    if let Some(uom) = node.as_str() {
-      processing["uom"] = uom.resolve_to_json_object(ws);
-      break;
-    } else if node.is_object() {
-      processing = &mut processing["uom"];
-    } else {
-      break;
+      let node = &processing["uom"];
+      if let Some(uom) = node.as_str() {
+        processing["uom"] = uom.resolve_to_json_object(ws);
+        break;
+      } else if node.is_object() {
+        processing = &mut processing["uom"];
+      } else {
+        break;
+      }
     }
   }
 }

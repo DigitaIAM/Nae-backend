@@ -240,9 +240,7 @@ impl Service for MemoriesInFiles {
           .map(|o| o["qty"].clone().try_into().unwrap_or_else(|_| Qty::zero()))
           .sum();
 
-        // TODO rolls - kg, caps - piece
-        // order["produced"] = object! { "piece": sum_produced.to_json(), "box": boxes.to_string() };
-        order["produced"] = sum_produced.to_json();
+        order["produced"] = enrich_own_qty(&ws, sum_produced.clone());
 
         let filters = vec![("document", &order[c::ID])];
 
@@ -271,7 +269,7 @@ impl Service for MemoriesInFiles {
           .map(|(_k, mut v)| {
             object! {
               "goods": v.0,
-              "qty": enrich_own_qty(&ws, v.1.to_json()),
+              "qty": enrich_own_qty(&ws, v.1),
             }
           })
           .collect();
@@ -302,7 +300,7 @@ impl Service for MemoriesInFiles {
           .map(|(_k, mut v)| {
             object! {
               "goods": v.0,
-              "qty": enrich_own_qty(&ws, v.1.to_json()),
+              "qty": enrich_own_qty(&ws, v.1),
             }
           })
           .collect();
@@ -313,9 +311,9 @@ impl Service for MemoriesInFiles {
           "used": used,
           "produced": produced,
           "sum": object! {
-            "used": sum_material_used.to_json(),
-            "produced": sum_material_produced.to_json(),
-            "delta": enrich_own_qty(&ws, delta.to_json()),
+            "used": enrich_own_qty(&ws, sum_material_used),
+            "produced": enrich_own_qty(&ws, sum_material_produced),
+            "delta": enrich_own_qty(&ws, delta),
           }
         };
       }
