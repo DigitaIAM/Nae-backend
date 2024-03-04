@@ -40,25 +40,24 @@ impl Service for Inventory {
 
     // println!("FN_FIND_PARAMS: {:#?}", params);
 
-    if params.is_array() {
-      let params = self.params(&params);
+    let params = self.params(&params);
 
-      let filter = params["filter"].clone();
+    let filter = params["filter"].clone();
 
-      let storage = filter["storage"].uuid()?;
-      let goods = filter["goods"].uuid()?;
+    let dates = if let Some(dates) = self.date_range(&filter)? {
+      dates
+    } else {
+      return Err(Error::GeneralError("dates not defined".into()));
+    };
 
+    let storage = filter["storage"].uuid()?;
+
+    if let Ok(goods) = filter["goods"].uuid() {
       let batch_id = filter["batch_id"].uuid()?;
 
       let batch_date: DateTime<Utc> = filter["batch_date"].date_with_check()?;
 
       let batch = Batch { id: batch_id, date: batch_date };
-
-      let dates = if let Some(dates) = self.date_range(&filter)? {
-        dates
-      } else {
-        return Err(Error::GeneralError("dates not defined".into()));
-      };
 
       // println!("get_report_for_goods {batch:?}");
 
@@ -80,16 +79,6 @@ impl Service for Inventory {
         "$skip": 0,
       })
     } else {
-      let params = self.params(&params);
-
-      let storage = params["storage"].uuid()?;
-
-      let dates = if let Some(dates) = self.date_range(params)? {
-        dates
-      } else {
-        return Err(Error::GeneralError("dates not defined".into()));
-      };
-
       let report =
         match self.app.warehouse.database.get_report_for_storage(storage, dates.0, dates.1) {
           Ok(report) => report.to_json(),
@@ -99,8 +88,8 @@ impl Service for Inventory {
       // println!("REPORT = {report:?}");
 
       Ok(json::object! {
+      total: report.len(),
       data: report,
-      total: 1,
       "$skip": 0,
       })
     }

@@ -1,13 +1,13 @@
 use rust_decimal::Decimal;
-use store::aggregations::AgregationStoreGoods;
+use store::aggregations::AggregationStoreGoods;
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::{dt, Mode};
 use store::operations::{InternalOperation, OpMutation};
+use store::qty::{Number, Qty};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
-use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 
@@ -46,14 +46,9 @@ fn store_test_issue_partly() {
       batch.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![
-          Number::new(
-            Decimal::from(2),
-            uom0,
-            inner.clone(),
-          )
-        ]),
-        9.into())),
+        Qty::new(vec![Number::new(Decimal::from(2), uom0, inner.clone())]),
+        9.into(),
+      )),
     ),
     OpMutation::new(
       id2,
@@ -64,15 +59,10 @@ fn store_test_issue_partly() {
       Batch::no(),
       None,
       Some(InternalOperation::Issue(
-        Qty::new(vec![
-          Number::new(
-            Decimal::from(1),
-            uom0,
-            inner.clone(),
-          )
-        ]),
+        Qty::new(vec![Number::new(Decimal::from(1), uom0, inner.clone())]),
         0.into(),
-        Mode::Auto)),
+        Mode::Auto,
+      )),
     ),
   ];
 
@@ -81,20 +71,23 @@ fn store_test_issue_partly() {
   let res = db.get_report_for_storage(w1, start_d, end_d).unwrap();
   println!("res0= {:#?}", res.items.1);
 
-  let agr = AgregationStoreGoods {
+  let agr = AggregationStoreGoods {
     store: Some(w1),
     goods: Some(G1),
     batch: Some(batch.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta {
       qty: Qty::new(vec![Number::new(Decimal::from(2), uom0, inner.clone())]),
-      cost: 9.into() },
+      cost: 9.into(),
+    },
     issue: BalanceDelta {
       qty: Qty::new(vec![Number::new(Decimal::from(-1), uom0, inner.clone())]),
-      cost: Decimal::try_from(-4.5).unwrap().into() },
+      cost: Decimal::try_from(-4.5).unwrap().into(),
+    },
     close_balance: BalanceForGoods {
       qty: Qty::new(vec![Number::new(Decimal::from(1), uom0, inner.clone())]),
-      cost: Decimal::try_from(4.5).unwrap().into() },
+      cost: Decimal::try_from(4.5).unwrap().into(),
+    },
   };
 
   assert_eq!(agr, res.items.1[0]);
@@ -124,14 +117,9 @@ fn store_test_issue_partly() {
       batch.clone(),
       None,
       Some(InternalOperation::Receive(
-        Qty::new(vec![
-          Number::new(
-            Decimal::from(1),
-            uom0,
-            inner.clone()
-          )
-        ]),
-        9.into())),
+        Qty::new(vec![Number::new(Decimal::from(1), uom0, inner.clone())]),
+        9.into(),
+      )),
     ),
     OpMutation::new(
       id2,
@@ -142,11 +130,10 @@ fn store_test_issue_partly() {
       Batch::no(),
       None,
       Some(InternalOperation::Issue(
-        Qty::new(vec![
-          Number::new(Decimal::from(1), uom1, None),
-        ]),
+        Qty::new(vec![Number::new(Decimal::from(1), uom1, None)]),
         0.into(),
-        Mode::Auto)),
+        Mode::Auto,
+      )),
     ),
   ];
 
@@ -155,20 +142,23 @@ fn store_test_issue_partly() {
   let res = db.get_report_for_storage(w1, start_d, end_d).unwrap();
   // println!("res1= {:#?}", res.items.1);
 
-  let agr = AgregationStoreGoods {
+  let agr = AggregationStoreGoods {
     store: Some(w1),
     goods: Some(G1),
     batch: Some(batch.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta {
       qty: Qty::new(vec![Number::new(Decimal::from(1), uom0, inner)]),
-      cost: 9.into() },
+      cost: 9.into(),
+    },
     issue: BalanceDelta {
       qty: Qty::new(vec![Number::new(Decimal::from(-1), uom1, None)]),
-      cost: (-3).into() },
+      cost: (-3).into(),
+    },
     close_balance: BalanceForGoods {
       qty: Qty::new(vec![Number::new(Decimal::from(2), uom1, None)]),
-      cost: 6.into() },
+      cost: 6.into(),
+    },
   };
 
   assert_eq!(agr, res.items.1[0]);

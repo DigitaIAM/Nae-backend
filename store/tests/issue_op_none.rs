@@ -1,13 +1,13 @@
 use rust_decimal::Decimal;
-use store::aggregations::AgregationStoreGoods;
+use store::aggregations::AggregationStoreGoods;
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::dt;
 use store::operations::{InternalOperation, OpMutation};
+use store::qty::{Number, Qty};
 use store::wh_storage::WHStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
-use store::qty::{Number, Qty};
 
 const G1: Uuid = Uuid::from_u128(1);
 
@@ -40,7 +40,8 @@ fn store_test_issue_op_none() {
       None,
       Some(InternalOperation::Receive(
         Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
-        10.into())),
+        10.into(),
+      )),
     ),
     OpMutation::new(id3, start_d, w1, None, G1, doc.clone(), None, None),
   ];
@@ -51,18 +52,20 @@ fn store_test_issue_op_none() {
 
   // println!("REPORT: {res:#?}");
 
-  let agr = AgregationStoreGoods {
+  let agr = AggregationStoreGoods {
     store: Some(w1),
     goods: Some(G1),
     batch: Some(doc.clone()),
     open_balance: BalanceForGoods::default(),
     receive: BalanceDelta {
       qty: Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
-      cost: 10.into() },
+      cost: 10.into(),
+    },
     issue: BalanceDelta::default(),
     close_balance: BalanceForGoods {
       qty: Qty::new(vec![Number::new(Decimal::from(3), uom, None)]),
-      cost: 10.into() },
+      cost: 10.into(),
+    },
   };
 
   assert_eq!(agr, res.items.1[0]);

@@ -55,7 +55,7 @@ impl JsonParams for JsonValue {
           // log::debug!("FN_UUID_OR_NONE: {res:?}");
           Some(res)
         } else {
-          None
+          None // TODO raise error here
         }
       }
     } else {

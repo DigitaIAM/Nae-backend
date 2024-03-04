@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use store::aggregations::AgregationStoreGoods;
+use store::aggregations::AggregationStoreGoods;
 use store::balance::{Balance, BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::dt;

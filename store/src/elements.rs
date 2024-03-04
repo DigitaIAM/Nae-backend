@@ -14,7 +14,7 @@ use service::utils::time::date_to_string;
 use crate::GetWarehouse;
 use service::{Context, Services};
 
-use crate::aggregations::{AggregationStore, AgregationStoreGoods};
+use crate::aggregations::{AggregationStore, AggregationStoreGoods};
 use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
@@ -112,7 +112,7 @@ pub(crate) trait KeyValueStore {
 }
 
 pub enum ReturnType {
-  Good(AgregationStoreGoods),
+  Good(AggregationStoreGoods),
   Store(AggregationStore),
   Empty,
 }
@@ -121,22 +121,25 @@ pub enum ReturnType {
 pub struct Report {
   pub from_date: DateTime<Utc>,
   pub till_date: DateTime<Utc>,
-  pub items: (AggregationStore, Vec<AgregationStoreGoods>),
+  pub items: (AggregationStore, Vec<AggregationStoreGoods>),
 }
 
 impl ToJson for Report {
   fn to_json(&self) -> JsonValue {
     let mut arr = JsonValue::new_array();
 
+    arr.push(self.items.0.to_json()).unwrap();
+
     for agr in self.items.1.iter() {
       arr.push(agr.to_json()).unwrap();
     }
 
-    object! {
-      from_date: time_to_naive_string(self.from_date),
-      till_date: time_to_naive_string(self.till_date),
-      items: vec![self.items.0.to_json(), arr]
-    }
+    // object! {
+    //   from_date: time_to_naive_string(self.from_date),
+    //   till_date: time_to_naive_string(self.till_date),
+    //   items: vec![self.items.0.to_json(), arr]
+    // }
+    arr
   }
 }
 

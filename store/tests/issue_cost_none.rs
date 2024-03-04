@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use store::aggregations::AgregationStoreGoods;
+use store::aggregations::AggregationStoreGoods;
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::{dt, Mode};
@@ -65,7 +65,7 @@ fn store_test_issue_cost_none() {
 
   let res = db.get_report_for_storage(w1, start_d, end_d).unwrap();
 
-  let agr = AgregationStoreGoods {
+  let agr = AggregationStoreGoods {
     store: Some(w1),
     goods: Some(G1),
     batch: Some(doc.clone()),
