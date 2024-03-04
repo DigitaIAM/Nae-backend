@@ -109,10 +109,10 @@ impl ToJson for AggregationStore {
       object! {
         id: values::ID::random().to_string(), // TODO calculate id from store + date range
         store: s.to_json(),
-        open_balance: self.open_balance.to_json(),
-        receive: self.receive.to_json(),
-        issue: self.issue.to_json(),
-        close_balance: self.close_balance.to_json(),
+        open_balance: object! { cost: self.open_balance.to_json() },
+        receive: object! { cost: self.receive.to_json() },
+        issue: object! { cost: self.issue.to_json() },
+        close_balance: object! { cost: self.close_balance.to_json() },
       }
     } else {
       JsonValue::Null
