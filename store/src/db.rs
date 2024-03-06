@@ -34,13 +34,13 @@ impl Db {
     }
   }
 
-  fn get(&self, key: &Vec<u8>) -> Result<String, WHError> {
-    match self.db.get(key) {
-      Ok(Some(res)) => Ok(String::from_utf8(res)?),
-      Ok(None) => Err(WHError::new("Can't get from database - no such value")),
-      Err(_) => Err(WHError::new("Something wrong with getting from database")),
-    }
-  }
+  // fn get(&self, key: &Vec<u8>) -> Result<String, WHError> {
+  //   match self.db.get(key) {
+  //     Ok(Some(res)) => Ok(String::from_utf8(res)?),
+  //     Ok(None) => Err(WHError::new("Can't get from database - no such value")),
+  //     Err(_) => Err(WHError::new("Something wrong with getting from database")),
+  //   }
+  // }
 
   pub fn update(
     &self,
@@ -148,8 +148,29 @@ impl Db {
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
     for ordered_topology in self.ordered_topologies.iter() {
-      match ordered_topology.ops_for_store_goods_and_batch(store, goods, batch, from_date, till_date)
-      {
+      match ordered_topology.ops_for_store_goods_batch(store, goods, batch, from_date, till_date) {
+        Ok(result) => return Ok(result),
+        Err(e) => {
+          if e.message() == *"Not supported" {
+            continue;
+          } else {
+            return Err(e);
+          }
+        },
+      }
+    }
+    Err(WHError::new("can't get checkpoint before date"))
+  }
+
+  pub fn ops_for_store_goods(
+    &self,
+    store: Store,
+    goods: Goods,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    for ordered_topology in self.ordered_topologies.iter() {
+      match ordered_topology.ops_for_store_goods(store, goods, from_date, till_date) {
         Ok(result) => return Ok(result),
         Err(e) => {
           if e.message() == *"Not supported" {
@@ -214,8 +235,26 @@ impl Db {
     till_date: DateTime<Utc>,
   ) -> Result<JsonValue, WHError> {
     for ordered_topology in self.ordered_topologies.iter() {
-      match ordered_topology.get_report_for_goods(self, storage, goods, batch, from_date, till_date)
+      match ordered_topology
+        .report_for_store_goods_batch(self, storage, goods, batch, from_date, till_date)
       {
+        Ok(report) => return Ok(report),
+        Err(_) => {}, // ignore
+      }
+    }
+
+    Err(WHError::new("fn get_report not implemented"))
+  }
+
+  pub fn get_report_for_storage_goods(
+    &self,
+    storage: Store,
+    goods: Goods,
+    from_date: DateTime<Utc>,
+    till_date: DateTime<Utc>,
+  ) -> Result<JsonValue, WHError> {
+    for ordered_topology in self.ordered_topologies.iter() {
+      match ordered_topology.report_for_store_goods(self, storage, goods, from_date, till_date) {
         Ok(report) => return Ok(report),
         Err(_) => {}, // ignore
       }
@@ -231,7 +270,7 @@ impl Db {
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
     for ordered_topology in self.ordered_topologies.iter() {
-      match ordered_topology.get_report_for_storage(self, storage, from_date, till_date) {
+      match ordered_topology.report_for_store(self, storage, from_date, till_date) {
         Ok(report) => return Ok(report),
         Err(_) => {}, // ignore
       }

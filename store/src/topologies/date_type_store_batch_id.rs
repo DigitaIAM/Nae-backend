@@ -93,9 +93,9 @@ impl OrderedTopology for DateTypeStoreBatchId {
     ColumnFamilyDescriptor::new(DateTypeStoreBatchId::cf_name(), opts)
   }
 
-  fn get_ops_for_storage(
+  fn ops_for_store(
     &self,
-    storage: Store,
+    store: Store,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Vec<Op>, WHError> {
@@ -129,7 +129,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     options.set_iterate_range(from..till);
 
     // store
-    let expected: Vec<u8> = storage.as_bytes().to_vec();
+    let expected: Vec<u8> = store.as_bytes().to_vec();
 
     // log::debug!("exp {expected:?}");
 
@@ -158,11 +158,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(res)
   }
 
-  fn get_ops_for_all(
-    &self,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
+  fn ops(&self, from_date: DateTime<Utc>, till_date: DateTime<Utc>) -> Result<Vec<Op>, WHError> {
     let from_date = from_date.timestamp() as u64;
     let from: Vec<u8> = from_date
       .to_be_bytes()
@@ -205,7 +201,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(res)
   }
 
-  fn get_ops_for_one_goods(
+  fn ops_for_store_goods(
     &self,
     store: Store,
     goods: Goods,
@@ -287,18 +283,7 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(res)
   }
 
-  fn ops_for_store_goods_and_batch(
-    &self,
-    _store: Store,
-    _goods: Goods,
-    _batch: &Batch,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("Not supported"))
-  }
-
-  fn get_ops_for_many_goods(
+  fn ops_for_goods(
     &self,
     goods: &Vec<Goods>,
     from_date: DateTime<Utc>,
@@ -351,24 +336,16 @@ impl OrderedTopology for DateTypeStoreBatchId {
     Ok(res)
   }
 
-  fn operations_for_store_goods(
-    &self,
-    _from: DateTime<Utc>,
-    _till: &Op,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
-  fn get_report_for_storage(
+  fn report_for_store(
     &self,
     db: &Db,
-    storage: Store,
+    store: Store,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
-    let balances = db.get_checkpoints_for_one_storage_before_date(storage, from_date)?;
+    let balances = db.get_checkpoints_for_one_storage_before_date(store, from_date)?;
 
-    let ops = self.get_ops_for_storage(storage, first_day_current_month(from_date), till_date)?;
+    let ops = self.ops_for_store(store, first_day_current_month(from_date), till_date)?;
 
     let items = get_aggregations(balances, ops, from_date);
 

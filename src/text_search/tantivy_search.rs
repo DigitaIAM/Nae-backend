@@ -15,8 +15,6 @@ use crate::animo::memory::{ChangeTransformation, Context, Value};
 use crate::animo::shared::*;
 use crate::animo::Txn;
 
-use values::ID;
-
 pub struct TextSearch {
   index: Index,
   writer: Arc<RwLock<IndexWriter>>,
@@ -170,16 +168,16 @@ impl TextSearch {
 
 #[cfg(test)]
 mod tests {
+  use crate::animo::memory::create;
   use crate::animo::memory::Memory;
-  use crate::animo::{memory::create, shared::*};
   use crate::warehouse::test_util::init;
-  use std::thread::Thread;
+  use values::ID;
 
   use super::*;
 
   #[test]
   fn test_search() {
-    let (tmp_dir, settings, db) = init();
+    let (_tmp_dir, settings, db) = init();
 
     let mut changes = vec![];
 

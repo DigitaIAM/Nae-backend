@@ -225,6 +225,7 @@ impl CheckpointTopology for CheckDateStoreBatch {
       .chain(UUID_NIL.as_bytes().iter())
       .copied()
       .collect();
+
     let till: Vec<u8> = ts
       .to_be_bytes()
       .iter()

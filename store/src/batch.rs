@@ -1,8 +1,7 @@
-use crate::elements::{dt, Goods, ToJson, WHError, UUID_MAX, UUID_NIL};
+use crate::elements::{dt, Goods, ToJson, UUID_MAX, UUID_NIL};
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
 use serde::{Deserialize, Serialize};
-use service::utils::json::JsonParams;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -12,9 +11,9 @@ pub struct Batch {
 }
 
 impl Batch {
-  pub(crate) fn new() -> Self {
-    Batch { id: Uuid::new_v4(), date: DateTime::<Utc>::MAX_UTC }
-  }
+  // pub(crate) fn new() -> Self {
+  //   Batch { id: Uuid::new_v4(), date: DateTime::<Utc>::MAX_UTC }
+  // }
 
   // TODO make constant
   pub fn no() -> Self {
@@ -33,13 +32,13 @@ impl Batch {
     self.id == UUID_NIL
   }
 
-  fn from_json(json: &JsonValue) -> Result<Self, WHError> {
-    if json.is_object() {
-      Ok(Batch { id: json["id"].uuid()?, date: json["date"].date_with_check()? })
-    } else {
-      Err(WHError::new("fn from_json for Batch failed"))
-    }
-  }
+  // fn from_json(json: &JsonValue) -> Result<Self, WHError> {
+  //   if json.is_object() {
+  //     Ok(Batch { id: json["id"].uuid()?, date: json["date"].date_with_check()? })
+  //   } else {
+  //     Err(WHError::new("fn from_json for Batch failed"))
+  //   }
+  // }
 
   pub(crate) fn to_barcode(&self) -> String {
     let date = self.date.to_string();
@@ -62,11 +61,11 @@ impl Batch {
       .collect()
   }
 
-  pub(crate) fn bytes(&self) -> Vec<u8> {
-    let dt = self.date.timestamp() as u64;
-
-    dt.to_be_bytes().iter().chain(self.id.as_bytes().iter()).copied().collect()
-  }
+  // pub(crate) fn bytes(&self) -> Vec<u8> {
+  //   let dt = self.date.timestamp() as u64;
+  //
+  //   dt.to_be_bytes().iter().chain(self.id.as_bytes().iter()).copied().collect()
+  // }
 }
 
 impl ToJson for Batch {

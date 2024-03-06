@@ -177,9 +177,9 @@ impl Time {
     Time(ts, TimeAccuracy::Month, IntervalPosition::Start)
   }
 
-  pub(crate) fn is_beginning_of_month(&self) -> bool {
-    self.0.day() == 1 && self.0.num_seconds_from_midnight() == 0 && self.0.nanosecond() == 0
-  }
+  // pub(crate) fn is_beginning_of_month(&self) -> bool {
+  //   self.0.day() == 1 && self.0.num_seconds_from_midnight() == 0 && self.0.nanosecond() == 0
+  // }
 
   pub(crate) fn add_quantum(&self) -> Self {
     match self.1 {

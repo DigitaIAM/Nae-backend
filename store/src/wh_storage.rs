@@ -35,7 +35,7 @@ impl WHStorage {
     };
     let is_empty = cfs.is_empty();
     let cf_descriptors = cfs.into_iter().map(|name| {
-      let mut cf_opts = Options::default();
+      let cf_opts = Options::default();
       ColumnFamilyDescriptor::new(name, cf_opts)
     });
 

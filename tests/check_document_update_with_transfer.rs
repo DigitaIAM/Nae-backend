@@ -1,6 +1,6 @@
 mod test_init;
 
-use crate::test_init::{goods, init, receive, store, uom, DocumentCreation};
+use crate::test_init::{goods, init, store, uom, DocumentCreation};
 use chrono::Utc;
 use json::object;
 use json::JsonValue;
@@ -10,17 +10,11 @@ use nae_backend::storage::Workspaces;
 use rust_decimal::Decimal;
 use service::utils::json::JsonParams;
 use service::Services;
-use std::str::FromStr;
 use std::sync::Arc;
 use store::batch::Batch;
 use store::elements::dt;
-use store::elements::ToJson;
 use store::qty::{Number, Qty};
 use store::GetWarehouse;
-use tantivy::HasLen;
-use uuid::Uuid;
-use values::c::_UUID;
-use values::ID;
 
 #[actix_web::test]
 async fn check_document_update_with_transfer() {
@@ -33,10 +27,10 @@ async fn check_document_update_with_transfer() {
   app.register(MemoriesInFiles::new(app.clone(), "memories"));
   app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
-  let receive_op = vec!["warehouse", "receive"];
-  let transfer_op = vec!["warehouse", "transfer"];
-  let receive_doc = vec!["warehouse", "receive", "document"];
-  let transfer_doc = vec!["warehouse", "transfer", "document"];
+  let ctx_receive_op = vec!["warehouse", "receive"];
+  let ctx_transfer_op = vec!["warehouse", "transfer"];
+  let ctx_receive_doc = vec!["warehouse", "receive", "document"];
+  let ctx_transfer_doc = vec!["warehouse", "transfer", "document"];
 
   let s1 = store(&app, "s1");
   let s2 = store(&app, "s2");
@@ -47,7 +41,7 @@ async fn check_document_update_with_transfer() {
   let uom1 = uom(&app, "uom1");
 
   // create receive document
-  let receiveDoc = object! {
+  let receive_doc = object! {
     date: "2023-01-02",
     counterparty: s1.to_string(),
     storage: s2.to_string(),
@@ -55,7 +49,7 @@ async fn check_document_update_with_transfer() {
   };
 
   log::debug!("CREATE RECEIVE HEAD 2023-01-02 S2");
-  let d1 = receive_doc.create(&app, receiveDoc.clone());
+  let d1 = ctx_receive_doc.create(&app, receive_doc.clone());
 
   // create receive operation
   let qty0 = Qty::new(vec![Number::new(
@@ -66,7 +60,7 @@ async fn check_document_update_with_transfer() {
 
   let qty0_json: JsonValue = (&qty0).into();
 
-  let receiveOp = object! {
+  let receive_op = object! {
     document: d1["_id"].to_string(),
     goods: g1.to_string(),
     // qty: object! {number: "3.0"},
@@ -75,13 +69,13 @@ async fn check_document_update_with_transfer() {
   };
 
   log::debug!("CREATE RECEIVE OPERATION 2023-01-02 S2");
-  let r1 = receive_op.create(&app, receiveOp);
+  let r1 = ctx_receive_op.create(&app, receive_op);
   // log::debug!("receive_data: {:#?}", r1.dump());
 
   let r1_batch = Batch { id: r1["_uuid"].uuid().unwrap(), date: dt("2023-01-02").unwrap() };
 
   // create transfer document
-  let mut transferDoc = object! {
+  let mut transfer_doc = object! {
     date: "2023-01-03",
     from: s2.to_string(),
     into: s3.to_string(),
@@ -89,10 +83,10 @@ async fn check_document_update_with_transfer() {
   };
 
   log::debug!("CREATE TRANSFER HEAD 2023-01-03 S2 > S3");
-  let d2 = transfer_doc.create(&app, transferDoc.clone());
+  let d2 = ctx_transfer_doc.create(&app, transfer_doc.clone());
 
   // create transfer operation
-  let transferOp = object! {
+  let transfer_op = object! {
     document: d2["_id"].to_string(),
     goods: g1.to_string(),
     // qty: object! {number: "3.0"},
@@ -101,22 +95,22 @@ async fn check_document_update_with_transfer() {
   };
 
   log::debug!("CREATE TRANSFER OPERATION 2023-01-03 S2 > S3");
-  let t1 = transfer_op.create(&app, transferOp);
+  let t1 = ctx_transfer_op.create(&app, transfer_op);
 
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
 
   // change document
-  transferDoc["date"] = "2022-12-15".into();
+  transfer_doc["date"] = "2022-12-15".into();
 
   log::debug!("UPDATE TRANSFER HEAD 2023-01-03 > 2022-12-15 S2 > S3");
-  let d3 = transfer_doc.update(&app, d2["_id"].string(), transferDoc);
+  let d3 = ctx_transfer_doc.update(&app, d2["_id"].string(), transfer_doc);
 
   app.warehouse().database.ordered_topologies[0].debug().unwrap();
 
   // get stock
-  let wsid = ID::from("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ");
-
-  let ws = app.wss.get(&wsid);
+  // let wsid = ID::from("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ");
+  //
+  // let ws = app.wss.get(&wsid);
 
   let balances = app.warehouse().database.get_balance_for_all(Utc::now()).unwrap();
 

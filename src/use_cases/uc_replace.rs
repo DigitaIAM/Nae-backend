@@ -1,6 +1,5 @@
 use crate::commutator::Application;
 use crate::storage::organizations::Workspace;
-use crate::{storage, text_search};
 use json::{object, JsonValue};
 use service::utils::json::JsonParams;
 use service::{Context, Services};

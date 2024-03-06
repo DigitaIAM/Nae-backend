@@ -1,9 +1,4 @@
-use crate::{
-  balance::BalanceForGoods,
-  db::Db,
-  elements::{Report, Store},
-  error::WHError,
-};
+use crate::{balance::BalanceForGoods, elements::Store, error::WHError};
 
 use crate::batch::Batch;
 use crate::elements::Goods;
@@ -95,54 +90,6 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     ColumnFamilyDescriptor::new(StoreGoodsDateTypeIdBatch::cf_name(), opts)
   }
 
-  fn get_ops_for_storage(
-    &self,
-    _storage: Store,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
-  fn get_ops_for_all(
-    &self,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
-  fn get_ops_for_one_goods(
-    &self,
-    _store: Store,
-    _goods: Goods,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
-  fn ops_for_store_goods_and_batch(
-    &self,
-    _store: Store,
-    _goods: Goods,
-    _batch: &Batch,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
-  fn get_ops_for_many_goods(
-    &self,
-    _goods: &Vec<Goods>,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
-  // operations for store+goods (return all batches)
   fn operations_for_store_goods(
     &self,
     from: DateTime<Utc>,
@@ -198,16 +145,6 @@ impl OrderedTopology for StoreGoodsDateTypeIdBatch {
     }
 
     Ok(res)
-  }
-
-  fn get_report_for_storage(
-    &self,
-    _db: &Db,
-    _storage: Store,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Report, WHError> {
-    Err(WHError::new("not implemented"))
   }
 
   fn key_build(

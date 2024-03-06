@@ -792,15 +792,8 @@ impl AObjectInTopology<AggregationAtCheckpoint, CheckpointDelta, WHCheckpoint, S
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::animo::memory::Memory;
   use crate::warehouse::test_util::*;
-  use crate::{animo::memory::Memory, settings::Settings};
-  use chrono::DateTime;
-  use criterion::Bencher;
-  use dbase::{FieldValue, Record};
-  use std::fs::File;
-  use std::io::{BufWriter, Write};
-  use std::thread;
-  use std::time::{SystemTime, UNIX_EPOCH};
 
   #[test]
   #[ignore]

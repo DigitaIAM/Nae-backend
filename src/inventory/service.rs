@@ -53,31 +53,49 @@ impl Service for Inventory {
     let storage = filter["storage"].uuid()?;
 
     if let Ok(goods) = filter["goods"].uuid() {
-      let batch_id = filter["batch_id"].uuid()?;
+      if let Ok(batch_id) = filter["batch_id"].uuid() {
+        let batch_date: DateTime<Utc> = filter["batch_date"].date_with_check()?;
 
-      let batch_date: DateTime<Utc> = filter["batch_date"].date_with_check()?;
+        let batch = Batch { id: batch_id, date: batch_date };
 
-      let batch = Batch { id: batch_id, date: batch_date };
+        // println!("get_report_for_goods {batch:?}");
 
-      // println!("get_report_for_goods {batch:?}");
+        let report = match self
+          .app
+          .warehouse
+          .database
+          .get_report_for_goods(storage, goods, &batch, dates.0, dates.1)
+        {
+          Ok(report) => report,
+          Err(error) => return Err(Error::GeneralError(error.message())),
+        };
 
-      let report = match self
-        .app
-        .warehouse
-        .database
-        .get_report_for_goods(storage, goods, &batch, dates.0, dates.1)
-      {
-        Ok(report) => report,
-        Err(error) => return Err(Error::GeneralError(error.message())),
-      };
+        // println!("REPORT = {report:?}");
 
-      // println!("REPORT = {report:?}");
+        Ok(json::object! {
+          data: report,
+          total: 1,
+          "$skip": 0,
+        })
+      } else {
+        let report = match self
+          .app
+          .warehouse
+          .database
+          .get_report_for_storage_goods(storage, goods, dates.0, dates.1)
+        {
+          Ok(report) => report,
+          Err(error) => return Err(Error::GeneralError(error.message())),
+        };
 
-      Ok(json::object! {
-        data: report,
-        total: 1,
-        "$skip": 0,
-      })
+        // println!("REPORT = {report:?}");
+
+        Ok(json::object! {
+          data: report,
+          total: 1,
+          "$skip": 0,
+        })
+      }
     } else {
       let report =
         match self.app.warehouse.database.get_report_for_storage(storage, dates.0, dates.1) {

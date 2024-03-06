@@ -34,50 +34,59 @@ pub trait OrderedTopology {
 
   fn create_cf(&self, opts: Options) -> ColumnFamilyDescriptor;
 
-  fn get_ops_for_storage(
-    &self,
-    storage: Store,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError>;
+  fn ops(&self, _from_date: DateTime<Utc>, _till_date: DateTime<Utc>) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("not implemented"))
+  }
 
-  fn get_ops_for_all(
+  fn ops_for_store(
     &self,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError>;
+    _store: Store,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("not implemented"))
+  }
 
-  fn get_ops_for_one_goods(
+  fn ops_for_store_goods(
     &self,
-    store: Store,
-    goods: Goods,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError>;
+    _store: Store,
+    _goods: Goods,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("Not supported"))
+  }
 
-  fn ops_for_store_goods_and_batch(
+  fn ops_for_store_goods_batch(
     &self,
-    store: Store,
-    goods: Goods,
-    batch: &Batch,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError>;
+    _store: Store,
+    _goods: Goods,
+    _batch: &Batch,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("Not supported"))
+  }
 
-  fn get_ops_for_many_goods(
+  fn ops_for_goods(
     &self,
-    goods: &Vec<Goods>,
-    from_date: DateTime<Utc>,
-    till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError>;
+    _goods: &Vec<Goods>,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
+  ) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("not implemented"))
+  }
 
+  // operations for store+goods (return all batches)
   fn operations_for_store_goods(
     &self,
-    from: DateTime<Utc>,
-    till_exclude: &Op,
-  ) -> Result<Vec<Op>, WHError>;
+    _from: DateTime<Utc>,
+    _till_exclude: &Op,
+  ) -> Result<Vec<Op>, WHError> {
+    Err(WHError::new("not implemented"))
+  }
 
-  fn get_report_for_goods(
+  fn report_for_store_goods_batch(
     &self,
     db: &Db,
     store: Store,
@@ -106,13 +115,36 @@ pub trait OrderedTopology {
     Ok(items)
   }
 
-  fn get_report_for_storage(
+  fn report_for_store_goods(
     &self,
     db: &Db,
-    storage: Store,
+    store: Store,
+    goods: Goods,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
-  ) -> Result<Report, WHError>;
+  ) -> Result<JsonValue, WHError> {
+    // log::debug!("DATE_TYPE_STORE_BATCH.get_report_for_store_goods");
+    let balances = db.get_checkpoints_for_goods(store, goods, from_date)?;
+
+    let op_from_date =
+      if let Some(balance) = balances.get(0) { balance.date } else { dt("1970-01-01")? };
+
+    let ops = db.ops_for_store_goods(store, goods, op_from_date, till_date)?;
+
+    let items = get_aggregations_for_one_goods(balances, ops, from_date, till_date)?;
+
+    Ok(items)
+  }
+
+  fn report_for_store(
+    &self,
+    _db: &Db,
+    _store: Store,
+    _from_date: DateTime<Utc>,
+    _till_date: DateTime<Utc>,
+  ) -> Result<Report, WHError> {
+    Err(WHError::new("not implemented"))
+  }
 
   fn key(&self, op: &Op) -> Vec<u8> {
     self.key_build(
@@ -642,7 +674,7 @@ pub trait OrderedTopology {
     let mut result = checkpoints;
 
     // get operations between checkpoint date and requested date
-    let ops = self.get_ops_for_many_goods(goods, from_date, till_date)?;
+    let ops = self.ops_for_goods(goods, from_date, till_date)?;
 
     for op in ops {
       result
@@ -671,7 +703,7 @@ pub trait OrderedTopology {
     let mut result = checkpoints;
 
     // get operations between checkpoint date and requested date
-    let ops = self.get_ops_for_one_goods(*store, *goods, from_date, till_date)?;
+    let ops = self.ops_for_store_goods(*store, *goods, from_date, till_date)?;
 
     for op in ops {
       result.entry(op.goods).and_modify(|bal| bal.apply(&op.op)).or_insert_with(|| {
@@ -693,7 +725,7 @@ pub trait OrderedTopology {
     let mut result = checkpoints;
 
     // get operations between checkpoint date and requested date
-    let ops = self.get_ops_for_all(from_date, till_date)?;
+    let ops = self.ops(from_date, till_date)?;
 
     for op in ops {
       result

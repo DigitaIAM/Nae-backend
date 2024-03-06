@@ -1,14 +1,10 @@
 use crate::animo::db::AnimoDB;
 use crate::animo::memory::Memory;
-use crate::animo::{Animo, Topology};
 use crate::commutator::Application;
 use crate::links::GetLinks;
-use crate::memories::MemoriesInFiles;
-use crate::settings::{Database, JWTConfig, Settings};
+use crate::settings::Settings;
 use crate::storage::Workspaces;
 use json::{object, JsonValue};
-use service::Services;
-use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use store::elements::ToJson;
@@ -24,7 +20,7 @@ async fn links_cud() {
   let oid = ID::from_base64("yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ").unwrap();
   let ws = wss.create(oid).unwrap();
 
-  let (mut app, _) = Application::new(Arc::new(settings), Arc::new(db), wss).await.unwrap();
+  let (app, _) = Application::new(Arc::new(settings), Arc::new(db), wss).await.unwrap();
 
   let ctx: Vec<String> = vec!["production".into(), "produce".into()];
 
@@ -103,7 +99,7 @@ fn init() -> (TempDir, Settings, AnimoDB) {
 
   let settings = Settings::test(tmp_path.into());
 
-  let mut db: AnimoDB = Memory::init(tmp_path.into()).unwrap();
+  let db: AnimoDB = Memory::init(tmp_path.into()).unwrap();
 
   (tmp_dir, settings, db)
 }

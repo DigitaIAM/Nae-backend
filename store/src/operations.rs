@@ -1,12 +1,10 @@
 use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
-use crate::elements::{Goods, Mode, Store, ToJson, WHError};
-use crate::ordered_topology::OrderedTopology;
-use crate::qty::{Qty, QtyDelta};
+use crate::elements::{Goods, Mode, Store, ToJson};
+use crate::qty::Qty;
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
 use serde::{Deserialize, Serialize};
-use service::utils::json::JsonParams;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -158,66 +156,66 @@ impl Op {
     self
   }
 
-  pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
-    let op = &data["op"];
-    let mode = if op["mode"].as_str() == Some("Auto") { Mode::Auto } else { Mode::Manual };
-
-    let operation = match op["type"].as_str() {
-      Some("inventory") => InternalOperation::Inventory(
-        BalanceForGoods {
-          qty: op["balance"].clone().try_into()?,
-          cost: op["balance"]["cost"].number().into(),
-        },
-        BalanceDelta {
-          qty: op["delta"]["qty"].clone().try_into()?,
-          cost: op["delta"]["cost"].number().into(),
-        },
-        mode,
-      ),
-      Some("receive") => {
-        InternalOperation::Receive(op["qty"].clone().try_into()?, op["cost"].number().into())
-      },
-      Some("issue") => {
-        InternalOperation::Issue(op["qty"].clone().try_into()?, op["cost"].number().into(), mode)
-      },
-      _ => return Err(WHError::new(&format!("unknown operation type {}", op["type"]))),
-    };
-
-    let mut dependant = vec![];
-
-    match &data["dependant"] {
-      JsonValue::Array(array) => {
-        for item in array {
-          let store = item["store"].uuid()?;
-          let batch = &item["batch"];
-          let batch = Batch { id: batch["id"].uuid()?, date: batch["date"].date_with_check()? };
-          match item["type"].as_str() {
-            Some("receive") => dependant.push(Dependant::Receive(store, batch)),
-            Some("issue") => dependant.push(Dependant::Issue(store, batch)),
-            _ => return Err(WHError::new(&format!("unknown dependant type {}", item["type"]))),
-          }
-        }
-      },
-      _ => (),
-    }
-
-    let op = Op {
-      id: data["id"].uuid()?,
-      date: data["date"].date_with_check()?,
-      // store: data["store"].uuid()?,
-      store: data["from"].uuid()?,
-      goods: data["goods"].uuid()?,
-      batch: Batch {
-        id: data["batch"]["id"].uuid()?,
-        date: data["batch"]["date"].date_with_check()?,
-      },
-      store_into: data["into"].uuid_or_none(),
-      op: operation,
-      is_dependent: data["is_dependent"].boolean(),
-      dependant,
-    };
-    Ok(op)
-  }
+  // pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
+  //   let op = &data["op"];
+  //   let mode = if op["mode"].as_str() == Some("Auto") { Mode::Auto } else { Mode::Manual };
+  //
+  //   let operation = match op["type"].as_str() {
+  //     Some("inventory") => InternalOperation::Inventory(
+  //       BalanceForGoods {
+  //         qty: op["balance"].clone().try_into()?,
+  //         cost: op["balance"]["cost"].number().into(),
+  //       },
+  //       BalanceDelta {
+  //         qty: op["delta"]["qty"].clone().try_into()?,
+  //         cost: op["delta"]["cost"].number().into(),
+  //       },
+  //       mode,
+  //     ),
+  //     Some("receive") => {
+  //       InternalOperation::Receive(op["qty"].clone().try_into()?, op["cost"].number().into())
+  //     },
+  //     Some("issue") => {
+  //       InternalOperation::Issue(op["qty"].clone().try_into()?, op["cost"].number().into(), mode)
+  //     },
+  //     _ => return Err(WHError::new(&format!("unknown operation type {}", op["type"]))),
+  //   };
+  //
+  //   let mut dependant = vec![];
+  //
+  //   match &data["dependant"] {
+  //     JsonValue::Array(array) => {
+  //       for item in array {
+  //         let store = item["store"].uuid()?;
+  //         let batch = &item["batch"];
+  //         let batch = Batch { id: batch["id"].uuid()?, date: batch["date"].date_with_check()? };
+  //         match item["type"].as_str() {
+  //           Some("receive") => dependant.push(Dependant::Receive(store, batch)),
+  //           Some("issue") => dependant.push(Dependant::Issue(store, batch)),
+  //           _ => return Err(WHError::new(&format!("unknown dependant type {}", item["type"]))),
+  //         }
+  //       }
+  //     },
+  //     _ => (),
+  //   }
+  //
+  //   let op = Op {
+  //     id: data["id"].uuid()?,
+  //     date: data["date"].date_with_check()?,
+  //     // store: data["store"].uuid()?,
+  //     store: data["from"].uuid()?,
+  //     goods: data["goods"].uuid()?,
+  //     batch: Batch {
+  //       id: data["batch"]["id"].uuid()?,
+  //       date: data["batch"]["date"].date_with_check()?,
+  //     },
+  //     store_into: data["into"].uuid_or_none(),
+  //     op: operation,
+  //     is_dependent: data["is_dependent"].boolean(),
+  //     dependant,
+  //   };
+  //   Ok(op)
+  // }
 
   pub(crate) fn to_delta(&self) -> BalanceDelta {
     match &self.op {
@@ -226,29 +224,29 @@ impl Op {
     }
   }
 
-  pub(crate) fn batch(&self) -> Vec<u8> {
-    self.batch.to_bytes(&self.goods)
-  }
+  // pub(crate) fn batch(&self) -> Vec<u8> {
+  //   self.batch.to_bytes(&self.goods)
+  // }
 
-  pub(crate) fn is_independent(&self, other: &Op) -> bool {
-    if self.is_dependent {
-      if self.id == other.id && self.goods == other.goods {
-        match other.op {
-          InternalOperation::Inventory(..) => false,
-          InternalOperation::Receive(..) => true,
-          InternalOperation::Issue(..) => match self.op {
-            InternalOperation::Inventory(..) => true,
-            InternalOperation::Receive(..) => self.batch != other.batch,
-            InternalOperation::Issue(..) => !(other.batch.is_empty() || other.batch == self.batch),
-          },
-        }
-      } else {
-        true
-      }
-    } else {
-      true
-    }
-  }
+  // pub(crate) fn is_independent(&self, other: &Op) -> bool {
+  //   if self.is_dependent {
+  //     if self.id == other.id && self.goods == other.goods {
+  //       match other.op {
+  //         InternalOperation::Inventory(..) => false,
+  //         InternalOperation::Receive(..) => true,
+  //         InternalOperation::Issue(..) => match self.op {
+  //           InternalOperation::Inventory(..) => true,
+  //           InternalOperation::Receive(..) => self.batch != other.batch,
+  //           InternalOperation::Issue(..) => !(other.batch.is_empty() || other.batch == self.batch),
+  //         },
+  //       }
+  //     } else {
+  //       true
+  //     }
+  //   } else {
+  //     true
+  //   }
+  // }
 
   pub(crate) fn dependent_on_transfer(&self) -> Option<Op> {
     // if self.is_dependent {
@@ -323,6 +321,24 @@ impl ToJson for Op {
 
       is_dependent: self.is_dependent
     };
+
+    match &self.op {
+      InternalOperation::Inventory(BalanceForGoods { qty, cost }, _, _) => {
+        obj["type"] = "inventory".into();
+        obj["qty"] = qty.to_json();
+        obj["cost"] = cost.to_json();
+      },
+      InternalOperation::Receive(qty, cost) => {
+        obj["type"] = "receive".into();
+        obj["qty"] = qty.to_json();
+        obj["cost"] = cost.to_json();
+      },
+      InternalOperation::Issue(qty, cost, _) => {
+        obj["type"] = "issue".into();
+        obj["qty"] = qty.to_json();
+        obj["cost"] = cost.to_json();
+      },
+    }
 
     match self.store_into.as_ref() {
       None => {},
@@ -399,9 +415,9 @@ impl OpMutation {
     }
   }
 
-  fn value(&self) -> Result<String, WHError> {
-    Ok(serde_json::to_string(&self)?)
-  }
+  // fn value(&self) -> Result<String, WHError> {
+  //   Ok(serde_json::to_string(&self)?)
+  // }
 
   pub fn to_op_before(&self) -> Option<Op> {
     self.before.as_ref().map(|(op, is_dependent)| Op {
@@ -449,19 +465,19 @@ impl OpMutation {
   //   }
   // }
 
-  pub(crate) fn to_delta(&self) -> QtyDelta {
-    if let Some((before, _)) = self.before.as_ref() {
-      if let Some((after, _)) = self.after.as_ref() {
-        QtyDelta { before: Some(before.clone()), after: Some(after.clone()) }
-      } else {
-        QtyDelta { before: Some(before.clone()), after: None }
-      }
-    } else if let Some((after, _)) = self.after.as_ref() {
-      QtyDelta { before: None, after: Some(after.clone()) }
-    } else {
-      QtyDelta { before: None, after: None }
-    }
-  }
+  // pub(crate) fn to_delta(&self) -> QtyDelta {
+  //   if let Some((before, _)) = self.before.as_ref() {
+  //     if let Some((after, _)) = self.after.as_ref() {
+  //       QtyDelta { before: Some(before.clone()), after: Some(after.clone()) }
+  //     } else {
+  //       QtyDelta { before: Some(before.clone()), after: None }
+  //     }
+  //   } else if let Some((after, _)) = self.after.as_ref() {
+  //     QtyDelta { before: None, after: Some(after.clone()) }
+  //   } else {
+  //     QtyDelta { before: None, after: None }
+  //   }
+  // }
 
   pub(crate) fn new_from_ops(before: Option<Op>, after: Option<Op>) -> OpMutation {
     if let (Some(b), Some(a)) = (&before, &after) {

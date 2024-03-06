@@ -2,15 +2,14 @@ use crate::balance::{BalanceForGoods, Cost, Price};
 use crate::elements::{ToJson, UUID_NIL};
 use crate::error::WHError;
 use crate::operations::InternalOperation;
-use actix_web::body::MessageBody;
 use json::{object, JsonValue};
-use rust_decimal::prelude::{ToPrimitive, Zero};
+use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use service::utils::json::JsonParams;
 use std::cmp::Ordering;
 use std::iter::Sum;
-use std::ops::{Add, AddAssign, Deref, Div, Mul, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Mul, Neg, Sub, SubAssign};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialOrd, Eq, Hash, Serialize, Deserialize)]
@@ -31,8 +30,8 @@ pub struct Qty {
 
 #[derive(Debug)]
 pub struct QtyDelta {
-  pub(crate) before: Option<InternalOperation>,
-  pub(crate) after: Option<InternalOperation>,
+  pub before: Option<InternalOperation>,
+  pub after: Option<InternalOperation>,
 }
 
 // impl QtyDelta {
@@ -72,8 +71,8 @@ impl Convert for Vec<(Decimal, Uuid)> {
       return Ok(result);
     }
 
-    let mut from = self;
-    let mut into = into;
+    let from = self;
+    let into = into;
 
     let start_index = from.len() - 1;
 
@@ -133,29 +132,29 @@ impl Uom {
     }
   }
 
-  fn uom(&self) -> Uom {
-    match self {
-      Uom::In(uuid, qty) => {
-        if let Some(q) = qty {
-          q.name.clone()
-        } else {
-          Uom::In(uuid.clone(), None)
-        }
-      },
-    }
-  }
+  // fn uom(&self) -> Uom {
+  //   match self {
+  //     Uom::In(uuid, qty) => {
+  //       if let Some(q) = qty {
+  //         q.name.clone()
+  //       } else {
+  //         Uom::In(uuid.clone(), None)
+  //       }
+  //     },
+  //   }
+  // }
 
-  fn is_some(&self) -> bool {
-    match self {
-      Uom::In(_, qty) => {
-        if let Some(_) = qty {
-          true
-        } else {
-          false
-        }
-      },
-    }
-  }
+  // fn is_some(&self) -> bool {
+  //   match self {
+  //     Uom::In(_, qty) => {
+  //       if let Some(_) = qty {
+  //         true
+  //       } else {
+  //         false
+  //       }
+  //     },
+  //   }
+  // }
 
   pub(crate) fn depth(&self) -> usize {
     let mut result = 0;
@@ -277,7 +276,7 @@ impl TryInto<Number<Uom>> for JsonValue {
         head.name = Uom::In(in_uuid, Some(Box::new(tmp)));
         head = match &mut head.name {
           Uom::In(_, ref mut qty) => qty.as_mut().unwrap(),
-          _ => unreachable!(),
+          // _ => unreachable!(),
         };
       }
       data = uom;
@@ -332,29 +331,29 @@ impl Number<Uom> {
     self.number.clone()
   }
 
-  fn to_vec(&self) -> Vec<(Decimal, Uuid)> {
-    let mut result = Vec::new();
+  // fn to_vec(&self) -> Vec<(Decimal, Uuid)> {
+  //   let mut result = Vec::new();
+  //
+  //   result.insert(0, (self.number, self.name.uuid()));
+  //
+  //   let mut current = self.clone();
+  //
+  //   while let Some(qty) = current.named() {
+  //     result.insert(0, (qty.number, qty.name.uuid()));
+  //     current = *qty;
+  //   }
+  //
+  //   result
+  // }
 
-    result.insert(0, (self.number, self.name.uuid()));
-
-    let mut current = self.clone();
-
-    while let Some(qty) = current.named() {
-      result.insert(0, (qty.number, qty.name.uuid()));
-      current = *qty;
-    }
-
-    result
-  }
-
-  fn simplify(data: &mut Vec<(Decimal, Uuid)>, index: usize) {
-    while data.len() > index + 1 {
-      if let (Some(popped), Some(last)) = (data.pop(), data.last_mut()) {
-        let (last_number, last_uuid) = *last;
-        *last = (popped.0 * last_number, last_uuid);
-      }
-    }
-  }
+  // fn simplify(data: &mut Vec<(Decimal, Uuid)>, index: usize) {
+  //   while data.len() > index + 1 {
+  //     if let (Some(popped), Some(last)) = (data.pop(), data.last_mut()) {
+  //       let (last_number, last_uuid) = *last;
+  //       *last = (popped.0 * last_number, last_uuid);
+  //     }
+  //   }
+  // }
 
   // fn subtract(
   //   full: Vec<(Decimal, Uuid)>,
@@ -385,13 +384,13 @@ impl Number<Uom> {
     }
   }
 
-  fn is_negative(&self) -> bool {
-    if self.number < Decimal::ZERO {
-      true
-    } else {
-      false
-    }
-  }
+  // fn is_negative(&self) -> bool {
+  //   if self.number < Decimal::ZERO {
+  //     true
+  //   } else {
+  //     false
+  //   }
+  // }
 
   fn get_common(mut big: Number<Uom>, mut small: Number<Uom>) -> Option<Uom> {
     if small.name.depth() > 0 {
@@ -485,7 +484,7 @@ impl Number<Uom> {
 
   pub(crate) fn elevate_to_qty(&self, balance: &Qty) -> Qty {
     let mut result = Qty::new(vec![self.clone()]);
-    let mut prev = self.clone();
+    let prev = self.clone();
 
     for b in balance.inner.iter() {
       if let Some(_common) = self.common(b) {
@@ -549,18 +548,18 @@ impl Number<Uom> {
     result
   }
 
-  pub(crate) fn base(&self) -> Uom {
-    let mut result = self.name.clone();
-
-    let mut iter = self.clone();
-
-    while let Some(inner) = iter.named() {
-      result = inner.name.clone();
-      iter = *inner;
-    }
-
-    result
-  }
+  // pub(crate) fn base(&self) -> Uom {
+  //   let mut result = self.name.clone();
+  //
+  //   let mut iter = self.clone();
+  //
+  //   while let Some(inner) = iter.named() {
+  //     result = inner.name.clone();
+  //     iter = *inner;
+  //   }
+  //
+  //   result
+  // }
 }
 
 impl Neg for Number<Uom> {
@@ -675,7 +674,7 @@ impl Qty {
   pub(crate) fn abs(&self) -> Self {
     let mut result = self.clone();
 
-    for mut qty in &mut result.inner {
+    for qty in &mut result.inner {
       if qty.number.is_sign_negative() {
         qty.number = qty.number.abs();
       }
@@ -746,47 +745,47 @@ impl Qty {
     }
   }
 
-  pub(crate) fn plus_with_relax(&self, balance: &Self) -> Self {
-    let mut result = Qty::new(vec![]);
-    let len = self.inner.len();
-
-    for i in 0..len {
-      let first = &(self.inner[i]);
-      for j in i + 1..len {
-        let second = &(self.inner[j]);
-        if let Some(common) = first.common(second) {
-          if let (Some(low_first), Some(low_second)) =
-            (first.lowering(&common), second.lowering(&common))
-          {
-            // result.inner[i] = first + second;
-            let sum = low_first.number + low_second.number;
-            result.inner.append(
-              &mut Number::new(sum, low_first.uuid(), low_first.named())
-                .elevate_to_qty(&balance)
-                .inner,
-            );
-          }
-        } else {
-          let (first_base, second_base) = (first.base(), second.base());
-          if first_base == second_base {
-            if let (Some(low_first), Some(low_second)) =
-              (first.lowering(&first_base), second.lowering(&second_base))
-            {
-              // result.inner[i] = low_first + low_second;
-              let sum = low_first.number + low_second.number;
-              result.inner.append(
-                &mut Number::new(sum, low_first.uuid(), low_first.named())
-                  .elevate_to_qty(&balance)
-                  .inner,
-              );
-            }
-          }
-        }
-      }
-    }
-
-    result
-  }
+  // pub(crate) fn plus_with_relax(&self, balance: &Self) -> Self {
+  //   let mut result = Qty::new(vec![]);
+  //   let len = self.inner.len();
+  //
+  //   for i in 0..len {
+  //     let first = &(self.inner[i]);
+  //     for j in i + 1..len {
+  //       let second = &(self.inner[j]);
+  //       if let Some(common) = first.common(second) {
+  //         if let (Some(low_first), Some(low_second)) =
+  //           (first.lowering(&common), second.lowering(&common))
+  //         {
+  //           // result.inner[i] = first + second;
+  //           let sum = low_first.number + low_second.number;
+  //           result.inner.append(
+  //             &mut Number::new(sum, low_first.uuid(), low_first.named())
+  //               .elevate_to_qty(&balance)
+  //               .inner,
+  //           );
+  //         }
+  //       } else {
+  //         let (first_base, second_base) = (first.base(), second.base());
+  //         if first_base == second_base {
+  //           if let (Some(low_first), Some(low_second)) =
+  //             (first.lowering(&first_base), second.lowering(&second_base))
+  //           {
+  //             // result.inner[i] = low_first + low_second;
+  //             let sum = low_first.number + low_second.number;
+  //             result.inner.append(
+  //               &mut Number::new(sum, low_first.uuid(), low_first.named())
+  //                 .elevate_to_qty(&balance)
+  //                 .inner,
+  //             );
+  //           }
+  //         }
+  //       }
+  //     }
+  //   }
+  //
+  //   result
+  // }
 }
 
 impl Mul<Price> for &Qty {
@@ -878,10 +877,10 @@ fn add(lhs: &Qty, rhs: &Qty) -> Qty {
           || (c.depth() == l.name.depth()
             && (l.number().is_sign_negative() && r.number().is_sign_positive()))
       })
-      .map(|(i, l, c)| (i, c)) // if only base uom is the same, skip
+      .map(|(i, _, c)| (i, c)) // if only base uom is the same, skip
       .collect();
 
-    named.sort_by(|(li, ln), (ri, rn)| {
+    named.sort_by(|(_, ln), (_, rn)| {
       let l_depth = ln.depth();
       let r_depth = rn.depth();
 
@@ -998,7 +997,7 @@ fn sub(lhs: &Qty, rhs: &Qty) -> Qty {
       .iter()
       .enumerate()
       .map(|(i, l)| (i, l, l.common(&r)))
-      .filter(|(_, l, c)| c.is_some())
+      .filter(|(_, _, c)| c.is_some())
       .map(|(i, l, c)| (i, l, c.unwrap()))
       .filter(|(_, l, c)| {
         (c.depth() == r.name.depth()
@@ -1006,10 +1005,10 @@ fn sub(lhs: &Qty, rhs: &Qty) -> Qty {
           || (c.depth() == l.name.depth()
             && (l.number().is_sign_negative() && r.number().is_sign_negative()))
       })
-      .map(|(i, l, c)| (i, c)) // if only base uom is the same, skip
+      .map(|(i, _, c)| (i, c)) // if only base uom is the same, skip
       .collect();
 
-    named.sort_by(|(li, ln), (ri, rn)| {
+    named.sort_by(|(_, ln), (_, rn)| {
       let l_depth = ln.depth();
       let r_depth = rn.depth();
 
@@ -1063,7 +1062,7 @@ impl Neg for Qty {
   fn neg(self) -> Self::Output {
     let mut result = self;
 
-    for mut qty in &mut result.inner {
+    for qty in &mut result.inner {
       qty.number = -qty.number;
     }
 

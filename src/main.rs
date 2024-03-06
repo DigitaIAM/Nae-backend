@@ -1,24 +1,16 @@
 use crate::commutator::{Application, Commutator};
 use actix::{Actor, Addr};
 use actix_cors::Cors;
-use actix_web::dev::ServiceRequest;
-use actix_web::http::header;
-use actix_web::{http, middleware, web, App, HttpServer};
-use actix_web_httpauth::extractors::bearer::{BearerAuth, Config};
-use actix_web_httpauth::extractors::AuthenticationError;
-use actix_web_httpauth::middleware::HttpAuthentication;
+use actix_web::{middleware, web, App, HttpServer};
 
 use chrono::Utc;
-use dbase::{FieldValue, Record};
 use json::JsonValue;
-use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Error, ErrorKind, Read, Write};
+use std::io;
+use std::io::{Error, ErrorKind, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{io, thread};
+use std::sync::Arc;
 use structopt::StructOpt;
 use uuid::Uuid;
 
@@ -41,8 +33,6 @@ mod text_search;
 mod use_cases;
 pub mod warehouse;
 
-use crate::animo::memory::*;
-use crate::animo::shared::*;
 use crate::hr::services::companies::Companies;
 use crate::links::GetLinks;
 use crate::memories::MemoriesInFiles;
@@ -56,11 +46,9 @@ use inventory::service::Inventory;
 use service::utils::json::JsonParams;
 use service::Services;
 use store::balance::BalanceForGoods;
-use store::elements::ToJson;
 use store::error::WHError;
 use store::operations::OpMutation;
 use store::qty::Qty;
-use store::GetWarehouse;
 use values::c;
 
 #[derive(StructOpt, Debug)]
@@ -468,7 +456,7 @@ fn update_qty(
 }
 
 async fn server(
-  settings: Arc<Settings>,
+  _settings: Arc<Settings>,
   app: Application,
   com: Addr<Commutator>,
   port: u16,
@@ -502,7 +490,7 @@ async fn server(
       .app_data(web::Data::new(com.clone()))
       .wrap(middleware::Logger::default())
       // .wrap(auth)
-      .service(web::scope("/socket.io").service(ws::start_connection))
+      .service(web::scope("/socket.io").service(ws::start::start_connection))
       .service(web::scope("/"))
       .service(
         web::scope("/v1")
@@ -551,7 +539,7 @@ async fn startup() -> io::Result<()> {
   println!("app started up");
 
   println!("com starting up");
-  let mut com = Commutator::new(app.clone(), events_receiver).start();
+  let com = Commutator::new(app.clone(), events_receiver).start();
   println!("com started up");
 
   match opt.mode.as_str() {
@@ -650,15 +638,13 @@ async fn main() -> io::Result<()> {
 mod tests {
   use super::*;
   use crate::animo::memory::{ChangeTransformation, Transformation, TransformationKey, Value};
+  use crate::animo::shared;
   use crate::warehouse::test_util::init;
   use actix_web::web::Bytes;
   use actix_web::{test, web, App};
   use json::object;
-  use rocksdb::Direction;
   use rust_decimal::Decimal;
   use service::Context;
-  use store::batch::Batch;
-  use store::elements::dt;
   use store::qty::Number;
   use store::GetWarehouse;
   use values::c;
@@ -666,7 +652,7 @@ mod tests {
 
   #[actix_web::test]
   async fn test_put_get() {
-    let (tmp_dir, settings, db) = init();
+    let (tmp_dir, _, db) = init();
 
     let app = test::init_service(
       App::new()
@@ -679,7 +665,7 @@ mod tests {
     .await;
 
     let changes = vec![ChangeTransformation {
-      zone: *DESC,
+      zone: *shared::DESC,
       context: vec!["language".into(), "label".into()].into(),
       what: "english".into(),
       into_before: Value::Nothing,
@@ -749,7 +735,7 @@ mod tests {
     // app.register(nae_backend::inventory::service::Inventory::new(app.clone()));
 
     let produce_op = vec!["production", "produce"];
-    let used_op = vec!["production", "material", "used"];
+    let ctx_used = vec!["production", "material", "used"];
     let produce_doc = vec!["production", "order"];
 
     let rolls = app
@@ -774,7 +760,7 @@ mod tests {
         json::object! {
           name: "экструдер",
             type: "roll",
-            storage: rolls[_ID].to_string(),
+            storage: rolls[c::ID].to_string(),
         },
         json::object! {
           oid: WID,
@@ -806,7 +792,7 @@ mod tests {
         Context::local(),
         json::object! {
           name: "p1",
-          goods: g1[_ID].string(),
+          goods: g1[c::ID].string(),
         },
         json::object! {
           oid: WID,
@@ -844,33 +830,33 @@ mod tests {
       .unwrap();
 
     // create first produce document
-    let mut produceDoc0 = object! {
+    let produce_doc_0 = object! {
       date: "2023-01-01",
-      area: extrusion[_ID].to_string(),
-      product: p1[_ID].to_string(),
+      area: extrusion[c::ID].to_string(),
+      product: p1[c::ID].to_string(),
     };
 
-    let d0 = create(&produce_doc, &app, produceDoc0.clone());
+    let d0 = create(&produce_doc, &app, produce_doc_0.clone());
 
     // create first produce operation
     let qty0: JsonValue = (&Qty::new(vec![Number::new(
       Decimal::from(1),
-      uom0[_UUID].uuid().unwrap(),
+      uom0[c::UUID].uuid().unwrap(),
       Some(Box::new(Number::new(
         Decimal::try_from("333.3").unwrap(),
-        uom1[_UUID].uuid().unwrap(),
+        uom1[c::UUID].uuid().unwrap(),
         None,
       ))),
     )]))
       .into();
 
-    let produceOp0 = object! {
+    let produce_op_0 = object! {
       date: "2023-01-01",
-      document: d0["_id"].to_string(),
+      document: d0[c::ID].to_string(),
       qty: qty0.clone(),
     };
 
-    let r1 = create(&produce_op, &app, produceOp0);
+    let _ = create(&produce_op, &app, produce_op_0);
     // log::debug!("produce_data: {:#?}", r1.dump());
 
     // let r1_batch = Batch { id: r1["_uuid"].uuid().unwrap(), date: dt("2023-01-01").unwrap() };
@@ -878,46 +864,46 @@ mod tests {
     // create second produce operation
     let qty1: JsonValue = (&Qty::new(vec![Number::new(
       Decimal::from(1),
-      uom0[_UUID].uuid().unwrap(),
+      uom0[c::UUID].uuid().unwrap(),
       Some(Box::new(Number::new(
         Decimal::try_from("444.4").unwrap(),
-        uom1[_UUID].uuid().unwrap(),
+        uom1[c::UUID].uuid().unwrap(),
         None,
       ))),
     )]))
       .into();
 
-    let produceOp1 = object! {
+    let produce_op_1 = object! {
       date: "2023-01-01",
       document: d0["_id"].to_string(),
       qty: qty1.clone(),
     };
 
-    let r2 = create(&produce_op, &app, produceOp1);
+    let _ = create(&produce_op, &app, produce_op_1);
 
     app.warehouse().database.ordered_topologies[0].debug().unwrap();
 
     // create second produce document
-    let mut produceDoc1 = object! {
+    let produce_doc_1 = object! {
       date: "2023-01-02",
-      area: extrusion[_ID].to_string(),
-      product: p1[_ID].to_string(),
+      area: extrusion[c::ID].to_string(),
+      product: p1[c::ID].to_string(),
     };
-    let d1 = create(&produce_doc, &app, produceDoc1.clone());
+    let d1 = create(&produce_doc, &app, produce_doc_1.clone());
 
     // create used operation
-    let usedOp = object! {
-      document: d1["_id"].to_string(),
-      storage_from: rolls[_ID].to_string(),
-      goods: g1[_ID].string(),
+    let used_op = object! {
+      document: d1[c::ID].to_string(),
+      storage_from: rolls[c::ID].to_string(),
+      goods: g1[c::ID].string(),
       qty: qty0,
     };
-    let u1 = create(&used_op, &app, usedOp);
+    let u1 = create(&ctx_used, &app, used_op);
     log::debug!("used_data: {:#?}", u1.dump());
 
     app.warehouse().database.ordered_topologies[0].debug().unwrap();
 
-    reindex(app).await;
+    let _ = reindex(app).await;
 
     // app.warehouse().database.ordered_topologies[0].debug().unwrap();
     tmp_dir.close().unwrap();

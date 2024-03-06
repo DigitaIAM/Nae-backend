@@ -11,7 +11,6 @@ use std::path::Path;
 use std::sync::Arc;
 use uuid::Uuid;
 use values::c;
-use zerocopy::AsBytes;
 
 const CF_TARGET_CTX_SOURCE: &str = "target_ctx_source";
 

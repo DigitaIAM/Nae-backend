@@ -326,10 +326,10 @@ pub(crate) fn get_aggregations_for_one_goods(
   };
 
   result.push(object! {
-    date: time_to_naive_string(start_date),
-    type: JsonValue::String("open_balance".to_string()),
     _id: Uuid::new_v4().to_json(), // TODO generate from date & store & goods & batch
-    qty: Into::<JsonValue>::into(&balance.number.qty),
+    date: time_to_naive_string(start_date),
+    type: "open_balance",
+    qty: balance.number.qty.to_json(),
     cost: balance.number.cost.to_json(),
   });
 

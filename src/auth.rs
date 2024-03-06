@@ -327,7 +327,6 @@ pub(crate) async fn ping_post(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::animo::memory::{ChangeTransformation, Transformation, TransformationKey, Value};
   use crate::api;
   use crate::storage::Workspaces;
   use crate::warehouse::test_util::init;
@@ -335,7 +334,6 @@ mod tests {
   use actix_web::web::Bytes;
   use actix_web::{test, web, App};
   use actix_web_httpauth::extractors::bearer::Config;
-  use actix_web_httpauth::middleware::HttpAuthentication;
   use std::sync::Arc;
 
   #[actix_web::test]

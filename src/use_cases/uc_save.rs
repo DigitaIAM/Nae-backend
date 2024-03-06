@@ -192,7 +192,7 @@ pub fn save_half_stuff_products(app: &Application, product_type: Product) -> Res
           let id = order[c::ID].string();
           let number = produce["qty"]["uom"]["number"].string();
 
-          let mut record = records.entry((id.clone(), number.clone())).or_insert(vec![
+          let record = records.entry((id.clone(), number.clone())).or_insert(vec![
             id.clone(),
             order["date"].string(),
             produce["date"].string(),
@@ -319,7 +319,7 @@ pub fn save_cups_and_caps(app: &Application) -> Result<(), Error> {
           let customer = produce["customer"].string();
           let label = produce["label"].string();
 
-          let mut record = records
+          let record = records
             .entry((id.clone(), number.clone(), customer.clone(), label.clone()))
             .or_insert(vec![
               id.clone(),

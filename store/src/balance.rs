@@ -1,4 +1,4 @@
-use super::{elements::ToJson, error::WHError};
+use super::elements::ToJson;
 
 use chrono::{DateTime, Utc};
 use json::{object, JsonValue};
@@ -11,7 +11,6 @@ use crate::batch::Batch;
 use crate::elements::{Goods, Mode, Store, UUID_NIL};
 use crate::operations::{InternalOperation, OpMutation};
 use crate::qty::{Qty, Uom};
-use service::utils::json::JsonParams;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Price(Decimal, Uom);
@@ -177,10 +176,10 @@ impl BalanceForGoods {
     BalanceDelta { qty: &other.qty - &self.qty, cost: other.cost - self.cost }
   }
 
-  pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
-    let qty = data["qty"].clone().try_into()?;
-    Ok(BalanceForGoods { qty, cost: data["cost"].number().into() })
-  }
+  // pub(crate) fn from_json(data: JsonValue) -> Result<Self, WHError> {
+  //   let qty = data["qty"].clone().try_into()?;
+  //   Ok(BalanceForGoods { qty, cost: data["cost"].number().into() })
+  // }
 
   pub fn apply(&mut self, op: &InternalOperation) {
     match op {
@@ -266,9 +265,9 @@ impl BalanceDelta {
     self.qty.is_zero() && self.cost.is_zero()
   }
 
-  pub(crate) fn new(qty: &Qty, cost: &Cost) -> Self {
-    BalanceDelta { qty: qty.clone(), cost: cost.clone() }
-  }
+  // pub(crate) fn new(qty: &Qty, cost: &Cost) -> Self {
+  //   BalanceDelta { qty: qty.clone(), cost: cost.clone() }
+  // }
 }
 
 impl ToJson for BalanceDelta {
@@ -328,20 +327,20 @@ impl Balance {
     }
   }
 
-  fn value(&self) -> Result<String, WHError> {
-    Ok(serde_json::to_string(&self)?)
-  }
+  // fn value(&self) -> Result<String, WHError> {
+  //   Ok(serde_json::to_string(&self)?)
+  // }
 
-  fn batch(&self) -> Vec<u8> {
-    let dt = self.batch.date.timestamp() as u64;
-
-    self
-      .goods
-      .as_bytes()
-      .iter()
-      .chain(dt.to_be_bytes().iter())
-      .chain(self.batch.id.as_bytes().iter())
-      .copied()
-      .collect()
-  }
+  // fn batch(&self) -> Vec<u8> {
+  //   let dt = self.batch.date.timestamp() as u64;
+  //
+  //   self
+  //     .goods
+  //     .as_bytes()
+  //     .iter()
+  //     .chain(dt.to_be_bytes().iter())
+  //     .chain(self.batch.id.as_bytes().iter())
+  //     .copied()
+  //     .collect()
+  // }
 }

@@ -94,7 +94,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
     ColumnFamilyDescriptor::new(StoreDateTypeBatchId::cf_name(), opts)
   }
 
-  fn get_ops_for_storage(
+  fn ops_for_store(
     &self,
     storage: Store,
     from_date: DateTime<Utc>,
@@ -151,15 +151,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
     Ok(res)
   }
 
-  fn get_ops_for_all(
-    &self,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
-  fn get_ops_for_one_goods(
+  fn ops_for_store_goods(
     &self,
     store: Store,
     goods: Goods,
@@ -214,18 +206,7 @@ impl OrderedTopology for StoreDateTypeBatchId {
     Ok(res)
   }
 
-  fn ops_for_store_goods_and_batch(
-    &self,
-    _store: Store,
-    _goods: Goods,
-    _batch: &Batch,
-    _from_date: DateTime<Utc>,
-    _till_date: DateTime<Utc>,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("Not supported"))
-  }
-
-  fn get_ops_for_many_goods(
+  fn ops_for_goods(
     &self,
     goods: &Vec<Goods>,
     from_date: DateTime<Utc>,
@@ -279,25 +260,17 @@ impl OrderedTopology for StoreDateTypeBatchId {
     Ok(res)
   }
 
-  fn operations_for_store_goods(
-    &self,
-    _from: DateTime<Utc>,
-    _till: &Op,
-  ) -> Result<Vec<Op>, WHError> {
-    Err(WHError::new("not implemented"))
-  }
-
-  fn get_report_for_storage(
+  fn report_for_store(
     &self,
     db: &Db,
-    storage: Store,
+    store: Store,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
     // log::debug!("STORE_DATE_TYPE_BATCH.get_report");
-    let balances = db.get_checkpoints_for_one_storage_before_date(storage, from_date)?;
+    let balances = db.get_checkpoints_for_one_storage_before_date(store, from_date)?;
 
-    let ops = self.get_ops_for_storage(storage, first_day_current_month(from_date), till_date)?;
+    let ops = self.ops_for_store(store, first_day_current_month(from_date), till_date)?;
 
     let items = get_aggregations(balances, ops, from_date);
 

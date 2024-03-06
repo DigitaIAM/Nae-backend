@@ -225,7 +225,7 @@ impl Service for MemoriesInFiles {
 
     // workaround: count produced
     if &ctx == &vec!["production", "order"] {
-      for mut order in &mut list {
+      for order in &mut list {
         let order_uuid = order[c::UUID].uuid()?;
 
         let produced =
@@ -266,7 +266,7 @@ impl Service for MemoriesInFiles {
 
         let used: Vec<JsonValue> = sum_used_materials
           .into_iter()
-          .map(|(_k, mut v)| {
+          .map(|(_k, v)| {
             object! {
               "goods": v.0,
               "qty": enrich_own_qty(&ws, v.1),
@@ -297,7 +297,7 @@ impl Service for MemoriesInFiles {
 
         let produced: Vec<JsonValue> = sum_produced_materials
           .into_iter()
-          .map(|(_k, mut v)| {
+          .map(|(_k, v)| {
             object! {
               "goods": v.0,
               "qty": enrich_own_qty(&ws, v.1),
@@ -428,7 +428,7 @@ impl Service for MemoriesInFiles {
       Err(Error::GeneralError("only object allowed".into()))
     } else {
       let doc = memories.get(&id).ok_or(Error::GeneralError(format!("id '{id}' not found")))?;
-      let mut obj = doc.json()?;
+      let obj = doc.json()?;
 
       let mut patch = data;
       patch.remove(c::ID); // TODO check id?

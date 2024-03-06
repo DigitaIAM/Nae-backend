@@ -60,13 +60,13 @@ pub fn oid(params: &Params) -> std::result::Result<ID, Error> {
   }
 }
 
-pub fn cid(params: &Params) -> std::result::Result<ID, Error> {
-  if params.is_array() {
-    id("cid", &params[0])
-  } else {
-    id("cid", params)
-  }
-}
+// pub fn cid(params: &Params) -> std::result::Result<ID, Error> {
+//   if params.is_array() {
+//     id("cid", &params[0])
+//   } else {
+//     id("cid", params)
+//   }
+// }
 
 pub fn pid(params: &Params) -> std::result::Result<ID, Error> {
   if params.is_array() {

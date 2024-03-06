@@ -14,7 +14,6 @@ use crate::links::GetLinks;
 use crate::memories::{Enrich, Resolve};
 use crate::utils::substring::StringUtils;
 use service::utils::json::JsonParams;
-use service::Services;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use store::elements::receive_data;
@@ -354,14 +353,12 @@ impl Document {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::storage::Workspaces;
   use tempfile::tempdir;
-  use values::ID;
 
   #[test]
   fn test_simple() {
     let tmp_dir = tempdir().unwrap();
-    let folder = tmp_dir.path().clone().into();
+    let folder = tmp_dir.path().into();
 
     let path = build_folder_path(&"context/2023-01-06T12:43:15Z".to_string(), &folder);
 
@@ -372,7 +369,7 @@ mod tests {
   #[test]
   fn test_utf16() {
     let tmp_dir = tempdir().unwrap();
-    let folder = tmp_dir.path().clone().into();
+    let folder = tmp_dir.path().into();
 
     let path = build_folder_path(&"ГЛЮКОМЕТР GLUCODR AUTO A`".to_string(), &folder);
     println!("{path:?}")

@@ -25,7 +25,6 @@ use values::c;
 
 const WID: &str = "yjmgJUmDo_kn9uxVi8s9Mj9mgGRJISxRt63wT46NyTQ";
 
-#[cfg(test)]
 pub fn init() -> (TempDir, Settings, AnimoDB) {
   std::env::set_var("RUST_LOG", "debug"); // debug,tantivy=off // actix_web=debug,nae_backend=debug
   env_logger::init();
@@ -96,7 +95,7 @@ fn create(app: &Application, name: &str, ctx: Vec<&str>) -> Uuid {
     )
     .unwrap();
 
-  data[_UUID].uuid().unwrap()
+  data[c::UUID].uuid().unwrap()
 }
 
 pub fn store(app: &Application, name: &str) -> Uuid {

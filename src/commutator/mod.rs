@@ -6,7 +6,6 @@ use std::thread;
 use actix::prelude::*;
 use crossbeam::channel::{Receiver, Sender};
 use json::{array, JsonValue};
-use tokio_cron_scheduler::JobScheduler;
 use uuid::Uuid;
 
 use crate::links::links_index::LinksIndex;
@@ -27,7 +26,7 @@ type Socket = Recipient<WsMessage>;
 pub struct Application {
   pub(crate) settings: Arc<Settings>,
   pub(crate) db: Arc<AnimoDB>,
-  pub(crate) job_scheduler: JobScheduler,
+  // pub(crate) job_scheduler: JobScheduler,
   services: Arc<RwLock<HashMap<String, Arc<dyn Service>>>>,
 
   pub wss: Workspaces,
@@ -63,9 +62,9 @@ impl Application {
     let services: Arc<RwLock<HashMap<String, Arc<dyn Service>>>> =
       Arc::new(RwLock::new(HashMap::new()));
 
-    let job_scheduler = tokio_cron_scheduler::JobScheduler::new()
-      .await
-      .map_err(|e| Error::GeneralError(e.to_string()))?;
+    // let job_scheduler = tokio_cron_scheduler::JobScheduler::new()
+    //   .await
+    //   .map_err(|e| Error::GeneralError(e.to_string()))?;
 
     let (events_sender, events_receiver) = crossbeam::channel::bounded(1);
     let (sender, receiver) = crossbeam::channel::bounded(1);
@@ -74,7 +73,7 @@ impl Application {
     let app = Application {
       settings: settings.clone(),
       db,
-      job_scheduler,
+      // job_scheduler,
       services,
       wss,
       warehouse: WHStorage::open(&settings.database.inventory)

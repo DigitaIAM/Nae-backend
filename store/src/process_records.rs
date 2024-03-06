@@ -254,10 +254,9 @@ pub fn process_warehouse_record(
   let goods_name = record[2].replace(['\\', '\"'], "");
   let vendor_code = &record[3];
 
-  let goods_category =
-    json(app, object! { name: category_name.clone() }, CATEGORY.to_vec(), &|| {
-      object! { name: category_name.clone() }
-    })?;
+  let goods_category = json(app, object! { name: category_name }, CATEGORY.to_vec(), &|| {
+    object! { name: category_name }
+  })?;
 
   let item = json(app, object! { name: goods_name.clone() }, GOODS.to_vec(), &|| {
     object! {

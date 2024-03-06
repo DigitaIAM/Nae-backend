@@ -63,7 +63,7 @@ fn store_test_get_wh_ops() -> Result<(), WHError> {
   db.record_ops(&ops).unwrap();
 
   for ordered_topology in db.ordered_topologies[2..].iter() {
-    let res = ordered_topology.get_ops_for_storage(w1, start_d, end_d).unwrap();
+    let res = ordered_topology.ops_for_store(w1, start_d, end_d).unwrap();
     for i in 0..res.len() {
       assert_eq!(res[i], ops[i].to_op_after().unwrap());
     }
