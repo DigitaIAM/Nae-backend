@@ -317,7 +317,7 @@ impl ToJson for Op {
       from: self.store.to_json(),
       goods: self.goods.to_json(),
 
-      op: self.op.to_json(),
+      // op: self.op.to_json(),
 
       is_dependent: self.is_dependent
     };
