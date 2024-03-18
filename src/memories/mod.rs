@@ -58,14 +58,14 @@ impl Enrich for JsonValue {
       data["storage"] = storage.resolve_to_json_object(ws);
     }
 
-    // workaround for storage_from and storage_into
-    if let Some(storage_from) = data["storage_from"].as_str() {
-      data["storage_from"] = storage_from.resolve_to_json_object(ws);
-    }
-
-    if let Some(storage_into) = data["storage_into"].as_str() {
-      data["storage_into"] = storage_into.resolve_to_json_object(ws);
-    }
+    // // workaround for storage_from and storage_into
+    // if let Some(storage_from) = data["storage_from"].as_str() {
+    //   data["storage_from"] = storage_from.resolve_to_json_object(ws);
+    // }
+    //
+    // if let Some(storage_into) = data["storage_into"].as_str() {
+    //   data["storage_into"] = storage_into.resolve_to_json_object(ws);
+    // }
 
     // workaround for 'qty: {number: 5, uom: {number: 10, uom: uom/2023-04-07T07:56:50.249Z, in: uom/2023-04-07T07:57:02.154Z}}'
     if data["qty"].is_object() && !data["qty"]["store"].is_null() {

@@ -607,6 +607,7 @@ async fn startup() -> io::Result<()> {
       "goods" => {
         use_cases::uc_replace::replace_goods(&app, "Полипропилен дробленный", "Полипропилен (дроб)")
       },
+      "order" => use_cases::uc_replace::replace_storage_at_material_produced_and_used(&app),
       _ => unreachable!(),
     },
     "fix" => fix_topologies(app).await,
@@ -894,7 +895,7 @@ mod tests {
     // create used operation
     let used_op = object! {
       document: d1[c::ID].to_string(),
-      storage_from: rolls[c::ID].to_string(),
+      storage: rolls[c::ID].to_string(),
       goods: g1[c::ID].string(),
       qty: qty0,
     };

@@ -689,23 +689,23 @@ pub fn save_transfer_for_goods(app: &Application) -> Result<(), Error> {
       Err(_) => return Err(Error::new(ErrorKind::InvalidData, "can't find into storage")),
     };
 
-    let storage_from = match app.service("memories").get(
-      Context::local(),
-      transfer["storage_from"].string(),
-      params.clone(),
-    ) {
-      Ok(p) => p,
-      Err(_) => JsonValue::Null,
-    };
+    // let storage_from = match app.service("memories").get(
+    //   Context::local(),
+    //   transfer["storage_from"].string(),
+    //   params.clone(),
+    // ) {
+    //   Ok(p) => p,
+    //   Err(_) => JsonValue::Null,
+    // };
 
-    let storage_into = match app.service("memories").get(
-      Context::local(),
-      transfer["storage_into"].string(),
-      params.clone(),
-    ) {
-      Ok(p) => p,
-      Err(_) => JsonValue::Null,
-    };
+    // let storage_into = match app.service("memories").get(
+    //   Context::local(),
+    //   transfer["storage_into"].string(),
+    //   params.clone(),
+    // ) {
+    //   Ok(p) => p,
+    //   Err(_) => JsonValue::Null,
+    // };
 
     let file = OpenOptions::new()
       .write(true)
@@ -722,8 +722,8 @@ pub fn save_transfer_for_goods(app: &Application) -> Result<(), Error> {
         from["name"].string(),
         into["name"].string(),
         transfer["qty"]["number"].string(),
-        storage_from["name"].string(),
-        storage_into["name"].string(),
+        // storage_from["name"].string(),
+        // storage_into["name"].string(),
       ])
       .unwrap();
 

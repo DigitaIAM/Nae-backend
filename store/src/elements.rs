@@ -509,21 +509,6 @@ fn storages(
         };
         Ok((store_from, None))
       },
-      ["production", "material", "produced"] => {
-        // "store_from" stands for "store" in operation, and this context has only "storage_into"
-        let store_from = match resolve_store(app, wid, data, "storage_into") {
-          Ok(uuid) => uuid,
-          Err(_) => return Err(WHError::new("no storage for production/material/produced")), // TODO handle errors better, allow to catch only 'not found'
-        };
-        Ok((store_from, None))
-      },
-      ["production", "material", "used"] => {
-        let store_from = match resolve_store(app, wid, data, "storage_from") {
-          Ok(uuid) => uuid,
-          Err(_) => return Err(WHError::new("no storage for production/material/used")), // TODO handle errors better, allow to catch only 'not found'
-        };
-        Ok((store_from, None))
-      },
       _ => {
         let store_from = match resolve_store(app, wid, document, "storage") {
           Ok(uuid) => uuid,
