@@ -1,4 +1,4 @@
-use crate::aggregations::get_aggregations_for_one_goods;
+use crate::aggregations::{aggregations_store_goods, get_aggregations_for_one_goods};
 use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::db::Db;

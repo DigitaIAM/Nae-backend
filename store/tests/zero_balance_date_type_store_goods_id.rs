@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use store::aggregations::AggregationStoreGoods;
+use store::aggregations::AggregationStoreGoodsBatch;
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::{dt, Mode};
@@ -58,9 +58,9 @@ fn store_test_zero_balance_date_type_store_goods_id() {
 
   db.record_ops(&ops).unwrap();
 
-  let res = db.get_report_for_storage(w1, start_d, end_d).unwrap();
+  let res = db.report_for_store(w1, start_d, end_d).unwrap();
 
-  let agr = AggregationStoreGoods {
+  let agr = AggregationStoreGoodsBatch {
     store: Some(w1),
     goods: Some(G1),
     batch: Some(party.clone()),

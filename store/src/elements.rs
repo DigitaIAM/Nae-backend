@@ -14,7 +14,7 @@ use service::utils::time::date_to_string;
 use crate::GetWarehouse;
 use service::{Context, Services};
 
-use crate::aggregations::{AggregationStore, AggregationStoreGoods};
+use crate::aggregations::{AggregationStore, AggregationStoreGoods, AggregationStoreGoodsBatch};
 use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::operations::{InternalOperation, Op, OpMutation};
@@ -112,7 +112,8 @@ pub(crate) trait KeyValueStore {
 }
 
 pub enum ReturnType {
-  Good(AggregationStoreGoods),
+  GoodsBatch(AggregationStoreGoodsBatch),
+  Goods(AggregationStoreGoods),
   Store(AggregationStore),
   Empty,
 }
@@ -121,7 +122,7 @@ pub enum ReturnType {
 pub struct Report {
   pub from_date: DateTime<Utc>,
   pub till_date: DateTime<Utc>,
-  pub items: (AggregationStore, Vec<AggregationStoreGoods>),
+  pub items: (AggregationStore, Vec<AggregationStoreGoods>, Vec<AggregationStoreGoodsBatch>),
 }
 
 impl ToJson for Report {
@@ -131,6 +132,10 @@ impl ToJson for Report {
     arr.push(self.items.0.to_json()).unwrap();
 
     for agr in self.items.1.iter() {
+      arr.push(agr.to_json()).unwrap();
+    }
+
+    for agr in self.items.2.iter() {
       arr.push(agr.to_json()).unwrap();
     }
 

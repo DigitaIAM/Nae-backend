@@ -206,7 +206,7 @@ impl Db {
     Err(WHError::new("can't get checkpoint before date"))
   }
 
-  pub fn get_checkpoints_for_one_storage_before_date(
+  pub fn checkpoints_for_store_before_date(
     &self,
     store: Store,
     date: DateTime<Utc>,
@@ -263,14 +263,14 @@ impl Db {
     Err(WHError::new("fn get_report not implemented"))
   }
 
-  pub fn get_report_for_storage(
+  pub fn report_for_store(
     &self,
-    storage: Store,
+    store: Store,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
     for ordered_topology in self.ordered_topologies.iter() {
-      match ordered_topology.report_for_store(self, storage, from_date, till_date) {
+      match ordered_topology.report_for_store(self, store, from_date, till_date) {
         Ok(report) => return Ok(report),
         Err(_) => {}, // ignore
       }

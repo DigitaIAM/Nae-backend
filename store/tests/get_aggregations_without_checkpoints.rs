@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use store::aggregations::AggregationStoreGoods;
+use store::aggregations::AggregationStoreGoodsBatch;
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::{dt, Mode};
@@ -95,7 +95,7 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
   db.record_ops(&ops).unwrap();
 
   let agregations = vec![
-    AggregationStoreGoods {
+    AggregationStoreGoodsBatch {
       store: Some(w1),
       goods: Some(G1),
       batch: Some(doc1.clone()),
@@ -113,7 +113,7 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
         cost: 2000.into(),
       },
     },
-    AggregationStoreGoods {
+    AggregationStoreGoodsBatch {
       store: Some(w1),
       goods: Some(G2),
       batch: Some(doc2.clone()),
@@ -130,7 +130,7 @@ fn store_test_get_aggregations_without_checkpoints() -> Result<(), WHError> {
     },
   ];
 
-  let res = db.get_report_for_storage(w1, op_d, check_d)?;
+  let res = db.report_for_store(w1, op_d, check_d)?;
 
   assert_eq!(agregations, res.items.1);
 

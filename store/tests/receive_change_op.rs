@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use store::aggregations::AggregationStoreGoods;
+use store::aggregations::AggregationStoreGoodsBatch;
 use store::balance::{Balance, BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::dt;
@@ -73,7 +73,7 @@ fn store_test_receive_change_op() {
   };
 
   let mut old_checkpoints = db
-    .get_checkpoints_for_one_storage_before_date(w1, start_d)
+    .checkpoints_for_store_before_date(w1, start_d)
     .expect("test_receive_change_op");
 
   // println!("OLD_CHECKPOINTS: {old_checkpoints:#?}");
@@ -111,15 +111,15 @@ fn store_test_receive_change_op() {
   };
 
   let mut new_checkpoints = db
-    .get_checkpoints_for_one_storage_before_date(w1, start_d)
+    .checkpoints_for_store_before_date(w1, start_d)
     .expect("test_receive_change_op")
     .into_iter();
 
   assert_eq!(Some(new_check), new_checkpoints.next());
 
-  let res = db.get_report_for_storage(w1, start_d, end_d).unwrap();
+  let res = db.report_for_store(w1, start_d, end_d).unwrap();
 
-  let agr = AggregationStoreGoods {
+  let agr = AggregationStoreGoodsBatch {
     store: Some(w1),
     goods: Some(G1),
     batch: Some(doc.clone()),

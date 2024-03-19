@@ -1,5 +1,5 @@
 use rust_decimal::Decimal; // TODO change to another Decimal
-use store::aggregations::{AggregationStore, AggregationStoreGoods};
+use store::aggregations::{AggregationStore, AggregationStoreGoodsBatch};
 use store::balance::{BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::{dt, Mode};
@@ -123,7 +123,7 @@ fn store_test_report() {
   };
 
   let ex_items = vec![
-    AggregationStoreGoods {
+    AggregationStoreGoodsBatch {
       store: Some(w1),
       goods: Some(G1),
       batch: Some(party.clone()),
@@ -138,7 +138,7 @@ fn store_test_report() {
         cost: 4000.into(),
       },
     },
-    AggregationStoreGoods {
+    AggregationStoreGoodsBatch {
       store: Some(w1),
       goods: Some(G2),
       batch: Some(party.clone()),
@@ -153,7 +153,7 @@ fn store_test_report() {
         cost: 2000.into(),
       },
     },
-    AggregationStoreGoods {
+    AggregationStoreGoodsBatch {
       store: Some(w1),
       goods: Some(G3),
       batch: Some(party.clone()),
@@ -173,7 +173,7 @@ fn store_test_report() {
     },
   ];
 
-  let report = db.get_report_for_storage(w1, start_d, end_d).unwrap();
+  let report = db.report_for_store(w1, start_d, end_d).unwrap();
 
   assert_eq!(report.items.0, agr_store);
   assert_eq!(report.items.1, ex_items);

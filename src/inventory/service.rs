@@ -97,11 +97,10 @@ impl Service for Inventory {
         })
       }
     } else {
-      let report =
-        match self.app.warehouse.database.get_report_for_storage(storage, dates.0, dates.1) {
-          Ok(report) => report.to_json(),
-          Err(error) => return Err(Error::GeneralError(error.message())),
-        };
+      let report = match self.app.warehouse.database.report_for_store(storage, dates.0, dates.1) {
+        Ok(report) => report.to_json(),
+        Err(error) => return Err(Error::GeneralError(error.message())),
+      };
 
       // println!("REPORT = {report:?}");
 

@@ -55,6 +55,14 @@ impl Cost {
   pub const ZERO: Cost = Cost(Decimal::ZERO);
   pub const ERROR: Cost = Cost(Decimal::NEGATIVE_ONE);
 
+  pub(crate) fn reverse(&self) -> Self {
+    if self.0.is_zero() {
+      self.clone()
+    } else {
+      Cost(-self.0)
+    }
+  }
+
   pub fn price(&self, qty: &Qty, name: &Uom) -> Price {
     if qty.is_zero() {
       Price::ZERO
@@ -268,6 +276,10 @@ impl BalanceDelta {
   // pub(crate) fn new(qty: &Qty, cost: &Cost) -> Self {
   //   BalanceDelta { qty: qty.clone(), cost: cost.clone() }
   // }
+
+  pub(crate) fn reverse(&self) -> Self {
+    BalanceDelta { qty: self.qty.reverse(), cost: self.cost.reverse() }
+  }
 }
 
 impl ToJson for BalanceDelta {

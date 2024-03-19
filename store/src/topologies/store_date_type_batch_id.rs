@@ -5,7 +5,7 @@ use crate::{
   error::WHError,
 };
 
-use crate::aggregations::get_aggregations;
+use crate::aggregations::{aggregations_store_goods, get_aggregations};
 use crate::batch::Batch;
 use crate::elements::Goods;
 use crate::elements::{UUID_MAX, UUID_NIL};
@@ -268,11 +268,11 @@ impl OrderedTopology for StoreDateTypeBatchId {
     till_date: DateTime<Utc>,
   ) -> Result<Report, WHError> {
     // log::debug!("STORE_DATE_TYPE_BATCH.get_report");
-    let balances = db.get_checkpoints_for_one_storage_before_date(store, from_date)?;
+    let balances = db.checkpoints_for_store_before_date(store, from_date)?;
 
     let ops = self.ops_for_store(store, first_day_current_month(from_date), till_date)?;
 
-    let items = get_aggregations(balances, ops, from_date);
+    let items = aggregations_store_goods(balances, ops, from_date);
 
     Ok(Report { from_date, till_date, items })
     // Err(WHError::new("test"))

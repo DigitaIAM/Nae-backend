@@ -13,13 +13,14 @@ use uuid::Uuid;
 trait Aggregation {
   fn check(&mut self, op: &OpMutation) -> ReturnType; // если операция валидна, вернет None, если нет - вернет свое значение и обнулит себя и выставит новые ключи
   fn apply_operation(&mut self, op: &Op);
-  fn apply_aggregation(&mut self, agr: Option<&AggregationStoreGoods>);
+  fn apply_aggregation_batch(&mut self, agr: Option<&AggregationStoreGoodsBatch>);
+  fn apply_aggregation_goods(&mut self, agr: Option<&AggregationStoreGoods>);
   fn balance(&mut self, balance: Option<&Balance>) -> ReturnType; // имплементировать для трех возможных ситуаций
   fn is_applicable_for(&self, op: &OpMutation) -> bool;
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
-pub struct AggregationStoreGoods {
+pub struct AggregationStoreGoodsBatch {
   // ключ
   pub store: Option<Store>,
   pub goods: Option<Goods>,
@@ -31,10 +32,11 @@ pub struct AggregationStoreGoods {
   pub close_balance: BalanceForGoods,
 }
 
-impl AggregationStoreGoods {
+impl AggregationStoreGoodsBatch {
   fn initialize(&mut self, op: &OpMutation) {
     self.store = Some(op.store);
     self.goods = Some(op.goods);
+    self.batch = Some(op.batch.clone());
     self.open_balance = BalanceForGoods::default();
     self.receive = BalanceDelta::default();
     self.issue = BalanceDelta::default();
@@ -60,7 +62,7 @@ impl AggregationStoreGoods {
   }
 }
 
-impl ToJson for AggregationStoreGoods {
+impl ToJson for AggregationStoreGoodsBatch {
   fn to_json(&self) -> JsonValue {
     if let (Some(s), Some(g), Some(b)) = (self.store, self.goods, &self.batch) {
       object! {
@@ -70,7 +72,79 @@ impl ToJson for AggregationStoreGoods {
         batch: b.to_json(),
         open_balance: self.open_balance.to_json(),
         receive: self.receive.to_json(),
-        issue: self.issue.to_json(),
+        issue: self.issue.reverse().to_json(),
+        close_balance: self.close_balance.to_json(),
+      }
+    } else {
+      JsonValue::Null
+    }
+  }
+}
+
+impl AddAssign<&Op> for AggregationStoreGoodsBatch {
+  fn add_assign(&mut self, rhs: &Op) {
+    // if let Some(batch) = rhs.batch.as_ref() {
+    self.store = Some(rhs.store);
+    self.goods = Some(rhs.goods);
+    self.batch = Some(rhs.batch.clone());
+    self.apply_operation(rhs);
+    // } else {
+    //   todo!();
+    // }
+  }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct AggregationStoreGoods {
+  // ключ
+  pub store: Option<Store>,
+  pub goods: Option<Goods>,
+  // агрегация
+  pub open_balance: BalanceForGoods,
+  pub receive: BalanceDelta,
+  pub issue: BalanceDelta,
+  pub close_balance: BalanceForGoods,
+}
+
+impl AggregationStoreGoods {
+  fn initialize(&mut self, op: &OpMutation) {
+    self.store = Some(op.store);
+    self.goods = Some(op.goods);
+
+    self.open_balance = BalanceForGoods::default();
+    self.receive = BalanceDelta::default();
+    self.issue = BalanceDelta::default();
+    self.close_balance = BalanceForGoods::default();
+  }
+
+  fn add_to_open_balance(&mut self, op: &Op) {
+    self.store = Some(op.store);
+    self.goods = Some(op.goods);
+
+    let delta = op.to_delta();
+
+    self.open_balance += delta.clone();
+    self.close_balance += delta;
+  }
+
+  fn is_zero(&self) -> bool {
+    self.open_balance.is_zero()
+      && self.receive.is_zero()
+      && self.issue.is_zero()
+      && self.close_balance.is_zero()
+  }
+}
+
+impl ToJson for AggregationStoreGoods {
+  fn to_json(&self) -> JsonValue {
+    if let (Some(s), Some(g)) = (self.store, self.goods) {
+      object! {
+        id: values::ID::random().to_string(), // TODO calculate id from storage && goods && batch + date range
+        store: s.to_json(),
+        goods: g.to_json(),
+        open_balance: self.open_balance.to_json(),
+        receive: self.receive.to_json(),
+        issue: self.issue.reverse().to_json(),
         close_balance: self.close_balance.to_json(),
       }
     } else {
@@ -81,14 +155,9 @@ impl ToJson for AggregationStoreGoods {
 
 impl AddAssign<&Op> for AggregationStoreGoods {
   fn add_assign(&mut self, rhs: &Op) {
-    // if let Some(batch) = rhs.batch.as_ref() {
     self.store = Some(rhs.store);
     self.goods = Some(rhs.goods);
-    self.batch = Some(rhs.batch.clone());
     self.apply_operation(rhs);
-    // } else {
-    //   todo!();
-    // }
   }
 }
 
@@ -111,7 +180,7 @@ impl ToJson for AggregationStore {
         store: s.to_json(),
         open_balance: object! { cost: self.open_balance.to_json() },
         receive: object! { cost: self.receive.to_json() },
-        issue: object! { cost: self.issue.to_json() },
+        issue: object! { cost: self.issue.reverse().to_json() },
         close_balance: object! { cost: self.close_balance.to_json() },
       }
     } else {
@@ -182,7 +251,17 @@ impl Aggregation for AggregationStore {
     unimplemented!()
   }
 
-  fn apply_aggregation(&mut self, agr: Option<&AggregationStoreGoods>) {
+  fn apply_aggregation_batch(&mut self, agr: Option<&AggregationStoreGoodsBatch>) {
+    if let Some(agr) = agr {
+      self.store = agr.store;
+      self.open_balance += agr.open_balance.cost;
+      self.receive += agr.receive.cost;
+      self.issue += agr.issue.cost;
+      self.close_balance += agr.close_balance.cost;
+    }
+  }
+
+  fn apply_aggregation_goods(&mut self, agr: Option<&AggregationStoreGoods>) {
     if let Some(agr) = agr {
       self.store = agr.store;
       self.open_balance += agr.open_balance.cost;
@@ -201,7 +280,7 @@ impl Aggregation for AggregationStore {
   }
 }
 
-impl Aggregation for AggregationStoreGoods {
+impl Aggregation for AggregationStoreGoodsBatch {
   fn check(&mut self, op: &OpMutation) -> ReturnType {
     if self.store.is_none() || self.goods.is_none() {
       self.initialize(op);
@@ -213,7 +292,7 @@ impl Aggregation for AggregationStoreGoods {
     } else {
       let clone = self.clone();
       self.initialize(op);
-      ReturnType::Good(clone)
+      ReturnType::GoodsBatch(clone)
     }
   }
 
@@ -251,7 +330,11 @@ impl Aggregation for AggregationStoreGoods {
     self.close_balance = self.open_balance.clone() + self.receive.clone() + self.issue.clone();
   }
 
-  fn apply_aggregation(&mut self, _agr: Option<&AggregationStoreGoods>) {
+  fn apply_aggregation_batch(&mut self, _agr: Option<&AggregationStoreGoodsBatch>) {
+    unimplemented!()
+  }
+
+  fn apply_aggregation_goods(&mut self, _agr: Option<&AggregationStoreGoods>) {
     unimplemented!()
   }
 
@@ -259,7 +342,7 @@ impl Aggregation for AggregationStoreGoods {
     if let Some(b) = balance {
       if b.goods < self.goods.expect("option in fn balance") {
         // вернуть новую агрегацию с балансом без операций
-        ReturnType::Good(AggregationStoreGoods {
+        ReturnType::GoodsBatch(AggregationStoreGoodsBatch {
           store: Some(b.store),
           goods: Some(b.goods),
           batch: Some(b.batch.clone()),
@@ -274,7 +357,7 @@ impl Aggregation for AggregationStoreGoods {
       } else {
         // вернуть обновленную агрегацию
         self.open_balance = b.number.clone();
-        ReturnType::Good(self.clone())
+        ReturnType::GoodsBatch(self.clone())
       }
     } else {
       // None
@@ -292,7 +375,7 @@ impl Aggregation for AggregationStoreGoods {
   }
 }
 
-impl KeyValueStore for AggregationStoreGoods {
+impl KeyValueStore for AggregationStoreGoodsBatch {
   fn key(&self, _s: &String) -> Result<Vec<u8>, WHError> {
     todo!()
   }
@@ -308,6 +391,100 @@ impl KeyValueStore for AggregationStoreGoods {
   // is it ok to make this with to_json() method?
   fn value(&self) -> Result<String, WHError> {
     Ok(self.to_json().dump())
+  }
+}
+
+impl Aggregation for AggregationStoreGoods {
+  fn check(&mut self, op: &OpMutation) -> ReturnType {
+    if self.store.is_none() || self.goods.is_none() {
+      self.initialize(op);
+      ReturnType::Empty
+    } else if op.store == self.store.expect("option in fn check")
+      && op.goods == self.goods.expect("option in fn check")
+    {
+      ReturnType::Empty
+    } else {
+      let clone = self.clone();
+      self.initialize(op);
+      ReturnType::Goods(clone)
+    }
+  }
+
+  fn apply_operation(&mut self, op: &Op) {
+    match &op.op {
+      InternalOperation::Inventory(_b, d, mode) => {
+        self.issue.qty += &d.qty;
+        if mode == &Mode::Auto {
+          let balance = self.open_balance.clone() + self.receive.clone();
+          let cost = d.qty.cost(&balance);
+          self.issue.cost += cost;
+        } else {
+          self.issue.cost += d.cost;
+        }
+      },
+      InternalOperation::Receive(qty, cost) => {
+        self.receive.qty += qty;
+        self.receive.cost += cost;
+      },
+      InternalOperation::Issue(qty, cost, mode) => {
+        self.issue.qty -= qty;
+        if mode == &Mode::Auto {
+          let balance = if !self.close_balance.is_zero() {
+            self.close_balance.clone()
+          } else {
+            self.open_balance.clone() + self.receive.clone()
+          };
+          let cost = if qty == &balance.qty { balance.cost } else { qty.cost(&balance) };
+          self.issue.cost -= cost;
+        } else {
+          self.issue.cost -= cost;
+        }
+      },
+    }
+    self.close_balance = self.open_balance.clone() + self.receive.clone() + self.issue.clone();
+  }
+
+  fn apply_aggregation_batch(&mut self, _agr: Option<&AggregationStoreGoodsBatch>) {
+    unimplemented!()
+  }
+
+  fn apply_aggregation_goods(&mut self, _agr: Option<&AggregationStoreGoods>) {
+    unimplemented!()
+  }
+
+  fn balance(&mut self, balance: Option<&Balance>) -> ReturnType {
+    if let Some(b) = balance {
+      if b.goods < self.goods.expect("option in fn balance") {
+        // вернуть новую агрегацию с балансом без операций
+        ReturnType::Goods(AggregationStoreGoods {
+          store: Some(b.store),
+          goods: Some(b.goods),
+          open_balance: b.number.clone(),
+          receive: BalanceDelta::default(),
+          issue: BalanceDelta::default(),
+          close_balance: b.number.clone(),
+        })
+      } else if b.goods > self.goods.expect("option in fn balance") {
+        // None
+        ReturnType::Empty
+      } else {
+        // вернуть обновленную агрегацию
+        self.open_balance = b.number.clone();
+        ReturnType::Goods(self.clone())
+      }
+    } else {
+      // None
+      ReturnType::Empty
+    }
+  }
+
+  fn is_applicable_for(&self, op: &OpMutation) -> bool {
+    if self.store.is_none() || self.goods.is_none() {
+      false
+    } else {
+      op.store == self.store.expect("option in is_applicable_for")
+        && op.goods == self.goods.expect("option in is_applicable_for")
+    }
   }
 }
 
@@ -364,11 +541,69 @@ pub(crate) fn get_aggregations_for_one_goods(
   Ok(JsonValue::Array(result))
 }
 
+pub(crate) fn aggregations_store_goods(
+  balances: Vec<Balance>,
+  operations: Vec<Op>,
+  start_date: DateTime<Utc>,
+) -> (AggregationStore, Vec<AggregationStoreGoods>, Vec<AggregationStoreGoodsBatch>) {
+  // log::debug!("aggregations_store_goods: balances {balances:?}\noperations {operations:?}");
+  let key = |store: &Store, goods: &Goods| -> Vec<u8> {
+    [].iter()
+      .chain(store.as_bytes().iter())
+      .chain(goods.as_bytes().iter())
+      .copied()
+      .collect()
+  };
+
+  let key_for = |op: &Op| -> Vec<u8> { key(&op.store, &op.goods) };
+
+  let mut aggregations = BTreeMap::new();
+  let mut master_aggregation = AggregationStore::default();
+
+  for balance in balances {
+    aggregations.insert(
+      key(&balance.store, &balance.goods),
+      AggregationStoreGoods {
+        store: Some(balance.store),
+        goods: Some(balance.goods),
+
+        open_balance: balance.number.clone(),
+        receive: BalanceDelta::default(),
+        issue: BalanceDelta::default(),
+        close_balance: balance.number,
+      },
+    );
+  }
+
+  for op in operations {
+    if op.date < start_date {
+      aggregations
+        .entry(key_for(&op))
+        .or_insert(AggregationStoreGoods::default())
+        .add_to_open_balance(&op);
+    } else {
+      let agr = aggregations.entry(key_for(&op)).or_insert(AggregationStoreGoods::default());
+      *agr += &op;
+    }
+  }
+
+  let mut res = Vec::new();
+
+  for (_, agr) in aggregations {
+    if !agr.is_zero() {
+      master_aggregation.apply_aggregation_goods(Some(&agr));
+      res.push(agr);
+    }
+  }
+
+  (master_aggregation, res, vec![])
+}
+
 pub(crate) fn get_aggregations(
   balances: Vec<Balance>,
   operations: Vec<Op>,
   start_date: DateTime<Utc>,
-) -> (AggregationStore, Vec<AggregationStoreGoods>) {
+) -> (AggregationStore, Vec<AggregationStoreGoods>, Vec<AggregationStoreGoodsBatch>) {
   log::debug!("fn_get_aggregations: balances {balances:?}\noperations {operations:?}");
   let key = |store: &Store, goods: &Goods, batch: &Batch| -> Vec<u8> {
     [].iter()
@@ -388,7 +623,7 @@ pub(crate) fn get_aggregations(
   for balance in balances {
     aggregations.insert(
       key(&balance.store, &balance.goods, &balance.batch),
-      AggregationStoreGoods {
+      AggregationStoreGoodsBatch {
         store: Some(balance.store),
         goods: Some(balance.goods),
         batch: Some(balance.batch),
@@ -405,10 +640,12 @@ pub(crate) fn get_aggregations(
     if op.date < start_date {
       aggregations
         .entry(key_for(&op))
-        .or_insert(AggregationStoreGoods::default())
+        .or_insert(AggregationStoreGoodsBatch::default())
         .add_to_open_balance(&op);
     } else {
-      *aggregations.entry(key_for(&op)).or_insert(AggregationStoreGoods::default()) += &op;
+      *aggregations
+        .entry(key_for(&op))
+        .or_insert(AggregationStoreGoodsBatch::default()) += &op;
     }
   }
 
@@ -416,10 +653,10 @@ pub(crate) fn get_aggregations(
 
   for (_, agr) in aggregations {
     if !agr.is_zero() {
-      master_aggregation.apply_aggregation(Some(&agr));
+      master_aggregation.apply_aggregation_batch(Some(&agr));
       res.push(agr);
     }
   }
 
-  (master_aggregation, res)
+  (master_aggregation, vec![], res)
 }

@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use store::aggregations::AggregationStoreGoods;
+use store::aggregations::AggregationStoreGoodsBatch;
 use store::balance::{Balance, BalanceDelta, BalanceForGoods};
 use store::batch::Batch;
 use store::elements::dt;
@@ -93,7 +93,7 @@ fn store_test_checkpoints_update() {
     },
   };
 
-  let w1_balance = db.get_checkpoints_for_one_storage_before_date(w1, start_d).unwrap();
+  let w1_balance = db.checkpoints_for_store_before_date(w1, start_d).unwrap();
   // println!("w1_balance: {w1_balance:#?}");
   assert_eq!(w1_check, w1_balance[0]);
 
@@ -108,7 +108,7 @@ fn store_test_checkpoints_update() {
     },
   };
 
-  let w2_balance = db.get_checkpoints_for_one_storage_before_date(w2, start_d).unwrap();
+  let w2_balance = db.checkpoints_for_store_before_date(w2, start_d).unwrap();
   // println!("w2_balance: {w2_balance:#?}");
   assert_eq!(w2_check, w2_balance[0]);
 

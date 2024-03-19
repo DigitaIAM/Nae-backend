@@ -579,6 +579,14 @@ impl Qty {
     Qty { inner }
   }
 
+  pub(crate) fn reverse(&self) -> Self {
+    let mut nums = self.inner.clone();
+    for num in nums.iter_mut() {
+      num.number = -num.number;
+    }
+    Qty { inner: nums }
+  }
+
   pub fn lower(&self) -> Qty {
     // println!("lowering {:?}", self);
     let mut nums: Vec<Number<Uom>> = vec![];
