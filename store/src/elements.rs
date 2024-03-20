@@ -515,14 +515,35 @@ fn storages(
         Ok((store_from, None))
       },
       _ => {
-        let store_from = match resolve_store(app, wid, document, "storage") {
-          Ok(uuid) => uuid,
-          Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
-        };
+        // let store_from = match resolve_store(app, wid, document, "storage") {
+        //   Ok(uuid) => uuid,
+        //   Err(_) => return Err(WHError::new("no from store")), // TODO handle errors better, allow to catch only 'not found'
+        // };
+        let store_from = resolve_store_on_this_or_parent(app, wid, data, document, "storage")?;
         Ok((store_from, None))
       },
     };
   };
+}
+
+fn resolve_store_on_this_or_parent(
+  app: &impl Services,
+  wid: &str,
+  this: &JsonValue,
+  parent: &JsonValue,
+  name: &str,
+) -> Result<Uuid, WHError> {
+  if this[name].string() == "" {
+    match resolve_store(app, wid, parent, name) {
+      Ok(uuid) => Ok(uuid),
+      Err(_) => return Err(WHError::new(format!("no {name} store").as_str())), // TODO handle errors better, allow to catch only 'not found'
+    }
+  } else {
+    match resolve_store(app, wid, this, name) {
+      Ok(uuid) => Ok(uuid),
+      Err(_) => return Err(WHError::new(format!("no {name} store").as_str())), // TODO handle errors better, allow to catch only 'not found'
+    }
+  }
 }
 
 fn goods(
