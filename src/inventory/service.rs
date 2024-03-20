@@ -84,15 +84,15 @@ impl Service for Inventory {
           .database
           .get_report_for_storage_goods(storage, goods, dates.0, dates.1)
         {
-          Ok(report) => report,
+          Ok(report) => report.to_json(),
           Err(error) => return Err(Error::GeneralError(error.message())),
         };
 
         // println!("REPORT = {report:?}");
 
         Ok(json::object! {
+          total: report.len(),
           data: report,
-          total: 1,
           "$skip": 0,
         })
       }

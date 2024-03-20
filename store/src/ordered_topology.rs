@@ -122,7 +122,7 @@ pub trait OrderedTopology {
     goods: Goods,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
-  ) -> Result<JsonValue, WHError> {
+  ) -> Result<Report, WHError> {
     // log::debug!("DATE_TYPE_STORE_BATCH.get_report_for_store_goods");
     let balances = db.get_checkpoints_for_goods(store, goods, from_date)?;
 
@@ -131,9 +131,9 @@ pub trait OrderedTopology {
 
     let ops = db.ops_for_store_goods(store, goods, op_from_date, till_date)?;
 
-    let items = aggregations_store_goods(balances, ops, from_date)?;
+    let items = aggregations_store_goods(balances, ops, from_date);
 
-    Ok(items)
+    Ok(Report { from_date, till_date, items })
   }
 
   fn report_for_store(

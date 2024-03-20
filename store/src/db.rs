@@ -252,7 +252,7 @@ impl Db {
     goods: Goods,
     from_date: DateTime<Utc>,
     till_date: DateTime<Utc>,
-  ) -> Result<JsonValue, WHError> {
+  ) -> Result<Report, WHError> {
     for ordered_topology in self.ordered_topologies.iter() {
       match ordered_topology.report_for_store_goods(self, storage, goods, from_date, till_date) {
         Ok(report) => return Ok(report),
