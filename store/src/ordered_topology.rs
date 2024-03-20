@@ -131,7 +131,7 @@ pub trait OrderedTopology {
 
     let ops = db.ops_for_store_goods(store, goods, op_from_date, till_date)?;
 
-    let items = get_aggregations_for_one_goods(balances, ops, from_date, till_date)?;
+    let items = aggregations_store_goods(balances, ops, from_date)?;
 
     Ok(items)
   }
