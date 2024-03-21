@@ -1,4 +1,6 @@
-use crate::aggregations::{aggregations_store_goods, get_aggregations_for_one_goods};
+use crate::aggregations::{
+  aggregations_for_store_goods_batch, aggregations_store_goods, get_aggregations_for_one_goods,
+};
 use crate::balance::{BalanceDelta, BalanceForGoods, Cost};
 use crate::batch::Batch;
 use crate::db::Db;
@@ -131,7 +133,7 @@ pub trait OrderedTopology {
 
     let ops = db.ops_for_store_goods(store, goods, op_from_date, till_date)?;
 
-    let items = aggregations_store_goods(balances, ops, from_date);
+    let items = aggregations_for_store_goods_batch(balances, ops, from_date);
 
     Ok(Report { from_date, till_date, items })
   }

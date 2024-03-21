@@ -82,7 +82,7 @@ impl Service for Inventory {
           .app
           .warehouse
           .database
-          .get_report_for_storage_goods(storage, goods, dates.0, dates.1)
+          .get_report_for_store_goods(storage, goods, dates.0, dates.1)
         {
           Ok(report) => report.to_json(),
           Err(error) => return Err(Error::GeneralError(error.message())),

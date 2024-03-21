@@ -5,7 +5,7 @@ use crate::{
   error::WHError,
 };
 
-use crate::aggregations::{aggregations_store_goods, get_aggregations};
+use crate::aggregations::{aggregations_for_store_goods_batch, aggregations_store_goods};
 use crate::batch::Batch;
 use crate::elements::Goods;
 use crate::elements::{UUID_MAX, UUID_NIL};

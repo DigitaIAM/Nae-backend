@@ -599,7 +599,7 @@ pub(crate) fn aggregations_store_goods(
   (master_aggregation, res, vec![])
 }
 
-pub(crate) fn get_aggregations(
+pub(crate) fn aggregations_for_store_goods_batch(
   balances: Vec<Balance>,
   operations: Vec<Op>,
   start_date: DateTime<Utc>,

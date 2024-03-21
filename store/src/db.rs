@@ -246,7 +246,7 @@ impl Db {
     Err(WHError::new("fn get_report not implemented"))
   }
 
-  pub fn get_report_for_storage_goods(
+  pub fn get_report_for_store_goods(
     &self,
     storage: Store,
     goods: Goods,
