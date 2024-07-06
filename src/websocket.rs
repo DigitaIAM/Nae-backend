@@ -170,7 +170,7 @@ impl Handler<WsMessage> for WsConn {
 
   fn handle(&mut self, msg: WsMessage, ctx: &mut Self::Context) {
     let data = msg.data();
-    log::debug!("sending: {}", data);
+    // log::debug!("sending: {}", data);
     ctx.text(data);
   }
 }
