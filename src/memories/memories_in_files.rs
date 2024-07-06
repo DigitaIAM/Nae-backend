@@ -244,7 +244,8 @@ impl Service for MemoriesInFiles {
 
         let filters = vec![("document", &order[c::ID])];
 
-        let mut sum_used_materials: HashMap<String, (JsonValue, Qty)> = HashMap::new();
+        let mut sum_used_materials: HashMap<String, ((JsonValue, Option<String>), Qty)> =
+          HashMap::new();
 
         let materials_used =
           get_records(&self.app, order_uuid, &c::PM_USED.domain(), &ws, &filters)?;
@@ -255,9 +256,16 @@ impl Service for MemoriesInFiles {
           let qty: Qty = rec["qty"].clone().try_into().unwrap_or_default();
           let goods = &rec["goods"];
 
+          let origin = if let Some(batch_id) = rec["batch"]["id"].uuid_or_none() {
+            let batch = batch_id.resolve_to_json_object(&ws);
+            batch["_id"].string_or_none()
+          } else {
+            None
+          };
+
           let sum = sum_used_materials
             .entry(goods["_id"].string())
-            .or_insert((goods.clone(), Qty::zero()));
+            .or_insert(((goods.clone(), origin), Qty::zero()));
 
           sum.1 += &qty;
 
@@ -268,7 +276,8 @@ impl Service for MemoriesInFiles {
           .into_iter()
           .map(|(_k, v)| {
             object! {
-              "goods": v.0,
+              "goods": v.0.0,
+              "origin": v.0.1,
               "qty": enrich_own_qty(&ws, v.1),
             }
           })
