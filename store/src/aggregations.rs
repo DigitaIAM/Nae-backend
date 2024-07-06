@@ -561,18 +561,20 @@ pub(crate) fn aggregations_store_goods(
   let mut master_aggregation = AggregationStore::default();
 
   for balance in balances {
-    aggregations.insert(
-      key(&balance.store, &balance.goods),
+    let agr = aggregations.entry(key(&balance.store, &balance.goods)).or_insert_with(|| {
       AggregationStoreGoods {
         store: Some(balance.store),
         goods: Some(balance.goods),
 
-        open_balance: balance.number.clone(),
+        open_balance: BalanceForGoods::default(),
         receive: BalanceDelta::default(),
         issue: BalanceDelta::default(),
-        close_balance: balance.number,
-      },
-    );
+        close_balance: BalanceForGoods::default(),
+      }
+    });
+
+    agr.open_balance += balance.number.clone();
+    agr.close_balance += balance.number;
   }
 
   for op in operations {
