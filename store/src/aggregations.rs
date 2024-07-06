@@ -520,10 +520,11 @@ pub(crate) fn get_aggregations_for_one_goods(
     if op.dependant.is_empty() {
       if op.date < start_date {
         open_balance += op.to_delta();
+        close_balance += op.to_delta();
       } else {
         close_balance += op.to_delta();
+        result.push(op.to_json());
       }
-      result.push(op.to_json());
     }
   }
 
