@@ -71,7 +71,7 @@ impl Actor for WsConn {
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
   fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
-    println!("msg {:?}", msg);
+    // println!("msg {:?}", msg);
 
     match msg {
       Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
@@ -98,7 +98,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsConn {
               },
               socket_io::DISCONNECT => {}, // TODO
               socket_io::EVENT => {
-                println!("data: {:?}", data);
+                // println!("data: {:?}", data);
                 // "16[\"create\",\"authentication\",{\"strategy\":\"local\",\"email\":\"admin\",\"password\":\"111\"},{}]"
                 if let Some(i) = data.find('[') {
                   if data.ends_with(']') {
