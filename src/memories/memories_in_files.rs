@@ -228,11 +228,19 @@ impl Service for MemoriesInFiles {
       for order in &mut list {
         let order_uuid = order[c::UUID].uuid()?;
 
+        let area_id = order["area"][c::ID].string();
+        let product_goods_id = order["product"]["goods"][c::ID].string();
+
+        let order_customer = order["customer"].string();
+        let order_label = order["label"].string();
+
+        // println!("order {order}");
+
         let produced =
           self.app.links().get_source_links_for_ctx(order_uuid, &c::P_PRODUCE.domain())?;
 
         // let mut boxes = Decimal::ZERO;
-        let sum_produced: Qty = produced
+        let mut sum_produced: Qty = produced
           .iter()
           .map(|uuid| uuid.resolve_to_json_object(&ws))
           .filter(|o| o.is_object())
@@ -240,12 +248,9 @@ impl Service for MemoriesInFiles {
           .map(|o| o["qty"].clone().try_into().unwrap_or_else(|_| Qty::zero()))
           .sum();
 
-        order["produced"] = enrich_own_qty(&ws, sum_produced.clone());
-
         let filters = vec![("document", &order[c::ID])];
 
-        let mut sum_used_materials: HashMap<String, ((JsonValue, Option<String>), Qty)> =
-          HashMap::new();
+        let mut sum_used_materials: HashMap<String, (JsonValue, Qty)> = HashMap::new();
 
         let materials_used =
           get_records(&self.app, order_uuid, &c::PM_USED.domain(), &ws, &filters)?;
@@ -256,16 +261,38 @@ impl Service for MemoriesInFiles {
           let qty: Qty = rec["qty"].clone().try_into().unwrap_or_default();
           let goods = &rec["goods"];
 
-          let origin = if let Some(batch_id) = rec["batch"]["id"].uuid_or_none() {
-            let batch = batch_id.resolve_to_json_object(&ws);
-            batch["_id"].string_or_none()
-          } else {
-            None
-          };
+          // println!("goods_id {product_goods_id} vs {}", goods[c::ID]);
+
+          if product_goods_id == goods[c::ID].string() {
+            if let Some(batch_id) = rec["batch"]["id"].uuid_or_none() {
+              let origin = ws
+                .resolve_uuid(&batch_id)
+                .and_then(|s| s.json().ok())
+                // .map(|data| data.enrich(&ws))
+                .unwrap_or_else(|| {
+                  json::object! {
+                    "_uuid": batch_id.to_string(),
+                    "_status": "not_found",
+                  }
+                });
+
+              // println!("origin {origin}");
+              // println!("area {area_id} vs {}", origin["area"].string());
+
+              if area_id == origin["area"].string() {
+                if order_customer == origin["customer"].string() {
+                  if order_label == origin["label"].string() {
+                    sum_produced -= &qty;
+                    continue;
+                  }
+                }
+              }
+            };
+          }
 
           let sum = sum_used_materials
             .entry(goods["_id"].string())
-            .or_insert(((goods.clone(), origin), Qty::zero()));
+            .or_insert((goods.clone(), Qty::zero()));
 
           sum.1 += &qty;
 
@@ -276,8 +303,7 @@ impl Service for MemoriesInFiles {
           .into_iter()
           .map(|(_k, v)| {
             object! {
-              "goods": v.0.0,
-              "origin": v.0.1,
+              "goods": v.0,
               "qty": enrich_own_qty(&ws, v.1),
             }
           })
@@ -316,6 +342,7 @@ impl Service for MemoriesInFiles {
 
         let delta = sum_material_produced.lower() + sum_produced.lower() - sum_material_used.lower();
 
+        order["produced"] = enrich_own_qty(&ws, sum_produced.clone());
         order["_material"] = object! {
           "used": used,
           "produced": produced,
